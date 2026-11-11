@@ -1,7 +1,8 @@
 {
-  "version": "1.9.3",
+  "version": "1.9.6",
   "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
   "changes": [
+    "Correction du vrai défaut : l'écran ne se coupe plus quand on touche ou qu'on ouvre un menu (erreur de calcul du temps d'inactivité). Veille seulement après 5 min sans rien toucher, ou par le bouton power.",
     "Correction : l'écran ne se met plus en veille tout seul quand on utilise le module (le bouton power n'est plus perturbé)",
     "Les pages d'outils restent allumées quand on les regarde (seul l'accueil se met en veille)",
     "Bulle fait un salut de la main avant de s'endormir",

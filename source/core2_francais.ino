@@ -18,7 +18,7 @@
 #include "page_web.h"
 #include "types.h"
 
-#define VERSION_PROGRAMME "1.9.3"
+#define VERSION_PROGRAMME "1.9.6"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -194,7 +194,7 @@ volatile uint32_t sniffTotal = 0;
 volatile long sRssiSum = 0, sRssiSq = 0; volatile int sRssiN = 0;
 bool detection = false; float mvtNiveau = 0, mvtBase = 5.0f; bool mouvement = false;
 uint8_t histMvt[300]; int histMvtPos = 0; uint32_t detDerniere = 0; int canalDet = 1;
-uint32_t nbClicPwr = 0, nbSommeilClic = 0, nbSommeilTimeout = 0;
+uint32_t nbClicPwr = 0, nbSommeilClic = 0, nbSommeilTimeout = 0, nbTouch = 0, dbgM = 0, dbgAct = 0;
 bool sniffActif = false; uint32_t debutSniff = 0, dernierHop = 0; int canalSniff = 1;
 uint32_t sniffParSeconde = 0, sniffDernierTotal = 0, sniffDerniereSec = 0;
 void IRAM_ATTR rappelSniff(void* buf, wifi_promiscuous_pkt_type_t type) {
@@ -1171,7 +1171,7 @@ void gererBoutons() {
 bool touchePerso = false; int xPrec = 0, yPrec = 0; uint32_t debutToucher = 0;
 void gererTactile() {
   auto t = M5.Touch.getDetail();
-  if (t.wasPressed()) activite();
+  if (t.wasPressed() || t.isPressed()) { activite(); nbTouch++; }
   if (t.y >= 240) { if (t.wasReleased()) { P.porte = false; touchePerso = false; } return; }   // zone des boutons ronds : gérée par gererBoutons()
   if (page == 5) {
     if (t.wasPressed() && t.y >= 204) {
@@ -1368,7 +1368,7 @@ void demarrerServeur() {
     d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["ip"] = WiFi.localIP().toString();
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
     d["secondesDepuisDemarrage"] = millis() / 1000;
-    d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
+    d["uptimeMs"] = millis(); d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
     d["pileMv"] = M5.Power.getBatteryVoltage(); d["usbMv"] = M5.Power.getVBUSVoltage(); d["courantMa"] = M5.Power.getBatteryCurrent(); d["niveau"] = M5.Power.getBatteryLevel(); d["etatCharge"] = (int)M5.Power.isCharging(); d["puce"] = (int)M5.Power.getType();
     { JsonObject a = d["axp"].to<JsonObject>(); static const uint8_t regs[] = {0x00, 0x01, 0x12, 0x18, 0x22, 0x27, 0x30, 0x61, 0x62, 0x63, 0x64, 0x69};
       for (uint8_t r : regs) { char k[8]; snprintf(k, sizeof(k), "r%02X", r); a[k] = (int)M5.In_I2C.readRegister8(0x34, r, 400000); } }
@@ -1445,7 +1445,7 @@ void loop() {
     if (clicMarche && veille) reveillerEcran();
     tPhysique = m;
   } else {
-    if (clicMarche) { nbSommeilClic++; endormirEcran(); }
+    if (clicMarche && (int32_t)(millis() - derniereActivite) > 1500) { nbSommeilClic++; endormirEcran(); }   // le toucher n'eteint jamais l'ecran : seul le bouton power, et seulement sans toucher en cours
     if (R.actif[M_SON] && m - tSon > 250) { tSon = m; moduleSon(); }
     debutModule(M_GRAVITE);
     float dt = (m - tPhysique) / 1000.0f; tPhysique = m; if (dt > 0.1f) dt = 0.1f;
@@ -1469,7 +1469,7 @@ void loop() {
     }
     if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; dessinerPage(); }
     if (sniffActif || detection || page == 11 || page == 13) activite();
-    if (!veille && !brancheUsb && page <= 1 && m - derniereActivite > 90000) { nbSommeilTimeout++; endormirEcran(); }     // seul l'accueil/les réglages se mettent en veille ; les pages d'outils restent allumées
+    if (!veille && !brancheUsb && (int32_t)(millis() - derniereActivite) > 300000) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
   vieDuPerso();
   {   // reconnexion automatique toutes les 20 s : on essaie le Wi-Fi de la maison, puis celui du téléphone, à tour de rôle
