@@ -14,10 +14,11 @@
 #include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 #include <esp_system.h>
+#include <esp_wifi.h>
 #include "page_web.h"
 #include "types.h"
 
-#define VERSION_PROGRAMME "1.8.1"
+#define VERSION_PROGRAMME "1.9.0"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -181,6 +182,60 @@ void jouer(int s) {
   M5.Speaker.end(); M5.Mic.begin(); dernierBip = millis();
 }
 void vibrer(int ms) { M5.Power.setVibration(150); finVibre = millis() + ms; }
+
+// ---------- Pages d'outils ----------
+// Pages : 0 accueil, 1 réglages, 2-4 réglage Wi-Fi, 5 matériel, 6 menu,
+// 7 radar Wi-Fi, 8 analyseur réseau, 9 détection de mouvement, 10 météo, 11 horloge, 12 niveau, 13 sonomètre, 14 lampe.
+int pageAvant = 0;
+int lampeNiveau = 255;
+volatile uint32_t sniffType[3] = {0, 0, 0};
+volatile uint32_t sniffCanal[15] = {0};
+volatile uint32_t sniffTotal = 0;
+volatile long sRssiSum = 0, sRssiSq = 0; volatile int sRssiN = 0;
+bool detection = false; float mvtNiveau = 0, mvtBase = 5.0f; bool mouvement = false;
+uint8_t histMvt[300]; int histMvtPos = 0; uint32_t detDerniere = 0; int canalDet = 1;
+bool sniffActif = false; uint32_t debutSniff = 0, dernierHop = 0; int canalSniff = 1;
+uint32_t sniffParSeconde = 0, sniffDernierTotal = 0, sniffDerniereSec = 0;
+void IRAM_ATTR rappelSniff(void* buf, wifi_promiscuous_pkt_type_t type) {
+  if (type == WIFI_PKT_MGMT) sniffType[0]++;
+  else if (type == WIFI_PKT_CTRL) sniffType[1]++;
+  else if (type == WIFI_PKT_DATA) sniffType[2]++;
+  else return;
+  sniffTotal++;
+  wifi_promiscuous_pkt_t* p = (wifi_promiscuous_pkt_t*)buf;
+  int c = p->rx_ctrl.channel; if (c >= 1 && c <= 14) sniffCanal[c]++;
+  int rs = p->rx_ctrl.rssi; sRssiSum += rs; sRssiSq += (long)rs * rs; sRssiN++;
+}
+void demarrerSniff() {
+  for (int i = 0; i < 3; i++) sniffType[i] = 0; for (int i = 0; i < 15; i++) sniffCanal[i] = 0;
+  sniffTotal = 0; sniffDernierTotal = 0; sniffParSeconde = 0;
+  WiFi.disconnect(); delay(20);
+  esp_wifi_set_promiscuous(true); esp_wifi_set_promiscuous_rx_cb(&rappelSniff);
+  canalSniff = 1; esp_wifi_set_channel(canalSniff, WIFI_SECOND_CHAN_NONE);
+  sniffActif = true; debutSniff = millis(); dernierHop = millis();
+}
+void arreterSniff() {
+  esp_wifi_set_promiscuous(false); sniffActif = false;
+  WiFi.begin(R.ssid.length() ? R.ssid.c_str() : R.ssid2.c_str(), R.ssid.length() ? R.motDePasse.c_str() : R.mdp2.c_str());
+}
+// Détection de mouvement par Wi-Fi : on mesure les variations de la force des ondes
+// autour du module. Quand quelqu'un bouge, les ondes sont perturbées : l'agitation monte.
+void demarrerDetection() {
+  sRssiSum = 0; sRssiSq = 0; sRssiN = 0; mvtNiveau = 0; mvtBase = 5.0f; mouvement = false;
+  for (int i = 0; i < (int)sizeof(histMvt); i++) histMvt[i] = 0; histMvtPos = 0;
+  int ch = WiFi.channel(); if (ch < 1 || ch > 13) ch = 1; canalDet = ch;
+  WiFi.disconnect(); delay(20);
+  esp_wifi_set_promiscuous(true); esp_wifi_set_promiscuous_rx_cb(&rappelSniff);
+  esp_wifi_set_channel(canalDet, WIFI_SECOND_CHAN_NONE);
+  detection = true; detDerniere = millis();
+}
+void arreterDetection() {
+  esp_wifi_set_promiscuous(false); detection = false;
+  WiFi.begin(R.ssid.length() ? R.ssid.c_str() : R.ssid2.c_str(), R.ssid.length() ? R.motDePasse.c_str() : R.mdp2.c_str());
+}
+uint32_t chronoDebut = 0; bool chronoMarche = false; uint32_t chronoFige = 0;
+uint8_t histSon[220]; int histSonPos = 0;
+float distanceWifi(int dbm) { return powf(10.0f, (-45.0f - dbm) / 22.0f); }
 
 // ---------- Modules : lecture du monde ----------
 int pourcentTension(float mv) {
@@ -570,7 +625,7 @@ void dessinerBarre() {
   // boutons du bas : Nourrir | Gravité | Réglages
   cv.fillRect(0, 200, 320, 40, C(8, 8, 20)); cv.drawFastHLine(0, 200, 320, C(255, 40, 170));
   cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center);
-  const char* lib[3] = {"Nourrir", "Gravité", "Réglages"};
+  const char* lib[3] = {"Nourrir", "Gravité", "Menu"};
   for (int i = 0; i < 3; i++) {
     int bx = 4 + i * 106;
     cv.fillRoundRect(bx, 204, 102, 32, 8, C(18, 20, 44)); cv.drawRoundRect(bx, 204, 102, 32, 8, C(0, 230, 255));
@@ -833,6 +888,223 @@ void dessinerMateriel() {
   cv.pushSprite(0, 0);
 }
 
+// ---------- Cadre commun des pages d'outils ----------
+void cadrePage(const char* titre) {
+  cv.fillScreen(C(10, 12, 26));
+  cv.fillRect(0, 0, 320, 22, C(24, 28, 60)); cv.drawFastHLine(0, 22, 320, C(0, 230, 255));
+  cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_left); cv.setTextColor(C(0, 230, 255)); cv.drawString(titre, 8, 11);
+  cv.setTextDatum(top_left);
+}
+void boutonBas(int x, int w, const char* lib, uint16_t coul) {
+  cv.fillRoundRect(x, 206, w, 30, 8, coul); cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString(lib, x + w / 2, 221); cv.setTextDatum(top_left);
+}
+struct Tuile { const char* nom; int page; uint16_t coul; };
+static const Tuile TUILES[] = {
+  {"Personnage", 0, 0x2C6B}, {"Radar Wi-Fi", 7, 0x0A5F}, {"Analyseur", 8, 0x8A0F},
+  {"Détection", 9, 0x021F}, {"Météo", 10, 0x0C7A}, {"Horloge", 11, 0x6A1F},
+  {"Niveau", 12, 0x05EB}, {"Sonomètre", 13, 0xFB40}, {"Lampe", 14, 0x8420},
+  {"Réglages", 1, 0x4A4F}, {"Matériel", 5, 0x3269}, {"Accueil", 0, 0x2C6B},
+};
+static const int NB_TUILES = sizeof(TUILES) / sizeof(TUILES[0]);
+void dessinerMenu() {
+  cadrePage("Menu — tout ce que je sais faire");
+  for (int i = 0; i < NB_TUILES; i++) {
+    int c = i % 3, r = i / 3; int x = 6 + c * 104, y = 30 + r * 44;
+    cv.fillRoundRect(x, y, 100, 40, 8, TUILES[i].coul); cv.drawRoundRect(x, y, 100, 40, 8, C(120, 160, 220));
+    cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString(TUILES[i].nom, x + 50, y + 20);
+  }
+  cv.setTextDatum(top_left); cv.pushSprite(0, 0);
+}
+void dessinerRadarWifi() {
+  cadrePage("Radar Wi-Fi");
+  if (scanEnCours) lireScan();
+  int cx = 110, cy = 120, R0 = 86;
+  for (int k = 1; k <= 3; k++) cv.drawCircle(cx, cy, R0 * k / 3, C(30, 70, 60));
+  cv.drawFastHLine(cx - R0, cy, R0 * 2, C(30, 70, 60)); cv.drawFastVLine(cx, cy - R0, R0 * 2, C(30, 70, 60));
+  float bal = (millis() % 3000) / 3000.0f * 6.283f;
+  cv.drawLine(cx, cy, cx + (int)(cosf(bal) * R0), cy + (int)(sinf(bal) * R0), C(0, 230, 120));
+  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left);
+  for (int i = 0; i < nbR && i < 12; i++) {
+    float d = distanceWifi(listeR[i].dbm); float rr = constrain(d / 30.0f, 0.05f, 1.0f) * R0;
+    float ang = (i * 2.399f);
+    int x = cx + (int)(cosf(ang) * rr), y = cy + (int)(sinf(ang) * rr);
+    uint16_t c = listeR[i].dbm > -60 ? C(120, 255, 150) : (listeR[i].dbm > -72 ? C(255, 220, 90) : C(255, 120, 110));
+    cv.fillCircle(x, y, 3, c);
+    String n = listeR[i].nom; if (n.length() > 8) n = n.substring(0, 8);
+    int tx = 206, ty = 28 + i * 15; cv.setTextColor(c); cv.drawString(n, tx, ty);
+    cv.setTextColor(C(150, 160, 200)); cv.drawString(String(d, d < 10 ? 1 : 0) + " m", 290, ty);
+  }
+  cv.setTextColor(C(150, 160, 200)); cv.drawString(String(nbR) + " réseaux — distance estimée", 6, 196);
+  boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(214, 102, scanEnCours ? "..." : "Chercher", C(50, 100, 150));
+  cv.pushSprite(0, 0);
+}
+void dessinerAnalyseur() {
+  cadrePage("Analyseur réseau (observation)");
+  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left);
+  if (!sniffActif) {
+    cv.setTextColor(C(220, 225, 255));
+    cv.drawString("Observe le trafic Wi-Fi autour (comme un analyseur", 8, 34);
+    cv.drawString("de réseau). Le Wi-Fi normal se met en pause pendant", 8, 50);
+    cv.drawString("l'analyse, puis se reconnecte à l'arrêt.", 8, 66);
+    boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(176, 140, "Démarrer l'analyse", C(50, 130, 80));
+    cv.pushSprite(0, 0); return;
+  }
+  uint32_t g = sniffType[0], co = sniffType[1], da = sniffType[2];
+  cv.setTextColor(C(0, 230, 255)); cv.drawString("Canal écouté : " + String(canalSniff) + "   " + String(sniffParSeconde) + " trames/s", 8, 30);
+  cv.setTextColor(C(255, 255, 255));
+  cv.drawString("Gestion : " + String(g), 8, 50); cv.drawString("Contrôle : " + String(co), 8, 66); cv.drawString("Données : " + String(da), 8, 82);
+  cv.drawString("Total : " + String(sniffTotal), 8, 98);
+  cv.drawString("Activité par canal :", 8, 118);
+  uint32_t mx = 1; for (int c = 1; c <= 13; c++) if (sniffCanal[c] > mx) mx = sniffCanal[c];
+  for (int c = 1; c <= 13; c++) {
+    int x = 8 + (c - 1) * 23, h = (int)(60.0f * sniffCanal[c] / mx); if (h < 1 && sniffCanal[c]) h = 1;
+    cv.fillRect(x, 192 - h, 18, h, c == canalSniff ? C(0, 230, 120) : C(80, 120, 200));
+    cv.setTextColor(C(150, 160, 200)); cv.drawString(String(c), x + 4, 194);
+  }
+  boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(176, 140, "Arrêter l'analyse", C(130, 60, 60));
+  cv.pushSprite(0, 0);
+}
+void dessinerDetection() {
+  cadrePage("Détection de mouvement (Wi-Fi)");
+  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left);
+  if (!detection) {
+    cv.setTextColor(C(220, 225, 255));
+    cv.drawString("Repère un mouvement (une personne qui bouge) en", 8, 34);
+    cv.drawString("mesurant les perturbations des ondes Wi-Fi autour.", 8, 50);
+    cv.drawString("Le Wi-Fi se met en pause pendant la mesure.", 8, 66);
+    cv.drawString("Ce n'est pas une image : c'est un détecteur.", 8, 82);
+    boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(176, 140, "Démarrer", C(50, 130, 80));
+    cv.pushSprite(0, 0); return;
+  }
+  cv.fillRoundRect(8, 28, 304, 38, 8, mouvement ? C(120, 30, 40) : C(18, 48, 34));
+  cv.setFont(&fonts::lgfxJapanGothic_24); cv.setTextDatum(middle_center);
+  cv.setTextColor(mouvement ? C(255, 120, 120) : C(120, 255, 150));
+  cv.drawString(mouvement ? "Mouvement détecté" : "Calme", 160, 47);
+  cv.setTextDatum(top_left); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(150, 160, 200));
+  cv.drawString("Canal " + String(canalDet) + "   agitation " + String(mvtNiveau, 1) + "  (repos " + String(mvtBase, 1) + ")", 8, 72);
+  int base = 192;
+  cv.drawFastHLine(8, base, 300, C(40, 60, 80));
+  for (int i = 0; i < (int)sizeof(histMvt); i++) {
+    int idx = (histMvtPos + i) % (int)sizeof(histMvt); int h = histMvt[idx];
+    cv.drawFastVLine(8 + i, base - h, h, h > 40 ? C(255, 120, 110) : C(0, 200, 140));
+  }
+  boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(176, 140, "Arrêter", C(130, 60, 60));
+  cv.pushSprite(0, 0);
+}
+void dessinerMeteoPage() {
+  cadrePage("Météo");
+  cv.setTextDatum(top_left);
+  if (!W.meteoValide) { cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(220, 225, 255)); cv.drawString(W.wifiOk ? "Récupération de la météo…" : "Pas de Wi-Fi : météo indisponible.", 10, 60); }
+  else {
+    const char* desc = "Ciel clair"; int c = W.codeMeteo;
+    if (c == 0) desc = "Ciel dégagé"; else if (c <= 2) desc = "Peu nuageux"; else if (c == 3) desc = "Couvert";
+    else if (c <= 48) desc = "Brouillard"; else if (c <= 57) desc = "Bruine"; else if (c <= 67) desc = "Pluie";
+    else if (c <= 77) desc = "Neige"; else if (c <= 82) desc = "Averses"; else if (c <= 86) desc = "Averses de neige"; else desc = "Orage";
+    cv.setFont(&fonts::lgfxJapanGothic_24); cv.setTextDatum(top_center); cv.setTextColor(C(0, 230, 255)); cv.drawString(String(W.temperature, 1) + " °C", 160, 50);
+    cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(240, 240, 255)); cv.drawString(desc, 160, 92);
+    cv.setTextDatum(top_left); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(150, 160, 200));
+    cv.drawString("Lieu : " + String(R.lat, 2) + ", " + String(R.lon, 2) + "  (réglable dans Réglages)", 8, 150);
+    cv.drawString("Mis à jour il y a " + String((millis() - W.derniereMeteo) / 60000) + " min", 8, 170);
+  }
+  boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(214, 102, "Actualiser", C(50, 100, 150));
+  cv.pushSprite(0, 0);
+}
+void dessinerHorloge() {
+  cadrePage("Horloge");
+  struct tm t; bool ok = getLocalTime(&t, 0);
+  cv.setTextDatum(top_center);
+  if (ok) {
+    char h[16]; snprintf(h, sizeof(h), "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+    cv.setFont(&fonts::lgfxJapanGothic_40); cv.setTextColor(C(0, 230, 255)); cv.drawString(h, 160, 40);
+    static const char* J[] = {"dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"};
+    char d[40]; snprintf(d, sizeof(d), "%s %02d/%02d/%04d", J[t.tm_wday], t.tm_mday, t.tm_mon + 1, t.tm_year + 1900);
+    cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(240, 240, 255)); cv.drawString(d, 160, 92);
+  } else { cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(255, 160, 120)); cv.drawString("Heure en attente du Wi-Fi…", 160, 60); }
+  uint32_t ch = chronoMarche ? (millis() - chronoDebut) : chronoFige;
+  char cbuf[20]; snprintf(cbuf, sizeof(cbuf), "%02lu:%02lu.%lu", (unsigned long)(ch / 60000), (unsigned long)((ch / 1000) % 60), (unsigned long)((ch / 100) % 10));
+  cv.setFont(&fonts::lgfxJapanGothic_24); cv.setTextColor(C(255, 230, 90)); cv.drawString(String("Chrono ") + cbuf, 160, 128);
+  cv.setTextDatum(top_left);
+  boutonBas(4, 100, "Menu", C(52, 56, 96));
+  boutonBas(112, 96, chronoMarche ? "Arrêter" : "Départ", chronoMarche ? C(130, 60, 60) : C(50, 130, 80));
+  boutonBas(214, 102, "Remettre 0", C(52, 56, 96));
+  cv.pushSprite(0, 0);
+}
+void dessinerNiveau() {
+  cadrePage("Niveau à bulle");
+  int cx = 160, cy = 120, R0 = 78;
+  cv.drawCircle(cx, cy, R0, C(80, 120, 200)); cv.drawCircle(cx, cy, 14, C(80, 120, 200));
+  cv.drawFastHLine(cx - R0, cy, R0 * 2, C(40, 60, 110)); cv.drawFastVLine(cx, cy - R0, R0 * 2, C(40, 60, 110));
+  int bx = cx + (int)(constrain(ax, -1.0f, 1.0f) * R0), by = cy + (int)(constrain(ay, -1.0f, 1.0f) * R0);
+  bool plat = fabs(ax) < 0.03f && fabs(ay) < 0.03f;
+  cv.fillCircle(bx, by, 12, plat ? C(120, 255, 150) : C(0, 230, 255));
+  float angle = atan2f(sqrtf(ax * ax + ay * ay), fabs(az)) * 57.3f;
+  cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(top_left); cv.setTextColor(C(240, 240, 255));
+  cv.drawString("Inclinaison : " + String(angle, 1) + " deg", 8, 30);
+  cv.setTextColor(plat ? C(120, 255, 150) : C(150, 160, 200)); cv.drawString(plat ? "À plat" : "Penché", 8, 48);
+  boutonBas(4, 100, "Menu", C(52, 56, 96));
+  cv.pushSprite(0, 0);
+}
+void dessinerSonometre() {
+  cadrePage("Sonomètre");
+  histSon[histSonPos] = (uint8_t)constrain((int)(W.niveauSon / 40.0f), 0, 150); histSonPos = (histSonPos + 1) % 220;
+  for (int i = 0; i < 220; i++) {
+    int idx = (histSonPos + i) % 220; int h = histSon[idx]; if (h > 150) h = 150;
+    uint16_t c = h > 110 ? C(255, 90, 90) : (h > 60 ? C(255, 220, 90) : C(120, 255, 150));
+    cv.drawFastVLine(50 + i, 190 - h, h, c);
+  }
+  cv.drawFastHLine(50, 190, 220, C(60, 70, 120));
+  cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(top_left); cv.setTextColor(C(0, 230, 255));
+  cv.drawString("Niveau : " + String((int)W.niveauSon), 8, 30);
+  cv.setTextColor(C(150, 160, 200)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.drawString("Micro — bruit autour", 8, 52);
+  boutonBas(4, 100, "Menu", C(52, 56, 96));
+  cv.pushSprite(0, 0);
+}
+void dessinerLampe() {
+  int niv = lampeNiveau;
+  cv.fillScreen(C(niv, niv, niv > 240 ? niv - 10 : niv));
+  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left); cv.setTextColor(C(40, 40, 40)); cv.drawString("Lampe — glisse pour régler", 8, 6);
+  int bw = (int)(300.0f * niv / 255.0f); cv.fillRoundRect(10, 206, 300, 16, 6, C(180, 180, 180)); cv.fillRoundRect(10, 206, bw, 16, 6, C(90, 90, 90));
+  cv.fillRoundRect(4, 180, 90, 20, 6, C(60, 60, 60)); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.setFont(&fonts::lgfxJapanGothic_16); cv.drawString("Menu", 49, 190); cv.setTextDatum(top_left);
+  cv.pushSprite(0, 0);
+}
+void dessinerPage() {
+  switch (page) {
+    case 0: dessinerAccueil(); break;
+    case 1: dessinerReglages(); break;
+    case 5: dessinerMateriel(); break;
+    case 6: dessinerMenu(); break;
+    case 7: dessinerRadarWifi(); break;
+    case 8: dessinerAnalyseur(); break;
+    case 9: dessinerDetection(); break;
+    case 10: dessinerMeteoPage(); break;
+    case 11: dessinerHorloge(); break;
+    case 12: dessinerNiveau(); break;
+    case 13: dessinerSonometre(); break;
+    case 14: dessinerLampe(); break;
+    default: dessinerWifi(); break;
+  }
+}
+void gererTactilePages(const m5::touch_detail_t& t) {
+  bool clic = t.wasPressed();
+  int x = t.x, y = t.y;
+  if (page == 6) {
+    if (!clic) return;
+    for (int i = 0; i < NB_TUILES; i++) { int c = i % 3, r = i / 3; int tx = 6 + c * 104, ty = 30 + r * 44; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 40) { page = TUILES[i].page; bip(700, 40); return; } }
+    return;
+  }
+  if (page == 14) { if (clic && y >= 180 && y < 206 && x < 100) { page = 6; bip(700, 40); } else if (t.isPressed()) lampeNiveau = constrain((int)(255.0f * x / 320.0f), 10, 255); return; }
+  if (!clic) return;
+  bool bas = (y >= 206);
+  if (page == 7) { if (bas && x < 104) page = 6; else if (bas) lancerScan(); }
+  else if (page == 8) { if (bas && x < 104) page = 6; else if (bas) { if (sniffActif) arreterSniff(); else demarrerSniff(); } }
+  else if (page == 9) { if (bas && x < 104) page = 6; else if (bas) { if (detection) arreterDetection(); else demarrerDetection(); } }
+  else if (page == 10) { if (bas && x < 104) page = 6; else if (bas) { W.derniereMeteo = 0; W.meteoValide = false; } }
+  else if (page == 11) { if (bas && x < 104) page = 6; else if (bas && x < 208) { if (chronoMarche) { chronoFige = millis() - chronoDebut; chronoMarche = false; } else { chronoDebut = millis() - chronoFige; chronoMarche = true; } } else if (bas) { chronoFige = 0; chronoDebut = millis(); chronoMarche = false; } }
+  else if (page == 12) { if (bas && x < 104) page = 6; }
+  else if (page == 13) { if (bas && x < 104) page = 6; }
+  if (page == 6) bip(700, 40);
+}
+
 // ---------- Veille de l'écran ----------
 // Économie de pile : sur pile, le Wi-Fi dort entre deux échanges ; écran éteint, le processeur ralentit aussi.
 void appliquerEconomie() { WiFi.setSleep(eco || veille || !brancheUsb); setCpuFrequencyMhz(veille ? 80 : 240); }
@@ -848,7 +1120,7 @@ void caresser() {
 void actionBarre(int b) {
   if (b == 0) { if (phase() != OEUF) nourrir(); else bip(300, 60); }
   else if (b == 1) { W.gravite = !W.gravite; prefs.putBool("grav", W.gravite); jouer(S_GRAVITE); }
-  else { page = 1; bip(700, 40); }
+  else { page = 6; bip(700, 40); }
 }
 void gererBoutons() {
   int b = M5.BtnA.wasPressed() ? 0 : (M5.BtnB.wasPressed() ? 1 : (M5.BtnC.wasPressed() ? 2 : -1));
@@ -857,7 +1129,7 @@ void gererBoutons() {
   if (veille) { reveillerEcran(); return; }
   if (page == 0) { actionBarre(b); return; }
   bip(700, 40);        // sur les autres pages : gauche = retour, milieu = accueil, droite = réglages
-  if (b == 0) page = (page == 3) ? 2 : ((page == 1) ? 0 : 1);
+  if (b == 0) page = (page >= 7) ? 6 : ((page == 3) ? 2 : ((page == 1 || page == 5 || page == 6) ? 0 : 1));
   else if (b == 1) page = 0;
   else page = 1;
 }
@@ -878,6 +1150,7 @@ void gererTactile() {
     }
     return;
   }
+  if (page >= 6) { gererTactilePages(t); return; }
   if (page >= 2) { gererTactileWifi(t.wasPressed(), t.x, t.y); return; }
   if (page == 1) {
     if (t.wasPressed()) {
@@ -1039,6 +1312,13 @@ void demarrerServeur() {
     d["appui"] = t.isPressed(); d["x"] = t.x; d["y"] = t.y; d["pile"] = W.batterie; d["branche"] = brancheUsb;
     String r; serializeJson(d, r); serveur.send(200, "application/json; charset=utf-8", r);
   });
+  serveur.on("/api/ondes", HTTP_GET, []() {          // mesures des ondes Wi-Fi, pour une autre application
+    autoriserCors(); JsonDocument d;
+    d["detection"] = detection; d["mouvement"] = mouvement; d["agitation"] = mvtNiveau; d["repos"] = mvtBase; d["canal"] = canalDet; d["rssiMaison"] = W.rssi;
+    JsonArray h = d["historique"].to<JsonArray>(); for (int i = 0; i < (int)sizeof(histMvt); i++) h.add(histMvt[(histMvtPos + i) % (int)sizeof(histMvt)]);
+    JsonArray ca = d["canaux"].to<JsonArray>(); for (int c = 1; c <= 13; c++) ca.add(sniffCanal[c]);
+    String r; serializeJson(d, r); serveur.send(200, "application/json; charset=utf-8", r);
+  });
   serveur.on("/api/reseaux", HTTP_GET, []() {
     autoriserCors(); int n = WiFi.scanNetworks(); JsonDocument d; JsonArray a = d.to<JsonArray>();
     for (int i = 0; i < n && i < 30; i++) {
@@ -1140,8 +1420,24 @@ void loop() {
     physique(dt);
     finModule();
     gererTactile();
-    if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; if (page == 0) dessinerAccueil(); else if (page == 1) dessinerReglages(); else if (page == 5) dessinerMateriel(); else dessinerWifi(); }
-    if (!veille && !brancheUsb && (page <= 1 || page == 5) && m - derniereActivite > 60000) endormirEcran();     // une minute sans rien toucher, sur pile : l'écran s'éteint
+    if (page != pageAvant) { if (pageAvant == 8 && sniffActif) arreterSniff(); if (pageAvant == 9 && detection) arreterDetection(); pageAvant = page; }
+    if (sniffActif) { if (m - dernierHop > 300) { dernierHop = m; canalSniff = canalSniff % 13 + 1; esp_wifi_set_channel(canalSniff, WIFI_SECOND_CHAN_NONE); } if (m - sniffDerniereSec > 1000) { sniffDerniereSec = m; sniffParSeconde = sniffTotal - sniffDernierTotal; sniffDernierTotal = sniffTotal; } }
+    if (detection && m - detDerniere > 500) {
+      detDerniere = m;
+      long sm = sRssiSum, sq = sRssiSq; int n = sRssiN; sRssiSum = 0; sRssiSq = 0; sRssiN = 0;
+      float ec = 0;
+      if (n > 4) { double moy = (double)sm / n; double var = (double)sq / n - moy * moy; ec = var > 0 ? (float)sqrt(var) : 0; }
+      mvtNiveau = mvtNiveau * 0.5f + ec * 0.5f;
+      if (mvtNiveau < mvtBase) mvtBase = mvtBase * 0.95f + mvtNiveau * 0.05f;
+      else mvtBase = mvtBase * 0.997f + mvtNiveau * 0.003f;
+      float dev = mvtNiveau - mvtBase;
+      mouvement = (dev > 2.5f && n > 8);
+      int h = (int)constrain(dev * 14.0f, 0.0f, 86.0f);
+      histMvt[histMvtPos] = (uint8_t)h; histMvtPos = (histMvtPos + 1) % (int)sizeof(histMvt);
+    }
+    if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; dessinerPage(); }
+    if (sniffActif || detection || page == 11 || page == 13) activite();
+    if (!veille && !brancheUsb && m - derniereActivite > 60000) endormirEcran();     // une minute sans rien toucher, sur pile : l'écran s'éteint
   }
   vieDuPerso();
   {   // reconnexion automatique toutes les 20 s : on essaie le Wi-Fi de la maison, puis celui du téléphone, à tour de rôle

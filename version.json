@@ -1,18 +1,13 @@
 {
-  "version": "1.8.1",
+  "version": "1.9.0",
   "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
   "changes": [
-    "Toucher plus facile : on attrape et on caresse le personnage plus facilement",
-    "Première mise à jour installée par Internet, sans ordinateur",
-    "Pourcentage de pile juste, même en charge ; alerte pile faible et arrêt propre",
-    "Écran qui s'éteint après une minute sur pile ; deux appuis pour le rallumer",
-    "Les trois boutons ronds servent : Nourrir, Gravité, Réglages",
-    "Gravité réelle : chute, rebond, choc avec son et vibration ; lévitation sans gravité",
-    "Un toucher = une caresse ; doigt posé = on le soulève",
-    "Sons du personnage, neige et orage",
-    "Deux Wi-Fi enregistrés : maison et téléphone",
-    "Mise à jour par Internet, sans câble ni ordinateur",
-    "Page Matériel : capteurs, test du son, mise à jour"
+    "Nouveau menu : une page par fonction (touche le bouton Menu sous le personnage)",
+    "Radar Wi-Fi : les réseaux placés selon leur distance estimée",
+    "Analyseur réseau : observe l'activité Wi-Fi par canal (observation seule)",
+    "Détection de mouvement par Wi-Fi : repère quelqu'un qui bouge, affiché à l'écran",
+    "Météo, Horloge (chrono), Niveau à bulle, Sonomètre, Lampe",
+    "Mesures des ondes disponibles pour une autre application (adresse /api/ondes)"
   ],
   "app": {
     "version": "1.0",
