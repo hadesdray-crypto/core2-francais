@@ -1,7 +1,8 @@
 {
-  "version": "1.9.1",
+  "version": "1.9.2",
   "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
   "changes": [
+    "Les pages d'outils restent allumées quand on les regarde (seul l'accueil se met en veille)",
     "Bulle fait un salut de la main avant de s'endormir",
     "L'écran se réveille au simple toucher, avec une animation",
     "L'écran tactile ne sert qu'à interagir : seul le bouton power l'éteint",

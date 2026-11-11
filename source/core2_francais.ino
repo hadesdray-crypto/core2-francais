@@ -18,7 +18,7 @@
 #include "page_web.h"
 #include "types.h"
 
-#define VERSION_PROGRAMME "1.9.1"
+#define VERSION_PROGRAMME "1.9.2"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -1469,7 +1469,7 @@ void loop() {
     }
     if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; dessinerPage(); }
     if (sniffActif || detection || page == 11 || page == 13) activite();
-    if (!veille && !brancheUsb && m - derniereActivite > 60000) endormirEcran();     // une minute sans rien toucher, sur pile : l'écran s'éteint
+    if (!veille && !brancheUsb && page <= 1 && m - derniereActivite > 90000) endormirEcran();     // seul l'accueil/les réglages se mettent en veille ; les pages d'outils restent allumées
   }
   vieDuPerso();
   {   // reconnexion automatique toutes les 20 s : on essaie le Wi-Fi de la maison, puis celui du téléphone, à tour de rôle
