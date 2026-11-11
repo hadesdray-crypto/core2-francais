@@ -1,7 +1,10 @@
 {
-  "version": "1.9.0",
+  "version": "1.9.1",
   "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
   "changes": [
+    "Bulle fait un salut de la main avant de s'endormir",
+    "L'écran se réveille au simple toucher, avec une animation",
+    "L'écran tactile ne sert qu'à interagir : seul le bouton power l'éteint",
     "Nouveau menu : une page par fonction (touche le bouton Menu sous le personnage)",
     "Radar Wi-Fi : les réseaux placés selon leur distance estimée",
     "Analyseur réseau : observe l'activité Wi-Fi par canal (observation seule)",

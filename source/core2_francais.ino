@@ -18,7 +18,7 @@
 #include "page_web.h"
 #include "types.h"
 
-#define VERSION_PROGRAMME "1.9.0"
+#define VERSION_PROGRAMME "1.9.1"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -1108,8 +1108,40 @@ void gererTactilePages(const m5::touch_detail_t& t) {
 // ---------- Veille de l'écran ----------
 // Économie de pile : sur pile, le Wi-Fi dort entre deux échanges ; écran éteint, le processeur ralentit aussi.
 void appliquerEconomie() { WiFi.setSleep(eco || veille || !brancheUsb); setCpuFrequencyMhz(veille ? 80 : 240); }
-void endormirEcran() { veille = true; M5.Display.setBrightness(0); M5.Display.sleep(); appliquerEconomie(); }
-void reveillerEcran() { veille = false; appliquerEconomie(); M5.Display.wakeup(); M5.Display.setBrightness(R.luminosite); activite(); jouer(S_REVEIL); }
+void dessinerPerso1() { int px, py; float e; positionEcran(px, py, e); if (phase() == OEUF) dessinerOeuf(px, py, e); else dessinerBulle(px, py, e); }
+// Bulle fait un petit salut de la main avant de s'endormir.
+void saluerAuRevoir() {
+  int px, py; float e;
+  for (int f = 0; f < 16; f++) {
+    uint32_t t0 = millis();
+    dessinerBoite(); positionEcran(px, py, e); dessinerPerso1();
+    int ex = px + (int)(26 * e), ey = py - (int)(6 * e);
+    float a = -1.15f + sinf(f * 0.85f) * 0.55f;
+    int hx = ex + (int)(cosf(a) * 30 * e), hy = ey + (int)(sinf(a) * 30 * e);
+    cv.drawLine(px + (int)(14 * e), py, ex, ey, C(0, 230, 255));
+    cv.drawLine(ex, ey, hx, hy, C(0, 230, 255));
+    cv.fillCircle(hx, hy, max(3, (int)(6 * e)), C(255, 210, 90));
+    cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255));
+    cv.drawString("A bientot !", 160, 28); cv.setTextDatum(top_left);
+    cv.pushSprite(0, 0); esp_task_wdt_reset();
+    while (millis() - t0 < 55) delay(2);
+  }
+  bip(700, 80); bip(500, 130);
+}
+void endormirEcran() {
+  if (!veille) saluerAuRevoir();
+  veille = true; M5.Display.setBrightness(0); M5.Display.sleep(); appliquerEconomie();
+}
+void reveillerEcran() {
+  veille = false; appliquerEconomie(); M5.Display.wakeup(); M5.Display.setBrightness(R.luminosite); activite();
+  for (int f = 0; f < 8; f++) {
+    dessinerBoite(); dessinerPerso1();
+    int px, py; float e; positionEcran(px, py, e);
+    int r = 64 - f * 8; if (r > 0) { cv.drawCircle(px, py, r, C(0, 230, 255)); cv.drawCircle(px, py, r + 3, C(255, 40, 170)); }
+    cv.pushSprite(0, 0); esp_task_wdt_reset(); delay(32);
+  }
+  jouer(S_REVEIL);
+}
 
 // ---------- Actions de la barre du bas (écran et boutons ronds sous l'écran) ----------
 void nourrir() { P.faim = max(0.0f, P.faim - 35); P.joie = min(100.0f, P.joie + 6); attitude(CONTENT, 3000); finRepas = millis() + 4500; jouer(S_MANGER); }
@@ -1409,7 +1441,7 @@ void loop() {
   if (veille) {
     // écran éteint : deux appuis rapprochés sur l'écran, ou un appui court sur le bouton marche/arrêt, le rallument
     auto t = M5.Touch.getDetail();
-    if (t.wasPressed() && t.y < 240) { if (m - dernierTap < 700) reveillerEcran(); else dernierTap = m; }
+    if (t.wasPressed() && t.y < 240) reveillerEcran();   // un simple toucher reveille l ecran
     if (clicMarche && veille) reveillerEcran();
     tPhysique = m;
   } else {
