@@ -1,7 +1,8 @@
 {
-  "version": "1.9.2",
+  "version": "1.9.3",
   "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
   "changes": [
+    "Correction : l'écran ne se met plus en veille tout seul quand on utilise le module (le bouton power n'est plus perturbé)",
     "Les pages d'outils restent allumées quand on les regarde (seul l'accueil se met en veille)",
     "Bulle fait un salut de la main avant de s'endormir",
     "L'écran se réveille au simple toucher, avec une animation",

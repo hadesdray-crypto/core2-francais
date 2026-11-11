@@ -18,7 +18,7 @@
 #include "page_web.h"
 #include "types.h"
 
-#define VERSION_PROGRAMME "1.9.2"
+#define VERSION_PROGRAMME "1.9.3"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -194,6 +194,7 @@ volatile uint32_t sniffTotal = 0;
 volatile long sRssiSum = 0, sRssiSq = 0; volatile int sRssiN = 0;
 bool detection = false; float mvtNiveau = 0, mvtBase = 5.0f; bool mouvement = false;
 uint8_t histMvt[300]; int histMvtPos = 0; uint32_t detDerniere = 0; int canalDet = 1;
+uint32_t nbClicPwr = 0, nbSommeilClic = 0, nbSommeilTimeout = 0;
 bool sniffActif = false; uint32_t debutSniff = 0, dernierHop = 0; int canalSniff = 1;
 uint32_t sniffParSeconde = 0, sniffDernierTotal = 0, sniffDerniereSec = 0;
 void IRAM_ATTR rappelSniff(void* buf, wifi_promiscuous_pkt_type_t type) {
@@ -1367,6 +1368,7 @@ void demarrerServeur() {
     d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["ip"] = WiFi.localIP().toString();
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
     d["secondesDepuisDemarrage"] = millis() / 1000;
+    d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
     d["pileMv"] = M5.Power.getBatteryVoltage(); d["usbMv"] = M5.Power.getVBUSVoltage(); d["courantMa"] = M5.Power.getBatteryCurrent(); d["niveau"] = M5.Power.getBatteryLevel(); d["etatCharge"] = (int)M5.Power.isCharging(); d["puce"] = (int)M5.Power.getType();
     { JsonObject a = d["axp"].to<JsonObject>(); static const uint8_t regs[] = {0x00, 0x01, 0x12, 0x18, 0x22, 0x27, 0x30, 0x61, 0x62, 0x63, 0x64, 0x69};
       for (uint8_t r : regs) { char k[8]; snprintf(k, sizeof(k), "r%02X", r); a[k] = (int)M5.In_I2C.readRegister8(0x34, r, 400000); } }
@@ -1394,9 +1396,7 @@ void setup() {
   // courant de charge : la puce arrivait avec 0 mA, la pile ne se chargeait donc pas
   M5.In_I2C.writeRegister8(0x34, 0x61, 4, 400000);      // pré-charge : 4 x 25 = 100 mA
   M5.In_I2C.writeRegister8(0x34, 0x62, 8, 400000);      // charge normale : 200 mA
-  // bouton marche/arrêt : 2 secondes pour allumer (le maximum de la puce), 4 secondes pour éteindre
-  { uint8_t r27 = M5.In_I2C.readRegister8(0x34, 0x27, 400000); M5.In_I2C.writeRegister8(0x34, 0x27, (r27 & 0xF0) | 0x03, 400000);
-    uint8_t r22 = M5.In_I2C.readRegister8(0x34, 0x22, 400000); M5.In_I2C.writeRegister8(0x34, 0x22, (r22 | 0x02) & 0xFE, 400000); }
+  // (le bouton marche/arrêt garde le comportement standard de la bibliothèque : ne pas toucher à ses registres)
   debutDemarrage = millis();
   brancheUsb = M5.Power.getVBUSVoltage() > 4000;
   M5.Display.setBrightness(160);
@@ -1436,7 +1436,7 @@ void loop() {
     if (R.actif[M_HEURE]) moduleHeure();
   }
   bool clicMarche = M5.BtnPWR.wasClicked();
-  if (clicMarche) activite();
+  if (clicMarche) { nbClicPwr++; activite(); }
   gererBoutons();
   if (veille) {
     // écran éteint : deux appuis rapprochés sur l'écran, ou un appui court sur le bouton marche/arrêt, le rallument
@@ -1445,7 +1445,7 @@ void loop() {
     if (clicMarche && veille) reveillerEcran();
     tPhysique = m;
   } else {
-    if (clicMarche) endormirEcran();
+    if (clicMarche) { nbSommeilClic++; endormirEcran(); }
     if (R.actif[M_SON] && m - tSon > 250) { tSon = m; moduleSon(); }
     debutModule(M_GRAVITE);
     float dt = (m - tPhysique) / 1000.0f; tPhysique = m; if (dt > 0.1f) dt = 0.1f;
@@ -1469,7 +1469,7 @@ void loop() {
     }
     if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; dessinerPage(); }
     if (sniffActif || detection || page == 11 || page == 13) activite();
-    if (!veille && !brancheUsb && page <= 1 && m - derniereActivite > 90000) endormirEcran();     // seul l'accueil/les réglages se mettent en veille ; les pages d'outils restent allumées
+    if (!veille && !brancheUsb && page <= 1 && m - derniereActivite > 90000) { nbSommeilTimeout++; endormirEcran(); }     // seul l'accueil/les réglages se mettent en veille ; les pages d'outils restent allumées
   }
   vieDuPerso();
   {   // reconnexion automatique toutes les 20 s : on essaie le Wi-Fi de la maison, puis celui du téléphone, à tour de rôle
