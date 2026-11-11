@@ -1,0 +1,135 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!--core2-ok-->
+<title>Core2 français</title>
+<style>
+:root{--fond:#0b0d1c;--carte:#151a38;--cyan:#00e6ff;--rose:#ff3ea5;--vert:#58f59a;--texte:#eef;--gris:#9aa3cc}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fond);color:var(--texte);font-family:system-ui,sans-serif;padding:14px 14px 40px;max-width:560px;margin:auto}
+h1{font-size:22px;margin:6px 0 2px;color:var(--cyan)} .sous{color:var(--gris);font-size:13px;margin-bottom:10px}
+h2{font-size:15px;margin:0 0 8px;color:var(--cyan)}
+.c{background:var(--carte);border:1px solid #243063;border-radius:14px;padding:12px;margin:10px 0}
+button{background:#2b3a9c;color:#fff;border:0;border-radius:12px;padding:13px 14px;font-size:16px;width:100%;margin:5px 0}
+button.v{background:#1f8a54} button.r{background:#8f2e49} button.g{background:#34395f}
+button:disabled{opacity:.45}
+label{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0}
+input[type=text],input[type=password],select{background:#0b0d22;color:#fff;border:1px solid #3a4580;border-radius:10px;padding:10px;font-size:15px;width:100%}
+.ligne{display:flex;justify-content:space-between;font-size:14px;padding:3px 0}
+.barre{height:10px;background:#252b55;border-radius:6px;overflow:hidden;margin:3px 0 8px}
+.barre>div{height:100%;background:var(--cyan);width:0}
+.ok{color:var(--vert)} .ko{color:#ff8a8a} .petit{font-size:13px;color:var(--gris)}
+ul{margin:6px 0 6px 18px;padding:0;font-size:14px}
+</style></head><body>
+<h1>Core2 français</h1><div class="sous">Appli version <span id="vappli">…</span></div>
+
+<div class="c"><h2>Mon Core2</h2>
+<div id="statut" class="petit">Recherche du Core2…</div>
+<div id="fiche"></div>
+<button onclick="chercher()">Chercher mon Core2</button>
+<div id="aide" style="display:none">
+ <div class="petit">Pas trouvé sur ce Wi-Fi ? Active « Direct » sur le Core2 (Réglages), puis :</div>
+ <button class="g" onclick="direct()">Me connecter au Wi-Fi direct du Core2</button>
+ <button class="g" onclick="Core2appel('reglagesWifi')">Ouvrir les réglages Wi-Fi du téléphone</button>
+</div></div>
+
+<div class="c"><h2>Mises à jour du Core2</h2>
+<div id="maj" class="petit">Pas encore vérifié.</div>
+<div id="majliste"></div>
+<div class="barre"><div id="prog"></div></div><div id="progtxt" class="petit"></div>
+<button class="v" id="binstaller" onclick="installer()" disabled>Installer la mise à jour</button>
+<button class="g" onclick="verifier()">Vérifier s'il y a une mise à jour</button>
+<button class="g" onclick="manuel()">Envoyer un fichier .bin que j'ai choisi</button>
+<label>Code de mise à jour <input type="text" id="code" style="width:45%" onchange="localStorage.setItem('code',this.value)"></label>
+</div>
+
+<div class="c"><h2>Wi-Fi du Core2</h2>
+<div class="petit">Le Core2 ne capte que le 2,4 GHz : tous les réseaux de la liste lui conviennent.</div>
+<button class="g" onclick="reseaux()">1. Chercher les réseaux autour du Core2</button>
+<select id="liste" onchange="document.getElementById('ssid').value=this.value"><option value="">(aucune recherche faite)</option></select>
+<label>Réseau choisi <input type="text" id="ssid" style="width:60%"></label>
+<label>Mot de passe <input type="password" id="mdp" style="width:60%"></label>
+<button class="v" onclick="enregistrer('')">2. Enregistrer comme Wi-Fi de la maison</button>
+<div class="petit" style="margin-top:10px">Wi-Fi du téléphone (partage de connexion), pour que le Core2 ait Internet hors de chez toi :</div>
+<label>Nom <input type="text" id="ssid2" style="width:60%"></label>
+<label>Mot de passe <input type="password" id="mdp2" style="width:60%"></label>
+<button class="v" onclick="enregistrer('2')">Enregistrer le Wi-Fi du téléphone</button>
+<button class="g" onclick="Core2appel('reglagesPartage')">Ouvrir le partage de connexion du téléphone</button>
+<div id="rwifi" class="petit"></div></div>
+
+<div class="c"><h2>Options</h2>
+<label>Wi-Fi direct du Core2 <input type="checkbox" id="odirect" onchange="reg('direct='+(this.checked?1:0))"></label>
+<label>Économie d'énergie Wi-Fi <input type="checkbox" id="oeco" onchange="reg('eco='+(this.checked?1:0))"></label>
+<button class="g" onclick="reg('nourrir=1')">Donner à manger à Bulle</button>
+<label>Message <input type="text" id="msg" maxlength="36" style="width:60%"></label>
+<button class="g" onclick="reg('message='+encodeURIComponent(msg.value)+'&duree=0')">Afficher le message sur le Core2</button>
+</div>
+<div id="journal" class="petit"></div>
+
+<script>
+const attente={};let compteur=0;
+function Core2appel(nom,args){return new Promise(r=>{const id='r'+(++compteur);attente[id]=r;
+ if(typeof Core2==='undefined'){r({ok:false,erreur:'Pont absent'});return}
+ Core2.appeler(id,nom,JSON.stringify(args||{}))})}
+window.retour=function(id,s){const f=attente[id];if(f){delete attente[id];try{f(JSON.parse(s))}catch(e){f({ok:false,erreur:'réponse illisible'})}}};
+window.progres=function(id,p,t){document.getElementById('prog').style.width=p+'%';document.getElementById('progtxt').textContent=t};
+const $=i=>document.getElementById(i);
+let ip=null,etat=null,source=null;
+function note(t){$('journal').textContent=t}
+function barre(nom,v){return '<div class="ligne"><span>'+nom+'</span><span>'+v+' %</span></div><div class="barre"><div style="width:'+Math.max(0,Math.min(100,v))+'%"></div></div>'}
+function montrer(e){etat=e;
+ $('fiche').innerHTML='<div class="ligne"><b>'+e.nom+'</b><span>'+e.phase+'</span></div>'+barre('Faim',e.faim)+barre('Joie',e.joie)+barre('Batterie'+(e.charge?' (en charge)':''),e.batterie)
+ +'<div class="ligne"><span>Version du Core2</span><span>'+e.version+'</span></div><div class="ligne"><span>Wi-Fi de la maison</span><span>'+(e.wifi?'connecté':'non')+'</span></div>';
+ $('odirect').checked=!!e.direct;$('oeco').checked=!!e.eco;
+ if(!$('ssid').value&&e.ssid)$('ssid').value=e.ssid;
+ if(e.ssid2&&!$('ssid2').value)$('ssid2').value=e.ssid2}
+async function chercher(){$('statut').textContent='Recherche du Core2…';$('statut').className='petit';
+ const r=await Core2appel('trouver');
+ if(r.ok){ip=r.ip;$('statut').innerHTML='<span class="ok">Core2 trouvé</span> ('+ip+(r.direct?', Wi-Fi direct':', Wi-Fi de la maison')+')';$('aide').style.display='none';montrer(r.etat);verifier()}
+ else{ip=null;$('statut').innerHTML='<span class="ko">'+(r.motif||r.erreur||'Core2 non trouvé')+'</span>';$('aide').style.display='block'}}
+async function direct(){$('statut').textContent='Connexion au Wi-Fi direct… (accepte la demande du téléphone)';
+ const r=await Core2appel('direct');
+ if(r.ok){await chercher()}else{$('statut').innerHTML='<span class="ko">'+(r.motif||r.erreur)+'</span>'}}
+function versionPlusRecente(a,b){const x=a.split('.').map(Number),y=b.split('.').map(Number);for(let i=0;i<3;i++){const u=x[i]||0,v=y[i]||0;if(u!==v)return u>v}return false}
+async function verifier(){$('maj').textContent='Vérification…';
+ const r=await Core2appel('verifierMaj');
+ if(!r.ok){$('maj').innerHTML='<span class="ko">Impossible de lire les mises à jour ('+(r.erreur||'')+'). Utilise « Envoyer un fichier .bin ».</span>';return}
+ source=r.source;$('majliste').innerHTML='';
+ const actuelle=etat?etat.version:null;
+ if(actuelle&&versionPlusRecente(source.version,actuelle)){
+  $('maj').innerHTML='<b class="ok">Mise à jour disponible : '+source.version+'</b> (le Core2 est en '+actuelle+')';
+  $('majliste').innerHTML='<div class="petit">Ce qui change :</div><ul>'+(source.changes||[]).map(c=>'<li>'+c+'</li>').join('')+'</ul>';
+  $('binstaller').disabled=!ip}
+ else if(actuelle){$('maj').innerHTML='<span class="ok">Le Core2 est à jour</span> (version '+actuelle+').';$('binstaller').disabled=true}
+ else{$('maj').textContent='Dernière version publiée : '+source.version+'. Trouve d\'abord ton Core2.';$('binstaller').disabled=true}
+ if(source.app&&source.app.html&&source.app.version&&versionPlusRecente(source.app.version,$('vappli').textContent)){
+  const m=await Core2appel('majInterface',{url:source.app.html});if(m.ok&&m.change)note('Nouvelle version de l\'appli reçue : elle s\'affichera au prochain démarrage.')}}
+async function installer(){if(!ip||!source)return;$('binstaller').disabled=true;$('progtxt').textContent='Démarrage…';
+ const r=await Core2appel('installer',{ip:ip,code:$('code').value||'666666',bin:source.bin});
+ if(r.ok&&r.etat){montrer(r.etat);$('maj').innerHTML='<b class="ok">Mise à jour installée</b> : le Core2 est en version '+r.etat.version+'.';$('progtxt').textContent=''}
+ else if(r.ok&&r.incertain){$('maj').textContent=r.message}
+ else{$('maj').innerHTML='<span class="ko">Échec : '+(r.erreur||'inconnu')+'</span>';$('binstaller').disabled=false}}
+async function manuel(){if(!ip){note('Trouve d\'abord ton Core2.');return}
+ const r=await Core2appel('choisirFichier',{ip:ip,code:$('code').value||'666666'});
+ if(r.ok&&r.etat){montrer(r.etat);$('maj').innerHTML='<b class="ok">Fichier installé</b> : version '+r.etat.version+'.'}
+ else if(r.ok&&r.incertain){$('maj').textContent=r.message}
+ else{$('maj').innerHTML='<span class="ko">Échec : '+(r.erreur||'inconnu')+'</span>'}}
+async function reseaux(){if(!ip){$('rwifi').textContent='Trouve d\'abord ton Core2.';return}
+ $('rwifi').textContent='Le Core2 cherche les réseaux… (10 secondes)';
+ const r=await Core2appel('reseaux',{ip:ip});
+ if(!r.ok){$('rwifi').innerHTML='<span class="ko">'+(r.erreur||'Échec')+'</span>';return}
+ $('liste').innerHTML='<option value="">Choisis ton réseau ('+r.liste.length+' trouvés)</option>';
+ r.liste.forEach(n=>{const o=document.createElement('option');const nom=(typeof n==='string')?n:n.nom;o.value=nom;
+  o.textContent=(typeof n==='string')?nom:nom+' — signal '+(n.dbm>-55?'très bon':n.dbm>-67?'bon':n.dbm>-75?'moyen':'faible')+' ('+n.dbm+' dBm) — '+(n.ferme?'protégé':'ouvert')+' — canal '+n.canal;
+  $('liste').appendChild(o)});$('rwifi').textContent='Ouvre la liste ci-dessus pour choisir ton réseau.'}
+async function enregistrer(n){if(!ip){$('rwifi').textContent='Trouve d\'abord ton Core2.';return}
+ const s=$('ssid'+n).value,m=$('mdp'+n).value;
+ if(!s){$('rwifi').textContent='Choisis ou écris le nom du réseau.';return}
+ if(!m){$('rwifi').textContent='Tape le mot de passe.';return}
+ $('rwifi').textContent='Enregistrement…';
+ const r=await Core2appel('reglages',{ip:ip,corps:'ssid'+n+'='+encodeURIComponent(s)+'&mdp'+n+'='+encodeURIComponent(m)});
+ $('rwifi').innerHTML=r.ok?'<span class="ok">Enregistré.</span> Le Core2 redémarre et se connecte (environ 30 secondes).':'<span class="ko">Échec : '+(r.erreur||'')+'</span>'}
+async function reg(c){if(!ip){note('Trouve d\'abord ton Core2.');return}
+ const r=await Core2appel('reglages',{ip:ip,corps:c});note(r.ok?'Fait.':'Échec : '+(r.erreur||''))}
+(async()=>{$('code').value=localStorage.getItem('code')||'666666';
+ const v=await Core2appel('version');if(v.ok)$('vappli').textContent=v.version;
+ await chercher()})();
+</script></body></html>

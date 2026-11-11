@@ -1,0 +1,16 @@
+{
+  "version": "1.8.0",
+  "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
+  "changes": [
+    "Pourcentage de pile juste, même en charge ; alerte pile faible et arrêt propre",
+    "Écran qui s'éteint après une minute sur pile ; deux appuis pour le rallumer",
+    "Les trois boutons ronds servent : Nourrir, Gravité, Réglages",
+    "Gravité réelle : chute, rebond, choc avec son et vibration ; lévitation sans gravité",
+    "Un toucher = une caresse ; doigt posé = on le soulève",
+    "Sons du personnage, neige et orage",
+    "Deux Wi-Fi enregistrés : maison et téléphone",
+    "Mise à jour par Internet, sans câble ni ordinateur",
+    "Page Matériel : capteurs, test du son, mise à jour"
+  ],
+  "app": { "version": "1.0", "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html" }
+}
