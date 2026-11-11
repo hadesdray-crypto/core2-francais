@@ -1,7 +1,9 @@
 {
-  "version": "1.8.0",
+  "version": "1.8.1",
   "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
   "changes": [
+    "Toucher plus facile : on attrape et on caresse le personnage plus facilement",
+    "Première mise à jour installée par Internet, sans ordinateur",
     "Pourcentage de pile juste, même en charge ; alerte pile faible et arrêt propre",
     "Écran qui s'éteint après une minute sur pile ; deux appuis pour le rallumer",
     "Les trois boutons ronds servent : Nourrir, Gravité, Réglages",
@@ -12,5 +14,8 @@
     "Mise à jour par Internet, sans câble ni ordinateur",
     "Page Matériel : capteurs, test du son, mise à jour"
   ],
-  "app": { "version": "1.0", "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html" }
+  "app": {
+    "version": "1.0",
+    "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
+  }
 }

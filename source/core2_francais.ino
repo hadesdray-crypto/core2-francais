@@ -17,7 +17,7 @@
 #include "page_web.h"
 #include "types.h"
 
-#define VERSION_PROGRAMME "1.8.0"
+#define VERSION_PROGRAMME "1.8.1"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -897,7 +897,7 @@ void gererTactile() {
   if (t.wasPressed()) {
     int x = t.x, y = t.y;
     if (y >= 204) { actionBarre(constrain((x - 4) / 106, 0, 2)); return; }
-    if (hypot(x - px, y - py) < 52 * e) { touchePerso = true; debutToucher = m; xPrec = x; yPrec = y; }
+    if (hypot(x - px, y - py) < 64 * e) { /* zone de toucher large : on l'attrape facilement */ touchePerso = true; debutToucher = m; xPrec = x; yPrec = y; }
   }
   if (touchePerso && t.isPressed()) {
     int x = t.x, y = t.y;
