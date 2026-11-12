@@ -546,7 +546,7 @@ bool changeVue = false;
 uint32_t miroirFin = 0; int miroirX = 160, miroirY = 100; bool contreVitre = false; float regardX = 0, regardY = 0;   // il vient contre la vitre et suit le doigt
 float pasPhase = 0; bool enMarche = false; uint32_t poussiere = 0, prochaineMarche = 0; float marcheX = 0, marcheY = 0.3f;
 float gzL = 0;
-int pageRetourPerso = 6;
+int pageRetourPerso = 6, retourSous = 15;
 float cibleSolX[4] = {0, 0.46f, -0.54f, 0}, cibleSolY[4] = {0, 0.72f, 0.72f, 0.1f};   // lit, gamelle, prise : sur le sol, au fond
 float tailleAge() { Phase ph = modeApercu ? ADULTE : phase(); return (ph == BEBE) ? 0.6f : (ph == ENFANT) ? 0.8f : (ph == ADO) ? 0.95f : (ph == ADULTE) ? 1.1f : 1.0f; }
 
@@ -2096,7 +2096,6 @@ void toucheExercice(int x, int y) {
     }
   }
 }
-static int retourSous = 15;
 void gererTactilePersoCerveau(const m5::touch_detail_t& t) {
   if (!t.wasPressed()) return;
   int x = t.x, y = t.y;
