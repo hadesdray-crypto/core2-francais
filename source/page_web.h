@@ -51,6 +51,7 @@ select{background:#0d0f22;color:#fff;border:1px solid #445;border-radius:8px;pad
 <div style="font-size:13px;color:#9ab;margin-top:8px">Ou bien envoyer un fichier à la main :</div>
 <label>Code <input type="text" id="cod" value="666666"></label><input type="file" id="fic" accept=".bin"><button onclick="maj()">Envoyer la nouvelle version</button>
 <button class="d" onclick="retour()">Revenir à l'ancienne version</button><div id="rmaj"></div></div>
+<h2>Personnage</h2><div class="c" id="fiche">Chargement…</div>
 <script>
 let ssidModifie=false,ancienSsid='';
 const MODS={meteo:'Météo',wifi:'Wi-Fi',son:'Son',batterie:'Batterie',heure:'Heure et sommeil',gravite:'Gravité',messages:'Messages'};
@@ -71,5 +72,20 @@ rwifi.textContent='Enregistrement…';try{await fetch('/api/reglages',{method:'P
 async function enregistrerTel(){if(!ssid2.value||!mdp2.value){rtel.textContent='Écris le nom du partage et son mot de passe.';return}
 rtel.textContent='Enregistrement…';try{await fetch('/api/reglages',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'ssid2='+encodeURIComponent(ssid2.value)+'&mdp2='+encodeURIComponent(mdp2.value)});rtel.textContent='Enregistré. Le Core2 redémarre (environ 30 secondes).'}catch(e){rtel.textContent='Pas de réponse du Core2 : réessaie.'}}
 async function majInternet(){rnet.textContent='Demande envoyée…';try{const r=await fetch('/api/majinternet?code='+encodeURIComponent(cod.value),{method:'POST'});rnet.textContent=await r.text()}catch(e){rnet.textContent='Pas de réponse du Core2.'}}
+
+const CAR=['Curieux','Câlin','Farceur','Bougon','Timide'],EVN=['Branché sur le courant','Caresse','Secousse','Gros bruit','Pluie','Froid','Chaud','Faim','Nuit','Wi-Fi coupé','Tête en bas'],HUM=['Normal','Content','Triste','Peur','Sommeil','Surpris','Froid','Chaud','Affamé','Écoute','Étourdi','Pluie','Énervé'],MIL=['Air','Eau','Huile','Miel'],G0=['Flotte','Tombe doucement','Comme sur la Lune'],CHP=['Aucun','Casquette','Couronne','Haut-de-forme'];
+const P=(k,v)=>envoyer(k+'='+encodeURIComponent(v));
+async function chargerFiche(){const e=await (await fetch('/api/etat')).json(),f=e.fiche;let h='<label>Personnage<select id="fp">'+e.persos.map((n,i)=>'<option value="'+i+'"'+(i==e.perso?' selected':'')+'>'+n+'</option>').join('')+'</select></label>';
+h+='<label>Nom<input type="text" id="fn" value="'+f.nom+'"></label><label>Couleur<input type="color" id="fc" value="#'+f.couleur+'"></label><label>Couleur automatique<input type="checkbox" id="fa"'+(f.auto?' checked':'')+'></label><label>Change de couleur selon l\'humeur<input type="checkbox" id="fh"'+(f.humeurcol?' checked':'')+'></label><h2>Caractère</h2>';
+CAR.forEach((n,i)=>h+='<label>'+n+'<input type="range" min="0" max="100" value="'+f.carac[i]+'" data-k="carac'+i+'"></label>');
+h+='<h2>Ce qu\'il aime ou déteste</h2>';EVN.forEach((n,i)=>h+='<label>'+n+'<select data-k="aime'+i+'">'+['Déteste','Indifférent','Aime'].map((t,j)=>'<option value="'+(j-1)+'"'+(f.aime[i]==j-1?' selected':'')+'>'+t+'</option>').join('')+'</select></label>');
+h+='<h2>Corps</h2><label>Poids<input type="range" min="0" max="100" value="'+f.poids+'" data-k="poids"></label><label>Milieu<select data-k="milieu">'+MIL.map((t,j)=>'<option value="'+(j*34)+'"'+(Math.abs(f.milieu-j*34)<17?' selected':'')+'>'+t+'</option>').join('')+'</select></label><label>Force de la gravité<input type="range" min="0" max="200" value="'+f.gravite+'" data-k="gravite"></label><label>Sans gravité<select data-k="mode0g">'+G0.map((t,j)=>'<option value="'+j+'"'+(f.mode0g==j?' selected':'')+'>'+t+'</option>').join('')+'</select></label><label>Hauteur de saut<input type="range" min="0" max="200" value="'+f.saut+'" data-k="saut"></label><label>Rebond<input type="range" min="0" max="100" value="'+f.rebond+'" data-k="rebond"></label>';
+h+='<label>Chapeau (points : '+e.points+')<select data-k="chapeau">'+CHP.map((t,j)=>'<option value="'+j+'"'+(f.chapeau==j?' selected':'')+'>'+t+'</option>').join('')+'</select></label><label>Objets dans la pièce<input type="checkbox" id="fo"'+(e.objets?' checked':'')+'></label><label>Réveil du matin<input type="time" id="fr" value="'+(e.reveil||'')+'"></label>';
+h+='<h2>Couleurs d\'humeur</h2>';HUM.forEach((n,i)=>{const c=f.hum[i];h+='<label>'+n+'<span><input type="color" data-h="'+i+'" value="#'+(c=='none'?'888888':c)+'"> <input type="checkbox" data-hn="'+i+'"'+(c=='none'?'':' checked')+'></span></label>'});
+fiche.innerHTML=h;
+fp.onchange=async()=>{await envoyer('perso='+fp.value);chargerFiche()};fn.onchange=()=>P('pnom',fn.value);fc.onchange=()=>P('couleur',fc.value.slice(1));fa.onchange=()=>P('couleur',fa.checked?'auto':fc.value.slice(1));fh.onchange=()=>P('humeurcol',fh.checked?1:0);fo.onchange=()=>P('objets',fo.checked?1:0);fr.onchange=()=>P('reveilheure',fr.value);
+fiche.querySelectorAll('[data-k]').forEach(x=>x.onchange=()=>P(x.dataset.k,x.value));
+fiche.querySelectorAll('[data-h]').forEach(x=>x.onchange=()=>P('hum'+x.dataset.h,x.value.slice(1)));fiche.querySelectorAll('[data-hn]').forEach(x=>x.onchange=()=>P('hum'+x.dataset.hn,x.checked?fiche.querySelector('[data-h="'+x.dataset.hn+'"]').value.slice(1):'none'))}
+chargerFiche();
 charger();setInterval(charger,10000);
 </script></body></html>)RAW";

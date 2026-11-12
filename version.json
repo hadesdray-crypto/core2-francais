@@ -1,28 +1,16 @@
 {
-    "version":  "1.9.9",
-    "bin":  "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
-    "changes":  [
-                    "Recherche de reseaux corrigee : le Core2 coupe ses tentatives de reconnexion avant de chercher et recommence si la liste est vide.",
-                    "Reception de mise a jour plus stable en Wi-Fi direct (plus de coupure Broken pipe causee par la recherche du Wi-Fi de la maison).",
-                    "Mise a jour automatique : des qu\u0027il a Internet et qu\u0027une version plus recente existe, il l\u0027installe tout seul.",
-                    "Réseau : le Wi-Fi direct est coupé avant de se connecter au partage du téléphone ou à la box.",
-                    "Secouer fort fait apparaître @#$%! dans la bulle, avec des griffes rouges à l\u0027écran.",
-                    "Bulle : un choc ou un gros bruit affiche @#$%! dans la bulle, avec des griffes rouges à l\u0027écran.",
-                    "Correction du vrai dÃ©faut : l\u0027Ã©cran ne se coupe plus quand on touche ou qu\u0027on ouvre un menu (erreur de calcul du temps d\u0027inactivitÃ©). Veille seulement aprÃ¨s 5 min sans rien toucher, ou par le bouton power.",
-                    "Correction : l\u0027Ã©cran ne se met plus en veille tout seul quand on utilise le module (le bouton power n\u0027est plus perturbÃ©)",
-                    "Les pages d\u0027outils restent allumÃ©es quand on les regarde (seul l\u0027accueil se met en veille)",
-                    "Bulle fait un salut de la main avant de s\u0027endormir",
-                    "L\u0027Ã©cran se rÃ©veille au simple toucher, avec une animation",
-                    "L\u0027Ã©cran tactile ne sert qu\u0027Ã  interagir : seul le bouton power l\u0027Ã©teint",
-                    "Nouveau menu : une page par fonction (touche le bouton Menu sous le personnage)",
-                    "Radar Wi-Fi : les rÃ©seaux placÃ©s selon leur distance estimÃ©e",
-                    "Analyseur rÃ©seau : observe l\u0027activitÃ© Wi-Fi par canal (observation seule)",
-                    "DÃ©tection de mouvement par Wi-Fi : repÃ¨re quelqu\u0027un qui bouge, affichÃ© Ã  l\u0027Ã©cran",
-                    "MÃ©tÃ©o, Horloge (chrono), Niveau Ã  bulle, SonomÃ¨tre, Lampe",
-                    "Mesures des ondes disponibles pour une autre application (adresse /api/ondes)"
-                ],
-    "app":  {
-                "version":  "1.1",
-                "html":  "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
-            }
+    "version": "2.0.0",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
+    "changes": [
+        "Deux personnages : Bulle (inchangé, mains carrées) et Enclume, un gros costaud qui s'énerve et crache de l'énergie vers le haut.",
+        "Menu Apparence : couleur, caractère, ce qu'il aime ou déteste, couleurs d'humeur, corps (poids, gravité, saut, rebond), avec le personnage toujours visible.",
+        "Inertie et chocs réalistes, objets légers dans la pièce, décor de jour et de nuit.",
+        "Nouveau menu Jeux : Attraper, Mémoire, Pierre-feuille-ciseaux, points et chapeaux.",
+        "Heure sur l'accueil, jauge d'énergie, réveil du matin, réactions au bruit, aux caresses, à la secousse et à la tête en bas.",
+        "Tous les réglages sont aussi dans la page web du Core2."
+    ],
+    "app": {
+        "version": "1.1",
+        "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
+    }
 }
