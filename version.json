@@ -1,7 +1,14 @@
 {
-    "version": "2.0.1",
+    "version": "2.1.0",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
+        "Enclume refait : un bloc d'acier bleu, de très gros bras, ses propres gestes (poings, épaules, bras croisés, assis, se gratte la tête), son œuf à lui et ses phases de bébé à ancien.",
+        "Il marche au sol en 3D, vers le fond ou vers l'avant ; en charge, une lumière bleue sort de son dos et de sa tête et ses yeux s'allument.",
+        "Miroir : touche la vitre, le personnage vient tout près, suit ton doigt des yeux et pose ses mains contre l'écran.",
+        "Posé à plat, on voit la pièce d'en haut ; tourné en hauteur, l'accueil tourne avec l'écran.",
+        "Bouton « Perso » à côté de Gravité : tous les réglages du personnage, les jeux et les exercices du cerveau avec le Docteur Synapse.",
+        "La météo se voit derrière lui (nuages, pluie, neige, orage, brouillard, température), bonnet quand il fait froid.",
+        "Au-dessus de lui quand il est branché : charge à fond, ralentit en fin de charge, pleine.",
         "Wi-Fi : le Core2 garde en mémoire 8 réseaux (maison, téléphone…) et se connecte tout seul à celui qu'il capte le mieux, où que tu sois, sur toutes les pages.",
         "Nouvelle tuile « Wi-Fi » dans le menu : la liste des réseaux se cherche toute seule et se met à jour ; un réseau déjà connu se connecte d'un seul toucher.",
         "Canaux 1 à 13 comme en France, et message clair si le partage du téléphone est en 5 GHz.",
