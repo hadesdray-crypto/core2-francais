@@ -85,16 +85,7 @@ void attitude(Attitude a, uint32_t ms) { P.attitude = a; P.finAttitude = millis(
 
 
 // ---------- Fiches des personnages : tout est réglable et gardé en mémoire ----------
-enum Evenement { EV_COURANT = 0, EV_CARESSE, EV_SECOUSSE, EV_BRUIT, EV_PLUIE, EV_FROID, EV_CHAUD, EV_FAIM, EV_NUIT, EV_WIFI, EV_RENVERSE, EV_NB };
 static const char* NOMS_EV[EV_NB] = {"Branché sur le courant", "Caresse", "Secousse", "Gros bruit", "Pluie", "Froid", "Chaud", "Faim", "Nuit", "Wi-Fi coupé", "Tête en bas"};
-struct Fiche {
-  uint8_t version, forme; char nom[16];
-  uint8_t r, g, b; bool couleurAuto, humeurCouleur;
-  uint8_t carac[5];                 // curieux, câlin, farceur, bougon, timide : 0 à 100
-  int8_t aime[EV_NB];               // -1 déteste, 0 indifférent, 1 aime
-  uint8_t poids, milieu, gravite, saut, rebond, mode0g, chapeau;
-  uint8_t cHum[13][3];              // couleur selon l'humeur (0,0,0 = ne change pas)
-};
 Fiche FI[4];
 #define FA (FI[constrain(R.perso, 0, NB_PERSOS - 1)])
 static void setHum(Fiche& f, int a, int r, int g, int b) { f.cHum[a][0] = r; f.cHum[a][1] = g; f.cHum[a][2] = b; }
