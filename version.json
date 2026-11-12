@@ -17,5 +17,9 @@
                     "DÃ©tection de mouvement par Wi-Fi : repÃ¨re quelqu\u0027un qui bouge, affichÃ© Ã  l\u0027Ã©cran",
                     "MÃ©tÃ©o, Horloge (chrono), Niveau Ã  bulle, SonomÃ¨tre, Lampe",
                     "Mesures des ondes disponibles pour une autre application (adresse /api/ondes)"
-                ]
+                ],
+    "app":  {
+                "version":  "1.1",
+                "html":  "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
+            }
 }
