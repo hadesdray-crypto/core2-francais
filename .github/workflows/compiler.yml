@@ -1,0 +1,44 @@
+name: Compiler le programme du Core2
+on:
+  workflow_dispatch:
+  push:
+    branches: [perso]
+    paths: ['source/**', '.github/workflows/compiler.yml']
+permissions:
+  contents: write
+jobs:
+  compiler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Outils du Core2
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.2 || arduino-cli core install esp32:esp32
+          arduino-cli lib install M5Unified M5GFX "ArduinoJson@7"
+          arduino-cli core list; arduino-cli lib list
+      - name: Compiler
+        run: |
+          mkdir -p /tmp/core2_francais
+          cp source/* /tmp/core2_francais/
+          arduino-cli compile --fqbn esp32:esp32:m5stack_core2 --build-property "compiler.optimization_flags=-Os" --warnings default --export-binaries /tmp/core2_francais 2>&1 | tee compil.txt
+          cp /tmp/core2_francais/build/esp32.esp32.m5stack_core2/core2_francais.ino.bin core2_francais.bin
+          ls -l core2_francais.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core2_francais
+          path: |
+            core2_francais.bin
+            compil.txt
+      - name: Ranger le programme dans le dépôt (branche perso seulement)
+        if: github.ref == 'refs/heads/perso'
+        run: |
+          mkdir -p firmware
+          cp core2_francais.bin firmware/core2_francais.bin
+          git config user.name "compilation-auto"; git config user.email "compilation-auto@users.noreply.github.com"
+          git add firmware/core2_francais.bin
+          git commit -m "Programme compilé automatiquement [skip ci]" || echo "rien à ranger"
+          git push origin HEAD:perso

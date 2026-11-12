@@ -18,7 +18,7 @@
 #include "page_web.h"
 #include "types.h"
 
-#define VERSION_PROGRAMME "1.9.6"
+#define VERSION_PROGRAMME "1.9.9"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -102,7 +102,7 @@ bool veille = false, brancheUsb = false;
 uint32_t derniereActivite = 0, dernierTap = 0;
 float pileLissee = 0, pctPile = -1;
 uint32_t finEcrase = 0, finVol = 0, prochainVol = 20000, finVibre = 0, finCaresse = 0;
-String versionDispo, urlBinDispo, infoMaj; bool demandeMaj = false; volatile uint32_t prochaineVerif = 30000;
+String versionDispo, urlBinDispo, infoMaj; bool demandeMaj = false; volatile uint32_t prochaineVerif = 30000; uint32_t finGriffe = 0;
 int essaiReseau = 0;
 void activite() { derniereActivite = millis(); }
 
@@ -296,7 +296,7 @@ void moduleSon() {
     long somme = 0; for (int i = 0; i < 256; i++) somme += abs(tampon[i]);
     float niveau = somme / 256.0f;
     W.niveauSon = W.niveauSon * 0.7f + niveau * 0.3f;
-    if (niveau > 6000 && millis() - W.picSon > 2000) { W.picSon = millis(); attitude(PEUR, 2500); P.joie = max(0.0f, P.joie - 3); }
+    if (niveau > 6000 && millis() - W.picSon > 2000) { W.picSon = millis(); attitude(PEUR, 2500); P.joie = max(0.0f, P.joie - 3); W.message = String("@#$%!"); W.finMessage = millis() + 2500; finGriffe = millis() + 1500; }
     else if (niveau > 1500 && millis() - W.picSon > 1500) { W.picSon = millis(); attitude(ECOUTE, 2500); }
   }
   finModule();
@@ -416,7 +416,7 @@ void physique(float dt) {
       attitude(ETOURDI, 3500); P.joie = max(0.0f, P.joie - 4);
       float force = pesanteur ? 25.0f : 60.0f;     // avec la gravité il est projeté bien plus fort
       P.vx += (random(-100, 100) / force); P.vy += (random(-100, 100) / force);
-      finVol = 0; jouer(S_SECOUE);
+      finVol = 0; jouer(S_SECOUE); W.message = String("@#$%!"); W.finMessage = millis() + 2500; finGriffe = millis() + 1500;
     }
   }
   if (P.porte) { P.vx = P.vy = 0; return; }
@@ -733,11 +733,14 @@ static String mdpSaisi, nomChoisi; static bool majKb = false, symbKb = false, vo
 static uint32_t debutConn = 0; static int resultatConn = 0;      // 0 en cours, 1 réussi, 2 échec
 static uint32_t derniereTouche = 0;
 static int emplacement = 1;      // 1 = Wi-Fi de la maison, 2 = Wi-Fi du téléphone (partage de connexion)
-void lancerScan() { WiFi.scanDelete(); WiFi.scanNetworks(true); scanEnCours = true; debutScan = millis(); nbR = 0; decalR = 0; }
+static uint8_t scanEssais = 0;
+void arreterReconnexion() { WiFi.setAutoReconnect(false); WiFi.disconnect(false, false); delay(150); }
+void lancerScan() { arreterReconnexion(); if (WiFi.getMode() == WIFI_OFF) WiFi.mode(WIFI_STA); WiFi.scanDelete(); WiFi.scanNetworks(true, true); scanEnCours = true; debutScan = millis(); nbR = 0; decalR = 0; scanEssais = 0; }
 void lireScan() {
   int n = WiFi.scanComplete();
-  if (n == WIFI_SCAN_RUNNING) { if (millis() - debutScan > 15000) scanEnCours = false; return; }
-  scanEnCours = false; if (n < 0) return;
+  if (n == WIFI_SCAN_RUNNING) { if (millis() - debutScan > 15000) { scanEnCours = false; WiFi.setAutoReconnect(true); } return; }
+  if (n <= 0) { if (scanEssais < 3) { scanEssais++; WiFi.scanDelete(); delay(200); WiFi.scanNetworks(true, true); debutScan = millis(); return; } scanEnCours = false; WiFi.setAutoReconnect(true); return; }
+  scanEnCours = false; WiFi.setAutoReconnect(true);
   nbR = 0;
   for (int i = 0; i < n; i++) {
     String nom = WiFi.SSID(i); if (!nom.length()) continue;
@@ -751,6 +754,7 @@ void lireScan() {
 void validerWifi() {
   if (emplacement == 2) { R.ssid2 = nomChoisi; R.mdp2 = mdpSaisi; } else { R.ssid = nomChoisi; R.motDePasse = mdpSaisi; }
   sauverReglages();
+  WiFi.setAutoReconnect(true); WiFi.softAPdisconnect(true); WiFi.mode(WIFI_STA); delay(100);
   WiFi.disconnect(); WiFi.begin(nomChoisi.c_str(), mdpSaisi.c_str());
   debutConn = millis(); resultatConn = 0; page = 4;
 }
@@ -1109,7 +1113,8 @@ void gererTactilePages(const m5::touch_detail_t& t) {
 // ---------- Veille de l'écran ----------
 // Économie de pile : sur pile, le Wi-Fi dort entre deux échanges ; écran éteint, le processeur ralentit aussi.
 void appliquerEconomie() { WiFi.setSleep(eco || veille || !brancheUsb); setCpuFrequencyMhz(veille ? 80 : 240); }
-void dessinerPerso1() { int px, py; float e; positionEcran(px, py, e); if (phase() == OEUF) dessinerOeuf(px, py, e); else dessinerBulle(px, py, e); }
+void dessinerGriffes(int px, int py) { for (int i = 0; i < 3; i++) { int x = px - 36 + i * 24; cv.drawLine(x, py - 45, x + 14, py + 12, C(255, 60, 60)); cv.drawLine(x + 1, py - 45, x + 15, py + 12, C(255, 60, 60)); } }
+void dessinerPerso1() { int px, py; float e; positionEcran(px, py, e); if (phase() == OEUF) dessinerOeuf(px, py, e); else dessinerBulle(px, py, e); if (millis() < finGriffe) dessinerGriffes(px, py); }
 // Bulle fait un petit salut de la main avant de s'endormir.
 void saluerAuRevoir() {
   int px, py; float e;
@@ -1318,10 +1323,12 @@ void demarrerServeur() {
       majOk = codeOk; if (!codeOk) return;
       M5.Display.fillScreen(TFT_BLACK); M5.Display.setFont(&fonts::lgfxJapanGothic_16); M5.Display.setTextColor(TFT_WHITE); M5.Display.drawString("Mise à jour en cours…", 20, 100);
       esp_task_wdt_reset();
+      WiFi.setAutoReconnect(false); if (WiFi.status() != WL_CONNECTED) WiFi.disconnect(false, false); WiFi.setSleep(false); Update.abort();
       if (!Update.begin(UPDATE_SIZE_UNKNOWN)) majOk = false;
     }
     else if (u.status == UPLOAD_FILE_WRITE) { esp_task_wdt_reset(); if (majOk && Update.write(u.buf, u.currentSize) != u.currentSize) majOk = false; }
     else if (u.status == UPLOAD_FILE_END) { if (!(majOk && Update.end(true))) majOk = false; else prefs.putInt("essais", 0); }
+    else if (u.status == UPLOAD_FILE_ABORTED) { Update.abort(); majOk = false; WiFi.setAutoReconnect(true); }
   });
   serveur.on("/api/retour", HTTP_POST, []() {      // retour arrière demandé à la main
     autoriserCors();
@@ -1353,7 +1360,7 @@ void demarrerServeur() {
     String r; serializeJson(d, r); serveur.send(200, "application/json; charset=utf-8", r);
   });
   serveur.on("/api/reseaux", HTTP_GET, []() {
-    autoriserCors(); int n = WiFi.scanNetworks(); JsonDocument d; JsonArray a = d.to<JsonArray>();
+    autoriserCors(); arreterReconnexion(); int n = WiFi.scanNetworks(false, true); if (n <= 0) { delay(300); n = WiFi.scanNetworks(false, true); } WiFi.setAutoReconnect(true); JsonDocument d; JsonArray a = d.to<JsonArray>();
     for (int i = 0; i < n && i < 30; i++) {
       String nom = WiFi.SSID(i); if (!nom.length()) continue;
       bool deja = false; for (JsonObject o : a) if (nom == o["nom"].as<String>()) deja = true;
@@ -1487,6 +1494,8 @@ void loop() {
   { static bool mdns = false; if (!mdns && WiFi.status() == WL_CONNECTED) { mdns = MDNS.begin("core2-francais"); if (mdns) MDNS.addService("http", "tcp", 80); } }
   if (changerDirect) { changerDirect = false; appliquerDirect(); }
   if (demandeMaj) majDepuisInternet();
+  { static uint32_t tAutoMaj = 0; static uint8_t essaisAutoMaj = 0;   // mise a jour automatique : des qu'il a Internet et qu'une version plus recente existe
+    if (!demandeMaj && versionDispo.length() && W.wifiOk && essaisAutoMaj < 2 && m > 60000 && m - tAutoMaj > 90000 && (brancheUsb || W.batterie >= 40)) { tAutoMaj = m; essaisAutoMaj++; infoMaj = "Mise a jour automatique..."; demandeMaj = true; } }
   serveur.handleClient();
   validerSiStable();
   delay(veille ? 20 : (brancheUsb ? 1 : 4));
