@@ -1,7 +1,9 @@
 ﻿{
-    "version":  "1.9.7",
+    "version":  "1.9.8",
     "bin":  "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes":  [
+                    "Réseau : le Wi-Fi direct est coupé avant de se connecter au partage du téléphone ou à la box.",
+                    "Secouer fort fait apparaître @#$%! dans la bulle, avec des griffes rouges à l\u0027écran.",
                     "Bulle : un choc ou un gros bruit affiche @#$%! dans la bulle, avec des griffes rouges à l\u0027écran.",
                     "Correction du vrai dÃ©faut : l\u0027Ã©cran ne se coupe plus quand on touche ou qu\u0027on ouvre un menu (erreur de calcul du temps d\u0027inactivitÃ©). Veille seulement aprÃ¨s 5 min sans rien toucher, ou par le bouton power.",
                     "Correction : l\u0027Ã©cran ne se met plus en veille tout seul quand on utilise le module (le bouton power n\u0027est plus perturbÃ©)",
