@@ -191,7 +191,7 @@ bool veille = false, brancheUsb = false;
 uint32_t derniereActivite = 0, dernierTap = 0;
 float pileLissee = 0, pctPile = -1;
 uint32_t finEcrase = 0, finVol = 0, prochainVol = 20000, finVibre = 0, finCaresse = 0;
-String versionDispo, urlBinDispo, infoMaj; bool demandeMaj = false; volatile uint32_t prochaineVerif = 30000; uint32_t finGriffe = 0;
+String versionDispo, urlBinDispo, infoMaj; bool demandeMaj = false; volatile bool majVoulue = false; volatile uint32_t prochaineVerif = 0xFFFFFFFFUL; bool wifiCoupe = false; uint32_t finBesoinNet = 120000; uint32_t finGriffe = 0;
 int essaiReseau = 0;
 void activite() { derniereActivite = millis(); }
 
@@ -439,8 +439,8 @@ bool verifierVersion() {
 }
 void tacheMeteo(void*) {
   for (;;) {
-    if (W.wifiOk && millis() > prochaineVerif) { bool ok = verifierVersion(); prochaineVerif = millis() + (ok ? 6UL * 3600UL * 1000UL : 10UL * 60UL * 1000UL); }
-    if (R.actif[M_METEO] && W.wifiOk && (!W.meteoValide || millis() - W.derniereMeteo > 30UL * 60UL * 1000UL)) {
+    if (W.wifiOk && millis() > prochaineVerif) { verifierVersion(); prochaineVerif = 0xFFFFFFFFUL; if (majVoulue) { majVoulue = false; if (versionDispo.length()) demandeMaj = true; else infoMaj = "Pas de nouvelle version : tu as la dernière."; } }   // seulement quand on le demande
+    if (R.actif[M_METEO] && W.wifiOk && (!W.meteoValide || millis() - W.derniereMeteo > (brancheUsb ? 30UL : 60UL) * 60UL * 1000UL)) {
       WiFiClientSecure client; client.setInsecure(); client.setTimeout(8);
       HTTPClient http; http.setTimeout(8000);
       String url = String("https://api.open-meteo.com/v1/forecast?latitude=") + String(R.lat, 3) + "&longitude=" + String(R.lon, 3) + "&current=temperature_2m,weather_code";
@@ -2246,7 +2246,7 @@ void gererTactile() {
       if (t.x < 96) page = 1;
       else if (t.x < 196) { jouer(S_MANGER); vibrer(200); }
       else if (versionDispo.length()) demandeMaj = true;
-      else { infoMaj = "Recherche d'une mise à jour…"; prochaineVerif = 0; }
+      else { infoMaj = "Recherche d'une mise à jour…"; majVoulue = true; prochaineVerif = 0; }
       bip(700, 40);
     }
     return;
@@ -2439,7 +2439,7 @@ void demarrerServeur() {
     autoriserCors();
     if (serveur.arg("code") != prefs.getString("code", "666666")) { serveur.send(403, "text/plain; charset=utf-8", "Code incorrect."); return; }
     if (versionDispo.length()) { demandeMaj = true; serveur.send(200, "text/plain; charset=utf-8", "Mise à jour " + versionDispo + " lancée : regarde l'écran du Core2."); }
-    else { prochaineVerif = 0; serveur.send(200, "text/plain; charset=utf-8", "Pas de version plus récente connue. Je revérifie sur Internet : réessaie dans 20 secondes."); }
+    else { majVoulue = true; prochaineVerif = 0; serveur.send(200, "text/plain; charset=utf-8", "Pas de version plus récente connue. Je revérifie sur Internet : réessaie dans 20 secondes."); }
   });
   serveur.on("/api/capteurs", HTTP_GET, []() {          // pour se servir du Core2 comme capteur ou manette depuis le téléphone
     autoriserCors(); JsonDocument d; float gx = 0, gy = 0, gz = 0; if (M5.Imu.isEnabled()) M5.Imu.getGyro(&gx, &gy, &gz);
@@ -2578,7 +2578,7 @@ void loop() {
   vieDuPerso();
   {   // reconnexion automatique : toutes les 12 s sans Wi-Fi, on cherche les réseaux et on prend le réseau connu qui capte le mieux
     static uint32_t tWifi = 0; static bool rechFond = false; static uint32_t debFond = 0;
-    bool libre = !(page >= 2 && page <= 4) && page != 7 && page != 8 && page != 9 && !sniffActif && !detection && !scanEnCours && !demandeMaj && nbConnus() > 0;
+    bool libre = !wifiCoupe && !(page >= 2 && page <= 4) && page != 7 && page != 8 && page != 9 && !sniffActif && !detection && !scanEnCours && !demandeMaj && nbConnus() > 0;
     if (W.wifiOk || WiFi.status() == WL_CONNECTED) { tWifi = m; if (rechFond) { WiFi.scanDelete(); rechFond = false; } }
     else if (libre && !rechFond && m - tWifi > 12000) {
       tWifi = m; WiFi.setAutoReconnect(false); WiFi.disconnect(false, false); delay(50);
@@ -2598,8 +2598,15 @@ void loop() {
   { static bool mdns = false; if (!mdns && WiFi.status() == WL_CONNECTED) { mdns = MDNS.begin("core2-francais"); if (mdns) MDNS.addService("http", "tcp", 80); } }
   if (changerDirect) { changerDirect = false; appliquerDirect(); }
   if (demandeMaj) majDepuisInternet();
-  { static uint32_t tAutoMaj = 0; static uint8_t essaisAutoMaj = 0;   // mise a jour automatique : des qu'il a Internet et qu'une version plus recente existe
-    if (!demandeMaj && versionDispo.length() && W.wifiOk && essaisAutoMaj < 2 && m > 60000 && m - tAutoMaj > 90000 && (brancheUsb || W.batterie >= 40)) { tAutoMaj = m; essaisAutoMaj++; infoMaj = "Mise a jour automatique..."; demandeMaj = true; } }
+  {   // Internet seulement quand il sert : branché il reste connecté ; sur pile, le Wi-Fi s'éteint dès qu'on n'en a plus besoin
+    static uint32_t debutAttente = 0, pauseMeteo = 0;
+    bool meteoDue = R.actif[M_METEO] && (!W.meteoValide || m - W.derniereMeteo > (brancheUsb ? 30UL : 60UL) * 60000UL);
+    bool besoin = brancheUsb || direct || modeAcces || sniffActif || detection || (page >= 2 && page <= 5) || (page >= 7 && page <= 10) || demandeMaj || majVoulue || m < finBesoinNet || (meteoDue && m > pauseMeteo);
+    if (besoin) {
+      if (wifiCoupe) { wifiCoupe = false; WiFi.mode(WIFI_STA); debutAttente = m; }
+      if (meteoDue && !W.wifiOk && !brancheUsb && m - debutAttente > 120000 && m > finBesoinNet) pauseMeteo = m + 30UL * 60000UL;   // aucun réseau : on réessaiera dans 30 min
+    } else if (!wifiCoupe) { wifiCoupe = true; WiFi.disconnect(true); WiFi.mode(WIFI_OFF); W.wifiOk = false; }
+  }
   serveur.handleClient();
   validerSiStable();
   delay(veille ? 20 : (brancheUsb ? 1 : 4));

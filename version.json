@@ -2,6 +2,8 @@
     "version": "2.1.0",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
+        "Économie de pile : sur pile, le Wi-Fi ne s'allume que quand il sert (météo une fois par heure, pages Wi-Fi, Matériel, Radar…), puis s'éteint ; branché, il reste connecté.",
+        "Mises à jour seulement quand tu les demandes : Menu > Matériel > chercher la mise à jour.",
         "Enclume refait : un bloc d'acier bleu, de très gros bras, ses propres gestes (poings, épaules, bras croisés, assis, se gratte la tête), son œuf à lui et ses phases de bébé à ancien.",
         "Il marche au sol en 3D, vers le fond ou vers l'avant ; en charge, une lumière bleue sort de son dos et de sa tête et ses yeux s'allument.",
         "Miroir : touche la vitre, le personnage vient tout près, suit ton doigt des yeux et pose ses mains contre l'écran.",
