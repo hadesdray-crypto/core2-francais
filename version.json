@@ -1,22 +1,19 @@
-{
-  "version": "1.9.6",
-  "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
-  "changes": [
-    "Correction du vrai défaut : l'écran ne se coupe plus quand on touche ou qu'on ouvre un menu (erreur de calcul du temps d'inactivité). Veille seulement après 5 min sans rien toucher, ou par le bouton power.",
-    "Correction : l'écran ne se met plus en veille tout seul quand on utilise le module (le bouton power n'est plus perturbé)",
-    "Les pages d'outils restent allumées quand on les regarde (seul l'accueil se met en veille)",
-    "Bulle fait un salut de la main avant de s'endormir",
-    "L'écran se réveille au simple toucher, avec une animation",
-    "L'écran tactile ne sert qu'à interagir : seul le bouton power l'éteint",
-    "Nouveau menu : une page par fonction (touche le bouton Menu sous le personnage)",
-    "Radar Wi-Fi : les réseaux placés selon leur distance estimée",
-    "Analyseur réseau : observe l'activité Wi-Fi par canal (observation seule)",
-    "Détection de mouvement par Wi-Fi : repère quelqu'un qui bouge, affiché à l'écran",
-    "Météo, Horloge (chrono), Niveau à bulle, Sonomètre, Lampe",
-    "Mesures des ondes disponibles pour une autre application (adresse /api/ondes)"
-  ],
-  "app": {
-    "version": "1.0",
-    "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
-  }
+﻿{
+    "version":  "1.9.7",
+    "bin":  "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
+    "changes":  [
+                    "Bulle : un choc ou un gros bruit affiche @#$%! dans la bulle, avec des griffes rouges à l\u0027écran.",
+                    "Correction du vrai dÃ©faut : l\u0027Ã©cran ne se coupe plus quand on touche ou qu\u0027on ouvre un menu (erreur de calcul du temps d\u0027inactivitÃ©). Veille seulement aprÃ¨s 5 min sans rien toucher, ou par le bouton power.",
+                    "Correction : l\u0027Ã©cran ne se met plus en veille tout seul quand on utilise le module (le bouton power n\u0027est plus perturbÃ©)",
+                    "Les pages d\u0027outils restent allumÃ©es quand on les regarde (seul l\u0027accueil se met en veille)",
+                    "Bulle fait un salut de la main avant de s\u0027endormir",
+                    "L\u0027Ã©cran se rÃ©veille au simple toucher, avec une animation",
+                    "L\u0027Ã©cran tactile ne sert qu\u0027Ã  interagir : seul le bouton power l\u0027Ã©teint",
+                    "Nouveau menu : une page par fonction (touche le bouton Menu sous le personnage)",
+                    "Radar Wi-Fi : les rÃ©seaux placÃ©s selon leur distance estimÃ©e",
+                    "Analyseur rÃ©seau : observe l\u0027activitÃ© Wi-Fi par canal (observation seule)",
+                    "DÃ©tection de mouvement par Wi-Fi : repÃ¨re quelqu\u0027un qui bouge, affichÃ© Ã  l\u0027Ã©cran",
+                    "MÃ©tÃ©o, Horloge (chrono), Niveau Ã  bulle, SonomÃ¨tre, Lampe",
+                    "Mesures des ondes disponibles pour une autre application (adresse /api/ondes)"
+                ]
 }
