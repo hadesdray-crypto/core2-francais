@@ -15,11 +15,15 @@
 #include <esp_task_wdt.h>
 #include <esp_system.h>
 #include <esp_wifi.h>
+#include <AudioFileSource.h>
+#include <AudioFileSourceBuffer.h>
+#include <AudioGeneratorMP3.h>
+#include <AudioOutput.h>
 #include "page_web.h"
 #include "types.h"
 #define NB_PERSOS 2      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.1.0"
+#define VERSION_PROGRAMME "2.2.0"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -191,7 +195,8 @@ bool veille = false, brancheUsb = false;
 uint32_t derniereActivite = 0, dernierTap = 0;
 float pileLissee = 0, pctPile = -1;
 uint32_t finEcrase = 0, finVol = 0, prochainVol = 20000, finVibre = 0, finCaresse = 0;
-String versionDispo, urlBinDispo, infoMaj; bool demandeMaj = false; volatile bool majVoulue = false; volatile uint32_t prochaineVerif = 0xFFFFFFFFUL; bool wifiCoupe = false; uint32_t finBesoinNet = 120000; uint32_t finGriffe = 0;
+String versionDispo, urlBinDispo, infoMaj; volatile int matCommande = 0; volatile bool lectureEnCours = false;   // Matinale : 1 tout charger, 2 charger un jour, 3 jouer, 4 arrêter
+bool demandeMaj = false; volatile bool majVoulue = false; volatile uint32_t prochaineVerif = 0xFFFFFFFFUL; bool wifiCoupe = false; uint32_t finBesoinNet = 120000; uint32_t finGriffe = 0;
 int essaiReseau = 0;
 void activite() { derniereActivite = millis(); }
 
@@ -249,7 +254,7 @@ void chargerPerso() {
 
 // ---------- Sons ----------
 void bip(int freq, int ms) {
-  if (!R.actif[M_SON]) return;
+  if (!R.actif[M_SON] || lectureEnCours) return;
   if (millis() - dernierBip < 150) return; dernierBip = millis();
   M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume);
   M5.Speaker.tone(freq, ms); delay(ms + 10);
@@ -259,7 +264,7 @@ void bip(int freq, int ms) {
 // Petits sons du personnage : une suite de notes très courte pour chaque événement.
 enum { S_MANGER = 0, S_CARESSE, S_CHOC, S_SECOUE, S_PILE, S_WIFI_OK, S_WIFI_KO, S_REVEIL, S_BRANCHE, S_VOL, S_GRAVITE, S_NB };
 void jouer(int s) {
-  if (!R.actif[M_SON] || R.volume == 0 || s < 0 || s >= S_NB) return;
+  if (!R.actif[M_SON] || R.volume == 0 || s < 0 || s >= S_NB || lectureEnCours) return;
   static uint32_t dernier[S_NB];
   if (millis() - dernier[s] < 400) return; dernier[s] = millis();
   static const int16_t N[S_NB][6] = {
@@ -383,6 +388,7 @@ void moduleWifi() {
 void moduleSon() {
   debutModule(M_SON);
   static int16_t tampon[256];
+  if (lectureEnCours) { finModule(); return; }      // le haut-parleur joue la Matinale : le micro attend
   if (!M5.Mic.isEnabled()) { M5.Mic.begin(); }
   if (M5.Mic.record(tampon, 256, 16000)) {
     long somme = 0; for (int i = 0; i < 256; i++) somme += abs(tampon[i]);
@@ -1415,7 +1421,7 @@ void boutonBas(int x, int w, const char* lib, uint16_t coul) {
 }
 struct Tuile { const char* nom; int page; uint16_t coul; };
 static const Tuile TUILES[] = {
-  {"Personnage", 0, 0x2C6B}, {"Radar Wi-Fi", 7, 0x0A5F}, {"Analyseur", 8, 0x8A0F},
+  {"Matinale", 31, 0x8B00}, {"Personnage", 0, 0x2C6B}, {"Radar Wi-Fi", 7, 0x0A5F}, {"Analyseur", 8, 0x8A0F},
   {"Détection", 9, 0x021F}, {"Météo", 10, 0x0C7A}, {"Horloge", 11, 0x6A1F},
   {"Niveau", 12, 0x05EB}, {"Sonomètre", 13, 0xFB40}, {"Lampe", 14, 0x8420},
   {"Réglages", 1, 0x4A4F}, {"Matériel", 5, 0x3269}, {"Apparence", 15, 0xC1E8}, {"Jeux", 20, 0x2D6B}, {"Wi-Fi", 2, 0x03B5},
@@ -2115,6 +2121,175 @@ void gererTactilePersoCerveau(const m5::touch_detail_t& t) {
   toucheExercice(x, y);
 }
 
+// ---------- La Matinale des Sciences : écouter le flash, l'édition complète et chaque sujet, jour par jour ----------
+#define MAT_BASE "https://hadesdray-crypto.github.io/matinale/"
+class SortieM5 : public AudioOutput {        // le décodeur envoie le son au haut-parleur du Core2
+ public:
+  SortieM5(m5::Speaker_Class* hp, uint8_t canal) { _hp = hp; _canal = canal; }
+  bool begin(void) override { return true; }
+  bool ConsumeSample(int16_t s[2]) override {
+    if (_n < TAILLE) { _tampon[_i][_n] = s[0]; _tampon[_i][_n + 1] = s[1]; _n += 2; return true; }
+    flush(); return false;
+  }
+  void flush(void) override { if (_n) { _hp->playRaw(_tampon[_i], _n, hertz, true, 1, _canal); _i = (_i + 1) % 3; _n = 0; } }
+  bool stop(void) override { flush(); _hp->stop(_canal); for (int k = 0; k < 3; k++) memset(_tampon[k], 0, sizeof(_tampon[k])); return true; }
+ private:
+  static constexpr size_t TAILLE = 640;
+  m5::Speaker_Class* _hp; uint8_t _canal; int16_t _tampon[3][TAILLE]; size_t _n = 0, _i = 0;
+};
+class SourceFlux : public AudioFileSource {   // le son arrive d'Internet au fur et à mesure
+ public:
+  bool open(const char* url) override {
+    _client.setInsecure(); _http.setTimeout(8000); _http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    if (!_http.begin(_client, url)) return false;
+    if (_http.GET() != 200) { _http.end(); return false; }
+    _taille = _http.getSize(); _flux = _http.getStreamPtr(); _pos = 0; _ouvert = true; return true;
+  }
+  uint32_t read(void* d, uint32_t len) override {
+    if (!_ouvert) return 0; uint32_t n = 0, t0 = millis();
+    while (n < len && millis() - t0 < 4000) {
+      int av = _flux->available();
+      if (av > 0) { int r = _flux->read((uint8_t*)d + n, min((uint32_t)av, len - n)); if (r > 0) { n += r; _pos += r; } }
+      else if (!_http.connected() || (_taille > 0 && _pos >= _taille)) break; else vTaskDelay(1);
+    }
+    return n;
+  }
+  uint32_t readNonBlock(void* d, uint32_t len) override { if (!_ouvert) return 0; int av = _flux->available(); if (av <= 0) return 0; int r = _flux->read((uint8_t*)d, min((uint32_t)av, len)); if (r > 0) _pos += r; return r > 0 ? r : 0; }
+  bool seek(int32_t, int) override { return false; }
+  bool close() override { if (_ouvert) { _http.end(); _ouvert = false; } return true; }
+  bool isOpen() override { return _ouvert; }
+  uint32_t getSize() override { return _taille > 0 ? _taille : 0; }
+  uint32_t getPos() override { return _pos; }
+ private:
+  WiFiClientSecure _client; HTTPClient _http; WiFiClient* _flux = nullptr; int32_t _taille = 0; uint32_t _pos = 0; bool _ouvert = false;
+};
+struct SujetMat { String t, s; int d; };
+static SujetMat matSujets[30]; static int matNb = 0, matDecal = 0;
+static String matJours[14]; static int matNbJours = 0, matJour = 0;
+static String matFlash, matFull; static int matFlashD = 0, matFullD = 0;
+volatile int matEtat = 0;                   // 0 rien, 1 chargement, 2 prêt, 3 erreur
+static String matErreur, matUrl; static int matJouant = -1, matDuree = 0; static uint32_t matDebut = 0;
+static String couperTexte(const String& s, int n) {        // coupe sans casser une lettre accentuée
+  if ((int)s.length() <= n) return s; int i = n; while (i > 0 && (s[i] & 0xC0) == 0x80) i--; return s.substring(0, i) + "…";
+}
+static bool lireJson(const String& url, JsonDocument& d, JsonDocument* filtre) {
+  WiFiClientSecure c; c.setInsecure(); HTTPClient h; h.setTimeout(8000);
+  if (!h.begin(c, url)) return false;
+  if (h.GET() != 200) { h.end(); return false; }
+  DeserializationError e = filtre ? deserializeJson(d, h.getStream(), DeserializationOption::Filter(*filtre)) : deserializeJson(d, h.getStream());
+  h.end(); return !e;
+}
+static void chargerMatinale(bool liste) {
+  matEtat = 1;
+  for (int k = 0; k < 40 && WiFi.status() != WL_CONNECTED; k++) vTaskDelay(pdMS_TO_TICKS(500));    // le Wi-Fi se rallume au besoin
+  if (WiFi.status() != WL_CONNECTED) { matErreur = "Pas d'Internet : vérifie le Wi-Fi"; matEtat = 3; return; }
+  if (liste || !matNbJours) {
+    JsonDocument d; matNbJours = 0;
+    if (lireJson(MAT_BASE "audio/index/jours.json", d, nullptr)) for (JsonVariant v : d["jours"].as<JsonArray>()) if (matNbJours < 14) matJours[matNbJours++] = v.as<String>();
+    matJour = 0;
+  }
+  matNb = 0; matFlash = ""; matFull = ""; matDecal = 0;
+  JsonDocument d;
+  if (matNbJours && lireJson(String(MAT_BASE) + "audio/index/" + matJours[matJour] + "-court.json", d, nullptr)) {
+    matFlash = d["flash"]["src"] | ""; matFlashD = d["flash"]["duree"] | 0; matFull = d["full"]["src"] | ""; matFullD = d["full"]["duree"] | 0;
+    for (JsonObject o : d["sujets"].as<JsonArray>()) if (matNb < 30) { matSujets[matNb].t = o["t"] | ""; matSujets[matNb].s = o["s"] | ""; matSujets[matNb].d = o["d"] | 0; matNb++; }
+  } else {                                   // en secours : la voix du jour seulement
+    JsonDocument f; f["date"] = true; f["flash"]["src"] = true; f["flash"]["duration"] = true; f["full"]["src"] = true; f["full"]["duration"] = true;
+    f["items"]["*"]["src"] = true; f["items"]["*"]["duration"] = true; f["items"]["*"]["chapters"][0]["title"] = true;
+    if (!lireJson(MAT_BASE "audio/audio.json", d, &f)) { matErreur = "La Matinale ne répond pas"; matEtat = 3; return; }
+    if (!matNbJours) { matJours[0] = d["date"] | "aujourd'hui"; matNbJours = 1; matJour = 0; }
+    matFlash = d["flash"]["src"] | ""; matFlashD = (int)(d["flash"]["duration"] | 0.0f); matFull = d["full"]["src"] | ""; matFullD = (int)(d["full"]["duration"] | 0.0f);
+    for (JsonPair p : d["items"].as<JsonObject>()) if (matNb < 30) { matSujets[matNb].t = p.value()["chapters"][0]["title"] | ""; matSujets[matNb].s = p.value()["src"] | ""; matSujets[matNb].d = (int)(p.value()["duration"] | 0.0f); matNb++; }
+  }
+  matEtat = 2;
+}
+void tacheMatinale(void*) {
+  AudioGeneratorMP3* gen = nullptr; SourceFlux* src = nullptr; AudioFileSourceBuffer* tamp = nullptr; SortieM5* sortie = nullptr;
+  auto arreter = [&]() {
+    if (gen) { if (gen->isRunning()) gen->stop(); delete gen; gen = nullptr; }
+    if (tamp) { delete tamp; tamp = nullptr; } if (src) { src->close(); delete src; src = nullptr; }
+    if (lectureEnCours) { lectureEnCours = false; M5.Speaker.end(); M5.Mic.begin(); WiFi.setSleep(eco || veille || !brancheUsb); }
+    matJouant = -1;
+  };
+  for (;;) {
+    int c = matCommande;
+    if (c == 3 || c == 4) { arreter(); if (c == 4) matCommande = 0; }
+    if (c == 3) {
+      matCommande = 0;
+      for (int k = 0; k < 40 && WiFi.status() != WL_CONNECTED; k++) vTaskDelay(pdMS_TO_TICKS(500));
+      src = new SourceFlux();
+      if (WiFi.status() != WL_CONNECTED || !src->open((String(MAT_BASE) + matUrl).c_str())) { delete src; src = nullptr; matErreur = "Ce son ne se charge pas"; matJouant = -1; }
+      else {
+        WiFi.setSleep(false);
+        tamp = new AudioFileSourceBuffer(src, 16384);
+        if (!sortie) sortie = new SortieM5(&M5.Speaker, 7);
+        M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume ? R.volume : 120);
+        lectureEnCours = true; matDebut = millis();
+        gen = new AudioGeneratorMP3();
+        if (!gen->begin(tamp, sortie)) { matErreur = "Son illisible"; arreter(); }
+      }
+    }
+    if (c == 1 || c == 2) { matCommande = 0; chargerMatinale(c == 1); }
+    if (gen && gen->isRunning()) { if (!gen->loop()) arreter(); vTaskDelay(1); }
+    else { if (gen) arreter(); vTaskDelay(pdMS_TO_TICKS(30)); }
+  }
+}
+static String jourEnClair(const String& j) {
+  static const char* JS[7] = {"dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"};
+  static const char* MS[12] = {"janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"};
+  if (j.length() != 10) return j;
+  struct tm t = {}; t.tm_year = j.substring(0, 4).toInt() - 1900; t.tm_mon = j.substring(5, 7).toInt() - 1; t.tm_mday = j.substring(8, 10).toInt(); t.tm_hour = 12; mktime(&t);
+  return String(JS[t.tm_wday % 7]) + " " + String(t.tm_mday) + " " + MS[constrain(t.tm_mon, 0, 11)];
+}
+void dessinerMatinale() {
+  cadrePage("La Matinale des Sciences");
+  cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center);
+  bool plusVieux = matJour + 1 < matNbJours, plusRecent = matJour > 0;
+  cv.fillRoundRect(4, 26, 44, 22, 6, plusVieux ? C(52, 56, 96) : C(26, 28, 46)); cv.setTextColor(C(255, 255, 255)); cv.drawString("<", 26, 37);
+  cv.fillRoundRect(272, 26, 44, 22, 6, plusRecent ? C(52, 56, 96) : C(26, 28, 46)); cv.drawString(">", 294, 37);
+  cv.setTextColor(C(0, 230, 255)); cv.drawString(matNbJours ? jourEnClair(matJours[matJour]) : String("..."), 160, 37);
+  if (matEtat == 1 || matEtat == 0) { cv.setTextColor(C(255, 255, 255)); cv.drawString("Chargement...", 160, 120); }
+  else if (matEtat == 3) { cv.setTextColor(C(255, 130, 110)); cv.drawString(matErreur, 160, 110); cv.setTextColor(C(255, 255, 255)); cv.drawString("Touche ici pour réessayer", 160, 136); }
+  else {
+    int total = 2 + matNb;
+    cv.setFont(&fonts::lgfxJapanGothic_12);
+    for (int i = 0; i < 6; i++) {
+      int k = matDecal + i; if (k >= total) break; int y = 52 + i * 25;
+      bool joue = (k == matJouant && lectureEnCours);
+      cv.fillRoundRect(4, y, 312, 23, 6, joue ? C(30, 100, 70) : (k < 2 ? C(44, 40, 96) : C(34, 38, 78)));
+      String lib = (k == 0) ? "Le flash (" + String(max(1, (matFlashD + 30) / 60)) + " min)" : (k == 1) ? "Édition complète (" + String(max(1, (matFullD + 30) / 60)) + " min)" : String(k - 1) + ". " + couperTexte(matSujets[k - 2].t, 44);
+      if ((k == 0 && !matFlash.length()) || (k == 1 && !matFull.length())) lib += " - absent";
+      cv.setTextDatum(middle_left); cv.setTextColor(C(255, 255, 255)); cv.drawString(lib, 10, y + 12);
+      if (joue && matDuree > 0) { int w = constrain((int)((millis() - matDebut) / 10 / matDuree), 0, 300); cv.fillRect(10, y + 20, w, 2, C(120, 255, 150)); }
+    }
+    cv.setTextDatum(middle_center);
+    if (matErreur.length() && !lectureEnCours) { cv.setTextColor(C(255, 130, 110)); cv.drawString(matErreur, 160, 200); }
+  }
+  boutonBas(4, 100, "Accueil", C(52, 56, 96)); boutonBas(108, 64, "Haut", C(52, 56, 96)); boutonBas(176, 64, "Bas", C(52, 56, 96));
+  boutonBas(244, 72, "Stop", lectureEnCours ? C(150, 50, 60) : C(52, 56, 96));
+  cv.setTextDatum(top_left); cv.pushSprite(0, 0);
+}
+void toucheMatinale(int x, int y) {
+  if (y >= 206) {
+    if (x < 106) page = 0;
+    else if (x < 174) { if (matDecal > 0) matDecal--; }
+    else if (x < 242) { if (matDecal + 6 < 2 + matNb) matDecal++; }
+    else matCommande = 4;
+    bip(700, 40); return;
+  }
+  if (y >= 26 && y < 48) {
+    if (x < 50 && matJour + 1 < matNbJours) { matJour++; matCommande = 2; }
+    else if (x > 270 && matJour > 0) { matJour--; matCommande = 2; }
+    return;
+  }
+  if (matEtat == 3) { matErreur = ""; matCommande = matNbJours ? 2 : 1; return; }
+  if (matEtat != 2 || y < 52 || y >= 202) return;
+  int k = matDecal + (y - 52) / 25; if (k >= 2 + matNb) return;
+  if (k == matJouant && lectureEnCours) { matCommande = 4; return; }
+  String u = (k == 0) ? matFlash : (k == 1) ? matFull : matSujets[k - 2].s; if (!u.length()) return;
+  matErreur = ""; matUrl = u; matJouant = k; matDuree = (k == 0) ? matFlashD : (k == 1) ? matFullD : matSujets[k - 2].d; matCommande = 3;
+}
+
 void dessinerPage() {
   switch (page) {
     case 0: dessinerAccueil(); break;
@@ -2139,6 +2314,7 @@ void dessinerPage() {
     case 22: dessinerJeuMemoire(); break;
     case 23: dessinerJeuPFC(); break;
     case 24: dessinerMenuPerso(); break;
+    case 31: dessinerMatinale(); break;
     case 25: dessinerMenuCerveau(); break;
     case 26: case 27: case 28: case 29: case 30: dessinerExercice(); break;
     default: dessinerWifi(); break;
@@ -2150,9 +2326,10 @@ void gererTactilePages(const m5::touch_detail_t& t) {
   if (page >= 15 && page <= 19) { gererTactileApparence(t); return; }
   if (page >= 20 && page <= 23) { gererTactileJeux(t); return; }
   if (page >= 24 && page <= 30) { gererTactilePersoCerveau(t); return; }
+  if (page == 31) { if (clic) toucheMatinale(x, y); return; }
   if (page == 6) {
     if (!clic) return;
-    for (int i = 0; i < NB_TUILES; i++) { int c = i % 3, r = i / 3; int tx = 6 + c * 104, ty = 28 + r * 40; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 36) { page = TUILES[i].page; pageRetourPerso = 6; retourSous = 15; if (page == 2) lancerScan(); bip(700, 40); return; } }
+    for (int i = 0; i < NB_TUILES; i++) { int c = i % 3, r = i / 3; int tx = 6 + c * 104, ty = 28 + r * 40; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 36) { page = TUILES[i].page; pageRetourPerso = 6; retourSous = 15; if (page == 2) lancerScan(); if (page == 31 && matEtat != 2) matCommande = 1; bip(700, 40); return; } }
     return;
   }
   if (page == 14) { if (clic && y >= 180 && y < 206 && x < 100) { page = 6; bip(700, 40); } else if (t.isPressed()) lampeNiveau = constrain((int)(255.0f * x / 320.0f), 10, 255); return; }
@@ -2514,6 +2691,7 @@ void setup() {
   M5.Mic.begin();
   demarrerReseau(); demarrerServeur();
   xTaskCreatePinnedToCore(tacheMeteo, "meteo", 8192, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(tacheMatinale, "matinale", 16384, NULL, 2, NULL, 0);
 }
 
 void loop() {
@@ -2572,7 +2750,7 @@ void loop() {
       histMvt[histMvtPos] = (uint8_t)h; histMvtPos = (histMvtPos + 1) % (int)sizeof(histMvt);
     }
     if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; dessinerPage(); }
-    if (sniffActif || detection || page == 11 || page == 13 || (page >= 21 && page <= 30)) activite();
+    if (sniffActif || detection || page == 11 || page == 13 || (page >= 21 && page <= 31) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - derniereActivite) > 300000) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
   vieDuPerso();
@@ -2601,7 +2779,7 @@ void loop() {
   {   // Internet seulement quand il sert : branché il reste connecté ; sur pile, le Wi-Fi s'éteint dès qu'on n'en a plus besoin
     static uint32_t debutAttente = 0, pauseMeteo = 0;
     bool meteoDue = R.actif[M_METEO] && (!W.meteoValide || m - W.derniereMeteo > (brancheUsb ? 30UL : 60UL) * 60000UL);
-    bool besoin = brancheUsb || direct || modeAcces || sniffActif || detection || (page >= 2 && page <= 5) || (page >= 7 && page <= 10) || demandeMaj || majVoulue || m < finBesoinNet || (meteoDue && m > pauseMeteo);
+    bool besoin = brancheUsb || direct || modeAcces || sniffActif || detection || (page >= 2 && page <= 5) || (page >= 7 && page <= 10) || page == 31 || lectureEnCours || matCommande || demandeMaj || majVoulue || m < finBesoinNet || (meteoDue && m > pauseMeteo);
     if (besoin) {
       if (wifiCoupe) { wifiCoupe = false; WiFi.mode(WIFI_STA); debutAttente = m; }
       if (meteoDue && !W.wifiOk && !brancheUsb && m - debutAttente > 120000 && m > finBesoinNet) pauseMeteo = m + 30UL * 60000UL;   // aucun réseau : on réessaiera dans 30 min
