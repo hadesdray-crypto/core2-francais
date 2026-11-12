@@ -485,14 +485,14 @@ void vieDuPerso() {
     else if (R.actif[M_METEO] && W.meteoValide && W.codeMeteo >= 51) P.attitude = PLUIE;                                                      // pluie, averses, orage
     else if (R.actif[M_METEO] && W.meteoValide && W.temperature < 5) P.attitude = FROID;
     else if (R.actif[M_METEO] && W.meteoValide && W.temperature > 28) P.attitude = CHAUD;
-    else if (R.actif[M_WIFI] && !W.wifiOk && R.ssid.length() && millis() > 60000) P.attitude = TRISTE;
+    else if (R.actif[M_WIFI] && !W.wifiOk && !wifiCoupe && nbConnus() && millis() > 60000) P.attitude = TRISTE;
     else if (P.joie > 75) P.attitude = CONTENT;
   }
   {   // il dit ce qu'il ressent
     static Attitude prec = NORMALE; static int phasePrec = -1;
     if (P.attitude != prec) {
       if (P.attitude == AFFAME) { dire(phrase(0)); reagir(EV_FAIM); }
-      else if (P.attitude == TRISTE && R.actif[M_WIFI] && !W.wifiOk && R.ssid.length() && W.batterie >= 15) { dire(phrase(3), 4500); reagir(EV_WIFI); }
+      else if (P.attitude == TRISTE && R.actif[M_WIFI] && !W.wifiOk && !wifiCoupe && nbConnus() && W.batterie >= 15) { dire(phrase(3), 4500); reagir(EV_WIFI); }
       else if (P.attitude == PLUIE) reagir(EV_PLUIE);
       else if (P.attitude == FROID) reagir(EV_FROID);
       else if (P.attitude == CHAUD) reagir(EV_CHAUD);
@@ -1124,7 +1124,7 @@ void dessinerInfos() {
     cv.setTextColor(cb); cv.drawString(String(W.batterie) + " %", 288, ry); ry += 14;
     if (W.charge) { cv.setTextColor(jaune); cv.drawString("En charge", 316, ry); ry += 14; }
   }
-  if (R.actif[M_WIFI]) { cv.setTextColor(W.wifiOk ? C(190, 240, 190) : C(255, 160, 120)); cv.drawString(modeAcces ? "Réseau du Core2" : (W.wifiOk ? "Wi-Fi " + String(W.rssi) + " dBm" : "Pas de Wi-Fi"), 316, ry); ry += 14; }
+  if (R.actif[M_WIFI]) { cv.setTextColor(W.wifiOk ? C(190, 240, 190) : C(255, 160, 120)); cv.drawString(modeAcces ? "Réseau du Core2" : (W.wifiOk ? "Wi-Fi " + String(W.rssi) + " dBm" : (wifiCoupe ? String("Wi-Fi en veille") : String("Pas de Wi-Fi"))), 316, ry); ry += 14; }
   if (R.actif[M_METEO] && W.meteoValide) { cv.setTextColor(C(200, 220, 255)); cv.drawString(String((int)W.temperature) + " °C", 316, ry); ry += 14; }
   cv.setTextDatum(top_left);
   // bulle de message (frigo)
