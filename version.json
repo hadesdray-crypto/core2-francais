@@ -1,7 +1,10 @@
 {
-    "version":  "1.9.8",
+    "version":  "1.9.9",
     "bin":  "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes":  [
+                    "Recherche de reseaux corrigee : le Core2 coupe ses tentatives de reconnexion avant de chercher et recommence si la liste est vide.",
+                    "Reception de mise a jour plus stable en Wi-Fi direct (plus de coupure Broken pipe causee par la recherche du Wi-Fi de la maison).",
+                    "Mise a jour automatique : des qu\u0027il a Internet et qu\u0027une version plus recente existe, il l\u0027installe tout seul.",
                     "Réseau : le Wi-Fi direct est coupé avant de se connecter au partage du téléphone ou à la box.",
                     "Secouer fort fait apparaître @#$%! dans la bulle, avec des griffes rouges à l\u0027écran.",
                     "Bulle : un choc ou un gros bruit affiche @#$%! dans la bulle, avec des griffes rouges à l\u0027écran.",
