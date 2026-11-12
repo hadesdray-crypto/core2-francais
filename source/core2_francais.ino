@@ -19,7 +19,7 @@
 #include "types.h"
 #define NB_PERSOS 2      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.0.0"
+#define VERSION_PROGRAMME "2.0.1"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -42,6 +42,24 @@ struct Reglages {
 } R;
 Preferences prefs;
 
+// ---------- Réseaux connus : le Core2 se souvient de 8 réseaux et prend celui qu'il voit le mieux ----------
+#define NB_CONNUS 8
+String connuN[NB_CONNUS], connuM[NB_CONNUS];
+int nbConnus() { int n = 0; for (int i = 0; i < NB_CONNUS; i++) if (connuN[i].length()) n++; return n; }
+int indexConnu(const String& n) { for (int i = 0; i < NB_CONNUS; i++) if (connuN[i].length() && connuN[i] == n) return i; return -1; }
+void sauverConnus() { for (int i = 0; i < NB_CONNUS; i++) { prefs.putString(("cn" + String(i)).c_str(), connuN[i]); prefs.putString(("cm" + String(i)).c_str(), connuM[i]); } }
+void ajouterConnu(const String& n, const String& m) {     // le dernier utilisé passe en tête
+  if (!n.length()) return;
+  int j = indexConnu(n); if (j < 0) j = NB_CONNUS - 1;
+  for (int i = j; i > 0; i--) { connuN[i] = connuN[i - 1]; connuM[i] = connuM[i - 1]; }
+  connuN[0] = n; connuM[0] = m; sauverConnus();
+}
+void oublierConnu(const String& n) { int j = indexConnu(n); if (j < 0) return; for (int i = j; i < NB_CONNUS - 1; i++) { connuN[i] = connuN[i + 1]; connuM[i] = connuM[i + 1]; } connuN[NB_CONNUS - 1] = ""; connuM[NB_CONNUS - 1] = ""; sauverConnus(); }
+void chargerConnus() {
+  for (int i = 0; i < NB_CONNUS; i++) { connuN[i] = prefs.getString(("cn" + String(i)).c_str(), ""); connuM[i] = prefs.getString(("cm" + String(i)).c_str(), ""); }
+  if (R.ssid2.length() && indexConnu(R.ssid2) < 0) ajouterConnu(R.ssid2, R.mdp2);     // reprise des anciens réglages
+  if (R.ssid.length() && indexConnu(R.ssid) < 0) ajouterConnu(R.ssid, R.motDePasse);
+}
 void chargerReglages() {
   prefs.begin("core2fran", false);
   for (int i = 0; i < M_NB; i++) R.actif[i] = prefs.getBool(CLES_MODULES[i], true);
@@ -54,8 +72,11 @@ void chargerReglages() {
   R.luminosite = prefs.getInt("lum", 160);
   R.volume = prefs.getInt("vol", 120);
   R.perso = constrain(prefs.getInt("perso", 0), 0, NB_PERSOS - 1); R.reveil = prefs.getString("reveil", ""); R.objets = prefs.getBool("objets", true);
+  chargerConnus();
 }
 void sauverReglages() {
+  if (R.ssid.length()) { int j = indexConnu(R.ssid); if (j < 0 || connuM[j] != R.motDePasse) ajouterConnu(R.ssid, R.motDePasse); }
+  if (R.ssid2.length()) { int j = indexConnu(R.ssid2); if (j < 0 || connuM[j] != R.mdp2) ajouterConnu(R.ssid2, R.mdp2); }
   for (int i = 0; i < M_NB; i++) prefs.putBool(CLES_MODULES[i], R.actif[i]);
   prefs.putString("ssid", R.ssid); prefs.putString("mdp", R.motDePasse); prefs.putString("nom", R.nom);
   prefs.putString("ssid2", R.ssid2); prefs.putString("mdp2", R.mdp2);
@@ -285,7 +306,7 @@ void demarrerSniff() {
 }
 void arreterSniff() {
   esp_wifi_set_promiscuous(false); sniffActif = false;
-  WiFi.begin(R.ssid.length() ? R.ssid.c_str() : R.ssid2.c_str(), R.ssid.length() ? R.motDePasse.c_str() : R.mdp2.c_str());
+  if (nbConnus()) WiFi.begin(connuN[0].c_str(), connuM[0].c_str());
 }
 // Détection de mouvement par Wi-Fi : on mesure les variations de la force des ondes
 // autour du module. Quand quelqu'un bouge, les ondes sont perturbées : l'agitation monte.
@@ -300,7 +321,7 @@ void demarrerDetection() {
 }
 void arreterDetection() {
   esp_wifi_set_promiscuous(false); detection = false;
-  WiFi.begin(R.ssid.length() ? R.ssid.c_str() : R.ssid2.c_str(), R.ssid.length() ? R.motDePasse.c_str() : R.mdp2.c_str());
+  if (nbConnus()) WiFi.begin(connuN[0].c_str(), connuM[0].c_str());
 }
 uint32_t chronoDebut = 0; bool chronoMarche = false; uint32_t chronoFige = 0;
 uint8_t histSon[220]; int histSonPos = 0;
@@ -977,8 +998,8 @@ static bool direct = false, changerDirect = false, eco = false;
 void appliquerDirect() {
   if (direct || modeAcces) { WiFi.mode(WIFI_AP_STA); WiFi.softAP("Core2-francais", "core2fran"); }
   else { WiFi.softAPdisconnect(true); WiFi.mode(WIFI_STA); }
-  if (R.ssid.length()) WiFi.begin(R.ssid.c_str(), R.motDePasse.c_str());
-  else if (R.ssid2.length()) WiFi.begin(R.ssid2.c_str(), R.mdp2.c_str());
+  esp_wifi_set_country_code("FR", true);      // canaux 1 à 13 comme en France (certains téléphones utilisent le 12 ou le 13)
+  if (nbConnus()) WiFi.begin(connuN[0].c_str(), connuM[0].c_str());
   WiFi.setSleep(eco || veille || !brancheUsb);     // économie : le Wi-Fi dort entre deux échanges
 }
 static const char* LIB_COURTS[M_NB] = {"Météo", "Wi-Fi", "Son", "Batterie", "Heure", "Gravité", "Messages"};
@@ -1018,7 +1039,7 @@ static uint32_t derniereTouche = 0;
 static int emplacement = 1;      // 1 = Wi-Fi de la maison, 2 = Wi-Fi du téléphone (partage de connexion)
 static uint8_t scanEssais = 0;
 void arreterReconnexion() { WiFi.setAutoReconnect(false); WiFi.disconnect(false, false); delay(150); }
-void lancerScan() { arreterReconnexion(); if (WiFi.getMode() == WIFI_OFF) WiFi.mode(WIFI_STA); WiFi.scanDelete(); WiFi.scanNetworks(true, true); scanEnCours = true; debutScan = millis(); nbR = 0; decalR = 0; scanEssais = 0; }
+void lancerScan() { if (WiFi.status() != WL_CONNECTED) arreterReconnexion(); if (WiFi.getMode() == WIFI_OFF) WiFi.mode(WIFI_STA); WiFi.scanDelete(); WiFi.scanNetworks(true, true); scanEnCours = true; debutScan = millis(); nbR = 0; decalR = 0; scanEssais = 0; }
 void lireScan() {
   int n = WiFi.scanComplete();
   if (n == WIFI_SCAN_RUNNING) { if (millis() - debutScan > 15000) { scanEnCours = false; WiFi.setAutoReconnect(true); } return; }
@@ -1036,7 +1057,7 @@ void lireScan() {
 }
 void validerWifi() {
   if (emplacement == 2) { R.ssid2 = nomChoisi; R.mdp2 = mdpSaisi; } else { R.ssid = nomChoisi; R.motDePasse = mdpSaisi; }
-  sauverReglages();
+  sauverReglages(); ajouterConnu(nomChoisi, mdpSaisi);
   WiFi.setAutoReconnect(true); WiFi.softAPdisconnect(true); WiFi.mode(WIFI_STA); delay(100);
   WiFi.disconnect(); WiFi.begin(nomChoisi.c_str(), mdpSaisi.c_str());
   debutConn = millis(); resultatConn = 0; page = 4;
@@ -1065,18 +1086,20 @@ void dessinerWifi() {
   if (page == 2) {
     if (scanEnCours) lireScan();
     cv.fillRoundRect(4, 1, 312, 19, 6, C(70, 76, 130));
+    { static uint32_t tRech = 0; if (!scanEnCours && millis() - tRech > 15000) { tRech = millis(); if (nbR == 0 || millis() - debutScan > 15000) lancerScan(); } }
     cv.drawString(emplacement == 2 ? "Pour : le téléphone (touche ici pour changer)" : "Pour : la maison (touche ici pour changer)", 10, 4);
     if (scanEnCours) cv.drawString("Recherche des réseaux… (2,4 GHz seulement)", 8, 60);
     else if (!nbR) cv.drawString("Aucun réseau trouvé : touche « Chercher »", 8, 60);
     for (int i = 0; i < 5; i++) {
       int k = decalR + i; if (k >= nbR) break; int y = 22 + i * 34;
-      cv.fillRoundRect(4, y, 312, 30, 8, C(40, 46, 86));
+      bool connu = indexConnu(listeR[k].nom) >= 0, actuel = WiFi.status() == WL_CONNECTED && WiFi.SSID() == listeR[k].nom;
+      cv.fillRoundRect(4, y, 312, 30, 8, actuel ? C(30, 90, 60) : (connu ? C(40, 70, 110) : C(40, 46, 86)));
       String n = listeR[k].nom; if (n.length() > 17) n = n.substring(0, 16) + "…";
       cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_left); cv.setTextColor(C(255, 255, 255)); cv.drawString(n, 10, y + 15);
       int pc = constrain(2 * (listeR[k].dbm + 100), 0, 100);
       cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(middle_right);
       cv.setTextColor(pc > 60 ? C(120, 255, 150) : (pc > 35 ? C(255, 220, 90) : C(255, 130, 110)));
-      cv.drawString(String(pc) + " %  canal " + String(listeR[k].canal) + (listeR[k].ferme ? "" : "  ouvert"), 310, y + 15);
+      cv.drawString((actuel ? String("connecté  ") : (connu ? String("connu  ") : String(""))) + String(pc) + " %" + (listeR[k].ferme ? "" : "  ouvert"), 310, y + 15);
     }
     cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(240, 240, 255));
     cv.fillRoundRect(4, 204, 90, 32, 8, C(52, 56, 96)); cv.drawString("Retour", 49, 220);
@@ -1103,7 +1126,7 @@ void dessinerWifi() {
     cv.drawString("Réseau : " + nomChoisi, 10, 20);
     if (resultatConn == 0) { cv.drawString("Connexion en cours" + String("...").substring(0, (millis() / 400) % 4), 10, 60); }
     else if (resultatConn == 1) { cv.setTextColor(C(120, 255, 150)); cv.drawString("Connecté !", 10, 60); cv.setTextColor(C(255, 255, 255)); cv.drawString("Adresse : " + WiFi.localIP().toString(), 10, 90); cv.setFont(&fonts::lgfxJapanGothic_12); cv.drawString("Les mises à jour par Wi-Fi sont possibles.", 10, 120); }
-    else { cv.setTextColor(C(255, 130, 110)); cv.drawString("Échec de la connexion", 10, 60); cv.setTextColor(C(255, 255, 255)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.drawString("Code " + String((int)WiFi.status()) + " : vérifie le mot de passe, puis réessaie.", 10, 90); }
+    else { cv.setTextColor(C(255, 130, 110)); cv.drawString(WiFi.status() == WL_NO_SSID_AVAIL ? "Réseau introuvable" : "Échec de la connexion", 10, 60); cv.setTextColor(C(255, 255, 255)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.drawString(WiFi.status() == WL_NO_SSID_AVAIL ? "Partage du téléphone : mets-le en 2,4 GHz." : "Vérifie le mot de passe, puis réessaie.", 10, 90); cv.drawString("Le Core2 ne voit pas le 5 GHz.", 10, 108); }
     cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center);
     cv.fillRoundRect(4, 204, 140, 32, 8, C(52, 56, 96)); cv.drawString(resultatConn == 2 ? "Réessayer" : "Réglages", 74, 220);
     cv.fillRoundRect(176, 204, 140, 32, 8, C(52, 56, 96)); cv.drawString("Accueil", 246, 220);
@@ -1115,7 +1138,7 @@ void gererTactileWifi(bool appui, int x, int y) {
   if (!appui) return;
   if (page == 2) {
     if (y >= 204) {
-      if (x < 96) page = 1;
+      if (x < 96) page = 6;
       else if (x < 162) { if (decalR > 0) decalR--; }
       else if (x < 228) { if (decalR + 5 < nbR) decalR++; }
       else { lancerScan(); }
@@ -1124,7 +1147,7 @@ void gererTactileWifi(bool appui, int x, int y) {
     if (y < 21) { emplacement = (emplacement == 2) ? 1 : 2; bip(700, 40); return; }
     if (y >= 22 && y < 192) {
       int k = decalR + (y - 22) / 34;
-      if (k < nbR) { nomChoisi = listeR[k].nom; mdpSaisi = ""; majKb = false; symbKb = false; bip(800, 50); if (listeR[k].ferme) page = 3; else validerWifi(); }
+      if (k < nbR) { nomChoisi = listeR[k].nom; int j = indexConnu(nomChoisi); mdpSaisi = j >= 0 ? connuM[j] : String(""); majKb = false; symbKb = false; bip(800, 50); if (j >= 0 || !listeR[k].ferme) validerWifi(); else page = 3; }
     }
   } else if (page == 3) {
     Touche t[60]; int n = construireClavier(t);
@@ -1143,7 +1166,7 @@ void gererTactileWifi(bool appui, int x, int y) {
       }
     }
   } else {
-    if (y >= 204) { if (x < 160) page = (resultatConn == 2) ? 3 : 1; else page = 0; bip(700, 40); }
+    if (y >= 204) { if (x < 160) { if (resultatConn == 2) { mdpSaisi = ""; page = 3; } else page = 2; } else page = 0; bip(700, 40); }
   }
 }
 
@@ -1191,7 +1214,7 @@ static const Tuile TUILES[] = {
   {"Personnage", 0, 0x2C6B}, {"Radar Wi-Fi", 7, 0x0A5F}, {"Analyseur", 8, 0x8A0F},
   {"Détection", 9, 0x021F}, {"Météo", 10, 0x0C7A}, {"Horloge", 11, 0x6A1F},
   {"Niveau", 12, 0x05EB}, {"Sonomètre", 13, 0xFB40}, {"Lampe", 14, 0x8420},
-  {"Réglages", 1, 0x4A4F}, {"Matériel", 5, 0x3269}, {"Apparence", 15, 0xC1E8}, {"Jeux", 20, 0x2D6B},
+  {"Réglages", 1, 0x4A4F}, {"Matériel", 5, 0x3269}, {"Apparence", 15, 0xC1E8}, {"Jeux", 20, 0x2D6B}, {"Wi-Fi", 2, 0x03B5},
 };
 static const int NB_TUILES = sizeof(TUILES) / sizeof(TUILES[0]);
 void dessinerMenu() {
@@ -1691,7 +1714,7 @@ void gererTactilePages(const m5::touch_detail_t& t) {
   if (page >= 20 && page <= 23) { gererTactileJeux(t); return; }
   if (page == 6) {
     if (!clic) return;
-    for (int i = 0; i < NB_TUILES; i++) { int c = i % 3, r = i / 3; int tx = 6 + c * 104, ty = 28 + r * 40; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 36) { page = TUILES[i].page; bip(700, 40); return; } }
+    for (int i = 0; i < NB_TUILES; i++) { int c = i % 3, r = i / 3; int tx = 6 + c * 104, ty = 28 + r * 40; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 36) { page = TUILES[i].page; if (page == 2) lancerScan(); bip(700, 40); return; } }
     return;
   }
   if (page == 14) { if (clic && y >= 180 && y < 206 && x < 100) { page = 6; bip(700, 40); } else if (t.isPressed()) lampeNiveau = constrain((int)(255.0f * x / 320.0f), 10, 255); return; }
@@ -1897,7 +1920,7 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("mdp") && serveur.arg("mdp").length()) R.motDePasse = serveur.arg("mdp");
   if (serveur.hasArg("ssid2") && serveur.arg("ssid2").length()) R.ssid2 = serveur.arg("ssid2");
   if (serveur.hasArg("mdp2") && serveur.arg("mdp2").length()) R.mdp2 = serveur.arg("mdp2");
-  if (serveur.hasArg("oublier2")) { R.ssid2 = ""; R.mdp2 = ""; }
+  if (serveur.hasArg("oublier2")) { oublierConnu(R.ssid2); R.ssid2 = ""; R.mdp2 = ""; }
   if (serveur.hasArg("reveil")) { if (veille) reveillerEcran(); activite(); }
   if (serveur.hasArg("lat")) R.lat = serveur.arg("lat").toFloat();
   if (serveur.hasArg("lon")) R.lon = serveur.arg("lon").toFloat();
@@ -2019,7 +2042,7 @@ void demarrerReseau() {
   direct = prefs.getBool("direct", false); eco = prefs.getBool("eco", false);
   WiFi.setHostname("core2-francais");
   WiFi.setAutoReconnect(true); WiFi.persistent(false);
-  if (!R.ssid.length() && !R.ssid2.length()) modeAcces = true;
+  if (!nbConnus()) modeAcces = true;
   appliquerDirect();
   configTzTime("CET-1CEST,M3.5.0,M3.10.0/3", "pool.ntp.org", "time.google.com");
 }
@@ -2107,15 +2130,22 @@ void loop() {
     if (!veille && !brancheUsb && (int32_t)(millis() - derniereActivite) > 300000) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
   vieDuPerso();
-  {   // reconnexion automatique toutes les 20 s : on essaie le Wi-Fi de la maison, puis celui du téléphone, à tour de rôle
-    static uint32_t tWifi = 0;
-    if ((page < 2 || page == 5) && (R.ssid.length() || R.ssid2.length()) && m - tWifi > 20000) {
-      tWifi = m;
-      if (WiFi.status() != WL_CONNECTED) {
-        essaiReseau++;
-        bool deux = R.ssid2.length() && (!R.ssid.length() || (essaiReseau % 2) == 0);
-        WiFi.disconnect();
-        if (deux) WiFi.begin(R.ssid2.c_str(), R.mdp2.c_str()); else WiFi.begin(R.ssid.c_str(), R.motDePasse.c_str());
+  {   // reconnexion automatique : toutes les 12 s sans Wi-Fi, on cherche les réseaux et on prend le réseau connu qui capte le mieux
+    static uint32_t tWifi = 0; static bool rechFond = false; static uint32_t debFond = 0;
+    bool libre = !(page >= 2 && page <= 4) && page != 7 && page != 8 && page != 9 && !sniffActif && !detection && !scanEnCours && !demandeMaj && nbConnus() > 0;
+    if (W.wifiOk || WiFi.status() == WL_CONNECTED) { tWifi = m; if (rechFond) { WiFi.scanDelete(); rechFond = false; } }
+    else if (libre && !rechFond && m - tWifi > 12000) {
+      tWifi = m; WiFi.setAutoReconnect(false); WiFi.disconnect(false, false); delay(50);
+      if (WiFi.scanNetworks(true, true) == WIFI_SCAN_FAILED) { WiFi.scanDelete(); essaiReseau++; int k = essaiReseau % max(1, nbConnus()); WiFi.setAutoReconnect(true); WiFi.begin(connuN[k].c_str(), connuM[k].c_str()); }
+      else { rechFond = true; debFond = m; }
+    }
+    if (rechFond) {
+      int n = WiFi.scanComplete();
+      if (n >= 0 || m - debFond > 12000) {
+        int best = -1, bestDbm = -200;
+        for (int i = 0; i < n; i++) { int j = indexConnu(WiFi.SSID(i)); if (j >= 0 && WiFi.RSSI(i) > bestDbm) { best = j; bestDbm = WiFi.RSSI(i); } }
+        WiFi.scanDelete(); rechFond = false; tWifi = m; WiFi.setAutoReconnect(true);
+        if (best >= 0) WiFi.begin(connuN[best].c_str(), connuM[best].c_str());
       }
     }
   }

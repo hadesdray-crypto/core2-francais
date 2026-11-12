@@ -1,7 +1,10 @@
 {
-    "version": "2.0.0",
+    "version": "2.0.1",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
+        "Wi-Fi : le Core2 garde en mémoire 8 réseaux (maison, téléphone…) et se connecte tout seul à celui qu'il capte le mieux, où que tu sois, sur toutes les pages.",
+        "Nouvelle tuile « Wi-Fi » dans le menu : la liste des réseaux se cherche toute seule et se met à jour ; un réseau déjà connu se connecte d'un seul toucher.",
+        "Canaux 1 à 13 comme en France, et message clair si le partage du téléphone est en 5 GHz.",
         "Deux personnages : Bulle (inchangé, mains carrées) et Enclume, un gros costaud qui s'énerve et crache de l'énergie vers le haut.",
         "Menu Apparence : couleur, caractère, ce qu'il aime ou déteste, couleurs d'humeur, corps (poids, gravité, saut, rebond), avec le personnage toujours visible.",
         "Inertie et chocs réalistes, objets légers dans la pièce, décor de jour et de nuit.",
