@@ -1,7 +1,9 @@
 {
-    "version": "2.3.0",
+    "version": "2.3.1",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
+        "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
+        "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
         "La pièce est un vrai cube : quand tu penches le Core2 dans ta main, le fond se décale comme dans une vraie boîte ; l'image ne tourne plus.",
         "Posé presque à plat, tu vois la pièce d'en haut, avec les personnages, la balle et la caisse vus de dessus ; redressé, tout revient de face.",
         "La balle et la caisse restent au sol, glissent selon leur poids, ne collent plus au personnage, et tu peux les déplacer au doigt.",

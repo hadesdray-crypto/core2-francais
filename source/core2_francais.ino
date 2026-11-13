@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.3.0"
+#define VERSION_PROGRAMME "2.3.1"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -2567,7 +2567,7 @@ void dessinerMatinale() {
   else {
     int total = 2 + matNb;
     cv.setFont(&fonts::lgfxJapanGothic_12);
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 5; i++) {
       int k = matDecal + i; if (k >= total) break; int y = 52 + i * 25;
       bool joue = (k == matJouant && lectureEnCours);
       cv.fillRoundRect(4, y, 312, 23, 6, joue ? C(30, 100, 70) : (k < 2 ? C(44, 40, 96) : C(34, 38, 78)));
@@ -2577,8 +2577,13 @@ void dessinerMatinale() {
       if (joue && matDuree > 0) { int w = constrain((int)((millis() - matDebut) / 10 / matDuree), 0, 300); cv.fillRect(10, y + 20, w, 2, C(120, 255, 150)); }
     }
     cv.setTextDatum(middle_center);
-    if (matErreur.length() && !lectureEnCours) { cv.setTextColor(C(255, 130, 110)); cv.drawString(matErreur, 160, 200); }
+    if (matErreur.length() && !lectureEnCours) { cv.setTextColor(C(255, 130, 110)); cv.drawString(matErreur, 160, 172); }
   }
+  // le son, toujours à portée de doigt
+  cv.fillRoundRect(4, 178, 52, 26, 6, C(52, 56, 96)); cv.fillRoundRect(264, 178, 52, 26, 6, C(52, 56, 96));
+  cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString("-", 30, 191); cv.drawString("+", 290, 191);
+  cv.fillRoundRect(62, 184, 196, 14, 5, C(26, 28, 46)); cv.fillRoundRect(62, 184, max(6, R.volume * 196 / 255), 14, 5, C(80, 255, 140));
+  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(255, 255, 255)); cv.drawString("Son " + String(R.volume * 100 / 255) + " %", 160, 191);
   boutonBas(4, 100, "Accueil", C(52, 56, 96)); boutonBas(108, 64, "Haut", C(52, 56, 96)); boutonBas(176, 64, "Bas", C(52, 56, 96));
   boutonBas(244, 72, "Stop", lectureEnCours ? C(150, 50, 60) : C(52, 56, 96));
   cv.setTextDatum(top_left); cv.pushSprite(0, 0);
@@ -2587,7 +2592,7 @@ void toucheMatinale(int x, int y) {
   if (y >= 206) {
     if (x < 106) page = 0;
     else if (x < 174) { if (matDecal > 0) matDecal--; }
-    else if (x < 242) { if (matDecal + 6 < 2 + matNb) matDecal++; }
+    else if (x < 242) { if (matDecal + 5 < 2 + matNb) matDecal++; }
     else matCommande = 4;
     bip(700, 40); return;
   }
@@ -2596,8 +2601,9 @@ void toucheMatinale(int x, int y) {
     else if (x > 270 && matJour > 0) { matJour--; matCommande = 2; }
     return;
   }
+  if (y >= 178 && y < 204) { if (x < 60) changerVolume(-16); else if (x > 260) changerVolume(16); else changerVolume(((x - 62) * 255 / 196) - R.volume); sauverReglages(); return; }
   if (matEtat == 3) { matErreur = ""; matCommande = matNbJours ? 2 : 1; return; }
-  if (matEtat != 2 || y < 52 || y >= 202) return;
+  if (matEtat != 2 || y < 52 || y >= 177) return;
   int k = matDecal + (y - 52) / 25; if (k >= 2 + matNb) return;
   if (k == matJouant && lectureEnCours) { matCommande = 4; return; }
   String u = (k == 0) ? matFlash : (k == 1) ? matFull : matSujets[k - 2].s; if (!u.length()) return;
@@ -2714,8 +2720,27 @@ void actionBarre(int b) {
   else if (b == 1) { W.gravite = !W.gravite; prefs.putBool("grav", W.gravite); jouer(S_GRAVITE); }
   else { page = 6; bip(700, 40); }
 }
+// Le son, partout : garder le doigt sur le bouton rond de droite = plus fort, sur celui de gauche = moins fort.
+uint32_t finAffVolume = 0;
+void changerVolume(int pas) {
+  R.volume = constrain((int)R.volume + pas, 0, 255); M5.Speaker.setVolume(R.volume); finAffVolume = millis() + 1500;
+  if (!lectureEnCours) bip(900, 25);
+}
+void afficherVolume() {          // une barre en haut de l'écran, sur toutes les pages, quand on règle le son
+  if (millis() > finAffVolume || veille) return;
+  M5.Display.fillRoundRect(60, 2, 200, 22, 6, TFT_BLACK); M5.Display.drawRoundRect(60, 2, 200, 22, 6, 0x07FF);
+  M5.Display.setFont(&fonts::lgfxJapanGothic_12); M5.Display.setTextColor(TFT_WHITE, TFT_BLACK); M5.Display.setTextDatum(middle_left); M5.Display.drawString("Son", 66, 13);
+  M5.Display.fillRect(96, 8, 150, 10, 0x2104); M5.Display.fillRect(96, 8, R.volume * 150 / 255, 10, 0x07E0);
+}
 void gererBoutons() {
-  int b = M5.BtnA.wasPressed() ? 0 : (M5.BtnB.wasPressed() ? 1 : (M5.BtnC.wasPressed() ? 2 : -1));
+  {   // appui long : régler le son (gauche moins fort, droite plus fort), sans déclencher l'autre action
+    static uint32_t tRep = 0; static bool reglage = false; uint32_t m = millis();
+    bool g = M5.BtnA.pressedFor(500), d = M5.BtnC.pressedFor(500);
+    if ((g || d) && m - tRep > 120) { tRep = m; reglage = true; activite(); if (veille) reveillerEcran(); changerVolume(d ? 12 : -12); }
+    if (reglage && !M5.BtnA.isPressed() && !M5.BtnC.isPressed()) { reglage = false; sauverReglages(); M5.BtnA.wasClicked(); M5.BtnC.wasClicked(); return; }
+    if (reglage) return;
+  }
+  int b = M5.BtnA.wasClicked() ? 0 : (M5.BtnB.wasPressed() ? 1 : (M5.BtnC.wasClicked() ? 2 : -1));
   if (b < 0) return;
   activite();
   if (veille) { reveillerEcran(); return; }
@@ -3074,7 +3099,7 @@ void loop() {
       int h = (int)constrain(dev * 14.0f, 0.0f, 86.0f);
       histMvt[histMvtPos] = (uint8_t)h; histMvtPos = (histMvtPos + 1) % (int)sizeof(histMvt);
     }
-    if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; dessinerPage(); }
+    if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; dessinerPage(); afficherVolume(); }
     if (sniffActif || detection || page == 11 || page == 13 || (page >= 21 && page <= 31) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - derniereActivite) > 300000) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
