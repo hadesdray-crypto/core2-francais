@@ -1,7 +1,10 @@
 {
-    "version": "2.1.0",
+    "version": "2.2.0",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
+        "Nouveau personnage : le Savant fou. Il a son œuf (une fiole qui bouillonne), ses phases de bébé à ancien et ses gestes à lui : loupe, potion qui explose, eurêka, prise de notes.",
+        "Son portail temporel s'ouvre à chaque heure pile (ou quand tu touches le fond de la pièce) : il en sort un objet d'une époque qui suit l'heure, et il court l'examiner.",
+        "Bouton « Matinale » en tête du menu : le flash, l'édition complète et chaque sujet en voix, avec les jours d'avant (flèches en haut).",
         "Économie de pile : sur pile, le Wi-Fi ne s'allume que quand il sert (météo une fois par heure, pages Wi-Fi, Matériel, Radar…), puis s'éteint ; branché, il reste connecté.",
         "Mises à jour seulement quand tu les demandes : Menu > Matériel > chercher la mise à jour.",
         "Enclume refait : un bloc d'acier bleu, de très gros bras, ses propres gestes (poings, épaules, bras croisés, assis, se gratte la tête), son œuf à lui et ses phases de bébé à ancien.",

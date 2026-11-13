@@ -21,7 +21,7 @@
 #include <AudioOutput.h>
 #include "page_web.h"
 #include "types.h"
-#define NB_PERSOS 2      // personnages disponibles (4 emplacements prévus en mémoire)
+#define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
 #define VERSION_PROGRAMME "2.2.0"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
@@ -115,14 +115,20 @@ Fiche FI[4];
 #define FA (FI[constrain(R.perso, 0, NB_PERSOS - 1)])
 static void setHum(Fiche& f, int a, int r, int g, int b) { f.cHum[a][0] = r; f.cHum[a][1] = g; f.cHum[a][2] = b; }
 void fichePardefaut(Fiche& f, int idx) {
-  memset(&f, 0, sizeof(f)); f.version = 2; f.forme = (idx == 1) ? 1 : 0; f.humeurCouleur = true;
-  strncpy(f.nom, idx == 1 ? "Enclume" : (idx == 0 ? "Bulle" : "Libre"), 15);
+  memset(&f, 0, sizeof(f)); f.version = 2; f.forme = (idx == 1) ? 1 : (idx == 2 ? 2 : 0); f.humeurCouleur = true;
+  strncpy(f.nom, idx == 1 ? "Enclume" : (idx == 0 ? "Bulle" : (idx == 2 ? "Savant" : "Libre")), 15);
   if (idx == 1) {
     f.r = 40; f.g = 130; f.b = 255; f.couleurAuto = false;
     const uint8_t ca[5] = {10, 10, 10, 90, 10}; memcpy(f.carac, ca, 5);
     f.aime[EV_COURANT] = -1; f.aime[EV_SECOUSSE] = -1; f.aime[EV_BRUIT] = -1; f.aime[EV_PLUIE] = -1; f.aime[EV_FAIM] = -1;
     f.poids = 95; f.milieu = 0; f.gravite = 140; f.saut = 0; f.rebond = 12; f.mode0g = 1;
     setHum(f, ENERVE, 255, 120, 20); setHum(f, TRISTE, 120, 60, 70); setHum(f, FROID, 130, 150, 200); setHum(f, CHAUD, 255, 70, 40);
+  } else if (idx == 2) {      // le Savant fou : très curieux, farceur, adore l'électricité et la nuit, déteste qu'on secoue ses fioles
+    f.r = 80; f.g = 255; f.b = 140; f.couleurAuto = false;
+    const uint8_t ca[5] = {95, 30, 65, 20, 15}; memcpy(f.carac, ca, 5);
+    f.aime[EV_COURANT] = 1; f.aime[EV_NUIT] = 1; f.aime[EV_SECOUSSE] = -1; f.aime[EV_BRUIT] = 1;
+    f.poids = 35; f.milieu = 0; f.gravite = 100; f.saut = 60; f.rebond = 30; f.mode0g = 1;
+    setHum(f, ENERVE, 255, 90, 60); setHum(f, TRISTE, 110, 130, 170);
   } else {
     f.couleurAuto = true;
     const uint8_t ca[5] = {40, 60, 30, 20, 20}; memcpy(f.carac, ca, 5);
@@ -134,7 +140,7 @@ void chargerFiches() {
   for (int i = 0; i < 4; i++) {
     char k[8]; snprintf(k, sizeof(k), "fiche%d", i);
     fichePardefaut(FI[i], i);
-    if (prefs.getBytesLength(k) == sizeof(Fiche)) { Fiche t; prefs.getBytes(k, &t, sizeof(t)); if (t.version == 1 || t.version == 2) { if (t.version == 1 && i == 1 && t.r == 190 && t.g == 45 && t.b == 38) { t.r = 40; t.g = 130; t.b = 255; } t.version = 2; FI[i] = t; } }
+    if (prefs.getBytesLength(k) == sizeof(Fiche)) { Fiche t; prefs.getBytes(k, &t, sizeof(t)); if ((t.version == 1 || t.version == 2) && !(i == 2 && t.forme == 0)) { if (t.version == 1 && i == 1 && t.r == 190 && t.g == 45 && t.b == 38) { t.r = 40; t.g = 130; t.b = 255; } t.version = 2; FI[i] = t; } }
     FI[i].nom[15] = 0;
   }
 }
@@ -143,7 +149,7 @@ int dominant() { int b = 0; for (int i = 1; i < 5; i++) if (FA.carac[i] > FA.car
 
 // ---------- Petits gestes et paroles ----------
 static const char* NOMS_CARACT[5] = {"Curieux", "Câlin", "Farceur", "Bougon", "Timide"};
-enum Geste { G_AUCUN = 0, G_REGARDE, G_BAILLE, G_ETIRE, G_SAUT, G_CACHE, G_POINGS, G_EPAULES, G_CROISE, G_ASSIS, G_GRATTE };
+enum Geste { G_AUCUN = 0, G_REGARDE, G_BAILLE, G_ETIRE, G_SAUT, G_CACHE, G_POINGS, G_EPAULES, G_CROISE, G_ASSIS, G_GRATTE, G_LOUPE, G_FIOLE, G_PORTAIL, G_EUREKA, G_NOTE };
 Geste geste = G_AUCUN; uint32_t debutGeste = 0, finGeste = 0, prochainGeste = 20000, finDanse = 0, dernierBipDanse = 0;
 String parole; uint32_t finParole = 0;
 uint32_t points = 0;      // points gagnés aux jeux (gardés en mémoire)
@@ -521,6 +527,14 @@ void vieDuPerso() {
         int tir = random(max(1, tot1)), g1 = 0; for (int i = 0; i < 5; i++) { if (tir < w1[i]) { g1 = i; break; } tir -= w1[i]; }
         geste = (Geste)(G_POINGS + g1); debutGeste = m; finGeste = m + D1[g1]; prochainGeste = m + ry1 + random(ry1);
         if (geste == G_POINGS && !veille) jouer(S_CHOC);
+      } else if (FA.forme == 2) {   // le Savant : loupe, potion, portail temporel, eurêka, prise de notes
+        static const uint16_t D2[5] = {2600, 3200, 1800, 1800, 3000};
+        int w2[5] = {FA.carac[0] + 5, FA.carac[2] + 5, FA.carac[0] / 3 + FA.carac[2] / 3 + 3, FA.carac[1] / 2 + 10, 25 - FA.carac[2] / 5};
+        int tot2 = 0; for (int i = 0; i < 5; i++) tot2 += max(1, w2[i]);
+        int ry2 = constrain(16000 - FA.carac[0] * 60, 7000, 30000);
+        int tir = random(max(1, tot2)), g2 = 0; for (int i = 0; i < 5; i++) { if (tir < max(1, w2[i])) { g2 = i; break; } tir -= max(1, w2[i]); }
+        geste = (Geste)(G_LOUPE + g2); debutGeste = m; finGeste = m + D2[g2]; prochainGeste = m + ry2 + random(ry2);
+        if (geste == G_PORTAIL) ouvrirPortail(); else if (geste == G_EUREKA && !veille) jouer(S_REVEIL);
       } else {
       static const uint16_t DUREE[6] = {0, 2500, 2000, 1800, 900, 2200};
       int w[5] = {FA.carac[0] + 5, FA.carac[3] / 2 + FA.carac[1] / 2 + 5, FA.carac[1] + 5, (FA.poids < 70) ? FA.carac[2] + 2 : 0, FA.carac[4]};
@@ -567,6 +581,36 @@ void choc(float v, bool vert) {
   if (!veille) { jouer(S_CHOC); vibrer((int)constrain(40 + v * ms * 45, 40, 260)); }
 }
 
+// ---------- Personnage n°3 : le Savant fou et son portail temporel ----------
+// Le portail s'ouvre au fond de la pièce à chaque heure pile (ou quand on le touche, ou quand il le décide).
+// Il en sort un objet d'une autre époque, qui suit l'heure : le savant court l'examiner à la loupe.
+struct ObjTemps { float x, y, h, vh; bool actif; int ere; uint32_t fin; };
+ObjTemps objT = {0, 0, 0, 0, false, 0, 0};
+uint32_t portailDebut = 0, portailFin = 0; int portailEre = 0;
+const float PORTAIL_X = -0.25f, PORTAIL_Y = 0.78f;
+static const char* NOMS_ERES[5] = {"une amphore romaine", "un casque de chevalier", "un gramophone de 1900", "une disquette de 1995", "une tête de robot du futur"};
+void ouvrirPortail() {
+  uint32_t m = millis(); if (m < portailFin) return;
+  struct tm th; int h = (W.heureValide && getLocalTime(&th, 0)) ? th.tm_hour : (int)(m / 3600000UL);
+  portailDebut = m; portailFin = m + 6000; portailEre = h % 5; objT.actif = false;
+  jouer(S_GRAVITE);
+}
+void majPortail(float dt) {
+  uint32_t m = millis();
+  { static int derniereHeure = -1; struct tm th;           // à chaque heure pile
+    if (W.heureValide && getLocalTime(&th, 0) && th.tm_min == 0 && th.tm_hour != derniereHeure) { derniereHeure = th.tm_hour; ouvrirPortail(); } }
+  if (m < portailFin && !objT.actif && m - portailDebut > 1800) {             // l'objet sort du portail
+    objT = {PORTAIL_X, PORTAIL_Y - 0.05f, 46, 40, true, portailEre, m + 25000};
+    objT.ere = portailEre; dire("Ooh ! " + String(NOMS_ERES[portailEre]) + " !", 3500);
+  }
+  if (objT.actif) {
+    float tx = 0.1f + 0.3f * sinf(portailDebut), ty = 0.25f;                    // il roule vers le milieu de la pièce
+    if (objT.h > 0 || objT.vh > 0) { objT.vh -= 160 * dt; objT.h = max(0.0f, objT.h + objT.vh * dt); if (objT.h == 0 && objT.vh < 0) objT.vh = (objT.vh < -30) ? -objT.vh * 0.35f : 0; }
+    objT.x += (tx - objT.x) * min(1.0f, dt * 1.2f); objT.y += (ty - objT.y) * min(1.0f, dt * 1.2f);
+    if (m > objT.fin) objT.actif = false;
+  }
+}
+
 // Enclume ne vole jamais : il marche sur le sol de la pièce, vers le fond ou vers l'avant. Il glisse seulement si on penche beaucoup.
 void physiqueSol(float dt, bool pesanteur, float linx) {
   uint32_t m = millis(); float ms = masse();
@@ -579,8 +623,13 @@ void physiqueSol(float dt, bool pesanteur, float linx) {
   float tx = marcheX, ty = marcheY; bool bouge = true;
   if (miroir) { float d0 = 1.0f; tx = constrain((miroirX - 160) / (108.0f * 0.82f) * 0.78f * d0, -0.7f, 0.7f); ty = -0.74f; }
   else if (cible) { tx = cibleSolX[cible]; ty = cibleSolY[cible]; }
+  else if (FA.forme == 2 && objT.actif) {      // le savant court voir l'objet sorti du portail, puis l'examine à la loupe
+    tx = objT.x; ty = objT.y - 0.1f;
+    if (fabsf(tx - P.x) + fabsf(ty - P.y) < 0.12f && geste == G_AUCUN && objT.h == 0) { geste = G_LOUPE; debutGeste = m; finGeste = m + 2600; }
+  }
   else if (m > prochaineMarche) { marcheX = random(-70, 71) / 100.0f; marcheY = random(-60, 71) / 100.0f; prochaineMarche = m + 7000 + random(9000) - FA.carac[0] * 40; }
-  if ((P.attitude == SOMMEIL && !cible) || geste == G_ASSIS || geste == G_POINGS || geste == G_CROISE) bouge = false;
+  if (FA.forme == 2) majPortail(dt);
+  if ((P.attitude == SOMMEIL && !cible) || geste == G_ASSIS || geste == G_POINGS || geste == G_CROISE || geste == G_LOUPE || geste == G_FIOLE || geste == G_NOTE || geste == G_PORTAIL) bouge = false;
   float dx = tx - P.x, dy = ty - P.y, d = sqrtf(dx * dx + dy * dy);
   float vmax = 0.28f / sqrtf(ms) * (P.attitude == ENERVE ? 1.8f : 1.0f) * (miroir ? 1.6f : 1.0f);
   if (bouge && d > 0.04f) { ax2 += (dx / d * vmax - P.vx) * 3.0f; az2 += (dy / d * vmax * 0.8f - P.vy) * 3.0f; }
@@ -588,7 +637,7 @@ void physiqueSol(float dt, bool pesanteur, float linx) {
   P.vx += ax2 * dt; P.vy += az2 * dt;
   P.x += P.vx * dt; P.y += P.vy * dt;
   float v = fabsf(P.vx) + fabsf(P.vy); enMarche = v > 0.04f;
-  if (enMarche) { int avant = (int)(pasPhase / 3.14159f); pasPhase += v * dt * 22.0f; if ((int)(pasPhase / 3.14159f) != avant) { poussiere = m; tremble = max(tremble, 0.4f + 0.5f * ms / 2.4f); } }
+  if (enMarche) { int avant = (int)(pasPhase / 3.14159f); pasPhase += v * dt * 22.0f; if ((int)(pasPhase / 3.14159f) != avant) { poussiere = m; if (ms > 1.5f) tremble = max(tremble, 0.4f + 0.5f * ms / 2.4f); } }
   const float lim = 0.78f;
   if (P.x > lim) { P.x = lim; choc(fabsf(P.vx) * 3, false); P.vx = 0; } if (P.x < -lim) { P.x = -lim; choc(fabsf(P.vx) * 3, false); P.vx = 0; }
   if (P.y > lim) { P.y = lim; P.vy = 0; } if (P.y < -lim) { P.y = -lim; P.vy = 0; }
@@ -639,7 +688,7 @@ void physique(float dt) {
   sqXv += (-220.0f * sqX - 11.0f * sqXv) * dt; sqX = constrain(sqX + sqXv * dt, -0.3f, 0.45f);
   tremble *= expf(-dt * 7.0f);
   if (P.porte) { P.vx = P.vy = 0; return; }
-  if (FA.forme == 1 && phase() != OEUF) { physiqueSol(dt, pesanteur, linx); return; }
+  if (FA.forme >= 1 && phase() != OEUF) { physiqueSol(dt, pesanteur, linx); return; }
   contreVitre = false;
   if (m < miroirFin && phase() != OEUF) {      // Bulle vient tout contre la vitre, face au doigt
     float tx = constrain((miroirX - 160) / 110.0f, -0.7f, 0.7f), ty = constrain((miroirY - 100) / 70.0f, -0.6f, 0.5f);
@@ -758,7 +807,7 @@ void dessinerBoiteDessus() {
   for (int k = 0; k <= 8; k++) cv.drawFastVLine(14 + k * 292 / 8, 10, 182, C(70, 30, 120));
   for (int k = 0; k <= 5; k++) cv.drawFastHLine(14, 10 + k * 182 / 5, 292, C(70, 30, 120));
   cv.drawRect(4, 2, 312, 196, rose); cv.drawRect(14, 10, 292, 182, cyan);
-  bool sol = FA.forme == 1;
+  bool sol = FA.forme >= 1;
   int lx = 160 + (int)((sol ? cibleSolX[1] : cibleX[1]) * 130), ly = 100 + (int)((sol ? cibleSolY[1] : cibleY[1]) * 80);
   int gx = 160 + (int)((sol ? cibleSolX[2] : cibleX[2]) * 130), gy = 100 + (int)((sol ? cibleSolY[2] : cibleY[2]) * 80);
   ly = min(ly, 174); gy = min(gy, 176);
@@ -769,7 +818,7 @@ void dessinerBoiteDessus() {
 }
 void positionEcran(int& px, int& py, float& echelle) {
   const int L = 320, H = 200;
-  bool sol = (FA.forme == 1 && phase() != OEUF);
+  bool sol = (FA.forme >= 1 && phase() != OEUF);
   if (vue == 1 && rotEcran == 0) { echelle = 0.8f; px = 160 + (int)(P.x * 130); py = 100 + (int)(P.y * 80); if (sol) py -= (int)(0.45f * 34 * echelle * tailleAge()); return; }
   if (sol) {        // sur le sol : plus il est au fond, plus il est petit et haut
     float d = constrain((P.y + 0.78f) / 1.56f, 0.0f, 1.0f); echelle = 1.0f - 0.38f * d;
@@ -1002,10 +1051,151 @@ void dessinerEnclume(int px, int py, float e) {
   if (!modeApercu && millis() - poussiere < 350) { int k = (millis() - poussiere) / 40; for (int s = -1; s <= 1; s += 2) cv.drawCircle(px + s * (W + k * 2), yPied - 2, 2 + k, C(110, 100, 140)); }   // poussière à chaque pas
 }
 
+void ecranSol(float x, float y, float h, int& sx, int& sy, float& e) {        // un point du sol vers l'écran
+  if (vue == 1 && rotEcran == 0) { e = 0.8f; sx = 160 + (int)(x * 130); sy = 100 + (int)(y * 80) - (int)(h * 0.5f); return; }
+  float d = constrain((y + 0.78f) / 1.56f, 0.0f, 1.0f); e = 1.0f - 0.38f * d;
+  sx = 160 + (int)(x / 0.78f * (160 - 52 * d) * 0.82f); sy = 197 - (int)(d * 33) - (int)(h * e);
+}
+void dessinerObjetEre(int x, int y, int ere, float e) {
+  int r = max(4, (int)(9 * e)); uint16_t or_ = C(255, 200, 80), gris = C(170, 175, 190), bleu = C(80, 140, 255);
+  switch (ere) {
+    case 0: cv.fillEllipse(x, y - r, r, (int)(r * 1.2f), C(200, 110, 60)); cv.fillRect(x - r / 3, y - r * 3, r * 2 / 3, r, C(200, 110, 60)); cv.drawLine(x - r / 3, y - r * 3 + 2, x - r, y - r * 2, C(200, 110, 60)); cv.drawLine(x + r / 3, y - r * 3 + 2, x + r, y - r * 2, C(200, 110, 60)); cv.drawFastHLine(x - r, y - r, r * 2, C(90, 40, 20)); break;   // amphore
+    case 1: cv.fillArc(x, y - r / 2, 0, r + 2, 180, 360, gris); cv.fillRect(x - r - 2, y - r / 2, r * 2 + 4, r / 2 + 2, gris); cv.drawFastHLine(x - r + 2, y - r / 2 - 2, r * 2 - 4, C(40, 40, 50)); cv.fillTriangle(x, y - r * 2 - 4, x - 3, y - r - 2, x + 3, y - r - 2, C(220, 40, 40)); break;                  // casque
+    case 2: cv.fillRect(x - r, y - r / 2, r * 2, r / 2 + 2, C(120, 70, 40)); cv.drawLine(x, y - r / 2, x + r / 2, y - r * 2, or_); cv.fillTriangle(x + r / 2, y - r * 2, x + r * 2, y - r * 3, x + r * 2, y - r, or_); break;                                                                        // gramophone
+    case 3: cv.fillRect(x - r, y - r * 2, r * 2, r * 2, bleu); cv.fillRect(x - r / 2, y - r * 2, r, r * 2 / 3, gris); cv.fillRect(x - r / 2, y - r / 2 - 2, r, r / 2, C(240, 240, 250)); break;                                                                                                       // disquette
+    default: cv.fillRoundRect(x - r, y - r * 2, r * 2, r * 2, 3, gris); cv.fillRect(x - r + 3, y - r * 2 + 4, r * 2 - 6, r / 2, C(20, 20, 30)); cv.fillRect(x - r + 4, y - r * 2 + 5, 3, 3, C(255, 60, 60)); cv.fillRect(x + r - 7, y - r * 2 + 5, 3, 3, C(255, 60, 60)); cv.drawLine(x, y - r * 2, x, y - r * 3, gris); cv.fillCircle(x, y - r * 3, 2, C(255, 60, 60)); break;   // robot
+  }
+}
+void dessinerPortail() {        // dessiné au fond de la pièce, avant le personnage
+  uint32_t m = millis();
+  if (m < portailFin) {
+    int sx, sy; float e; ecranSol(PORTAIL_X, PORTAIL_Y, 26, sx, sy, e);
+    float ouv = min(1.0f, (m - portailDebut) / 600.0f) * min(1.0f, (portailFin - m) / 600.0f);
+    int rx = (int)(20 * ouv * e) + 1, ry = (int)(28 * ouv * e) + 1;
+    for (int k = 0; k < 4; k++) { float a = m / 120.0f + k * 1.57f; uint16_t c = (k % 2) ? C(150, 80, 255) : C(0, 230, 255); cv.drawEllipse(sx, sy, max(1, rx - k * 3), max(1, ry - k * 4), c); cv.fillCircle(sx + (int)(cosf(a) * rx), sy + (int)(sinf(a) * ry), 2, C(255, 255, 255)); }
+    cv.fillEllipse(sx, sy, max(1, rx - 12), max(1, ry - 16), C(20, 0, 50));
+  }
+  if (objT.actif) { int sx, sy; float e; ecranSol(objT.x, objT.y, objT.h, sx, sy, e); cv.fillEllipse(sx, sy + (int)(objT.h * e) + 2, (int)(10 * e), 3, C(40, 10, 60)); dessinerObjetEre(sx, sy, objT.ere, e); }
+}
+void dessinerOeufSavant(int px, int py, float e) {      // son œuf : une fiole de laboratoire qui bouillonne
+  uint32_t t = millis(); int dx = (P.ageMin >= 8) ? (((t / 300) % 2) ? 2 : -2) : 0;
+  int r = (int)(26 * e); uint16_t verre = C(170, 220, 255), liq = C(80, 255, 140);
+  cv.fillEllipse(px + dx, py + r + 2, r + 6, 5, C(40, 10, 60));
+  cv.fillCircle(px + dx, py + r / 3, r, C(20, 30, 50)); cv.fillRect(px + dx - r / 3, py - r, r * 2 / 3, r, C(20, 30, 50));
+  cv.fillArc(px + dx, py + r / 3, 0, r - 3, 10, 170, liq);
+  cv.drawCircle(px + dx, py + r / 3, r, verre); cv.drawRect(px + dx - r / 3, py - r, r * 2 / 3, r - 2, verre);
+  cv.fillRect(px + dx - r / 3 - 2, py - r - 7, r * 2 / 3 + 4, 8, C(170, 110, 60));                                   // bouchon
+  for (int i = 0; i < 4; i++) { float q = fmodf(t / 900.0f + i * 0.25f, 1.0f); cv.drawCircle(px + dx - 8 + i * 5, py + r - (int)(q * r * 1.2f), 2, C(200, 255, 220)); }   // bulles
+  if (P.ageMin >= 6) { cv.drawLine(px + dx - 6, py - 4, px + dx + 2, py + 6, C(255, 255, 255)); cv.drawLine(px + dx + 2, py + 6, px + dx + 10, py - 2, C(255, 255, 255)); }
+}
+void dessinerSavant(int px, int py, float e) {
+  Phase ph = modeApercu ? ADULTE : phase();
+  float u = 34.0f * e * tailleAge(); uint32_t t = millis();
+  uint16_t neon = FA.couleurAuto ? C(80, 255, 140) : C(FA.r, FA.g, FA.b);
+  if (FA.humeurCouleur) neon = couleurHumeur(P.attitude, neon);
+  uint16_t blouse = C(235, 240, 250), ombreB = C(170, 180, 200), peau = (P.attitude == ENERVE) ? C(255, 150, 130) : C(255, 215, 180), pant = C(40, 40, 70), noir = C(20, 20, 30), cheveux = (ph == ANCIEN || ph == ADULTE) ? C(245, 245, 255) : C(200, 120, 60);
+  bool charge = W.charge, enerve = P.attitude == ENERVE, vitre = !modeApercu && contreVitre && millis() < miroirFin;
+  bool assis = P.attitude == SOMMEIL, danse = !modeApercu && millis() < finDanse, marche = enMarche && !modeApercu && !assis;
+  float pg = progGeste();
+  if (geste == G_EUREKA) py -= (int)(10 * e * sinf(pg * 3.14159f));
+  if (enerve) px += random(-1, 2);
+  bool bebe = (ph == BEBE);
+  float tete = bebe ? 0.62f : 0.5f;                          // le bébé a une grosse tête
+  int yPied = py + (int)(0.9f * u), hr = (int)(tete * u);
+  int yTete = py - (int)(0.55f * u) + (assis ? (int)(0.5f * u) : 0) + (ph == ANCIEN ? (int)(0.08f * u) : 0);
+  int yEpaule = yTete + hr - 2, yGenou = yPied - (int)(0.32f * u);
+  cv.fillEllipse(px, yPied + 2, (int)(0.8f * u), max(3, (int)(5 * e)), C(40, 10, 60));
+  // jambes et chaussures
+  float ps = sinf(pasPhase);
+  for (int s = -1; s <= 1; s += 2) {
+    int lx = px + s * (int)(0.18f * u), up = (marche && ((s < 0) == (ps > 0))) ? (int)(3 * e * fabsf(ps)) : 0;
+    if (assis) { cv.fillRect(lx - 3, yPied - 6, (int)(0.45f * u) * s, 5, pant); continue; }
+    cv.fillRect(lx - (int)(0.08f * u), yGenou - up, (int)(0.16f * u) + 1, yPied - yGenou, pant);
+    cv.fillRoundRect(lx - (int)(0.12f * u) + s * 2, yPied - 4 - up, (int)(0.28f * u), 5, 2, noir);
+  }
+  // blouse blanche (ouverte sur une chemise de sa couleur)
+  int wb = (int)((bebe ? 0.38f : 0.42f) * u), wbas = (int)(0.55f * u), yBas = assis ? yPied - 4 : yGenou + 2;
+  cv.fillTriangle(px - wb, yEpaule, px + wb, yEpaule, px - wbas, yBas, blouse); cv.fillTriangle(px + wb, yEpaule, px + wbas, yBas, px - wbas, yBas, blouse);
+  cv.fillTriangle(px - (int)(0.12f * u), yEpaule, px + (int)(0.12f * u), yEpaule, px, yBas - (int)(0.2f * u), neon);
+  cv.drawLine(px - wb, yEpaule, px - wbas, yBas, ombreB); cv.drawLine(px + wb, yEpaule, px + wbas, yBas, ombreB);
+  if (!bebe) { int poX = px + (int)(0.22f * u), poY = yEpaule + (int)(0.3f * u); cv.drawRect(poX - 4, poY, 9, 7, ombreB); cv.drawFastVLine(poX - 2, poY - 4, 5, C(255, 60, 60)); cv.drawFastVLine(poX + 1, poY - 4, 5, C(60, 120, 255)); }   // stylos dans la poche
+  // bras et mains (une main tient l'outil du geste)
+  int mainR = max(2, (int)(0.1f * u));
+  for (int s = -1; s <= 1; s += 2) {
+    int sx = px + s * wb, sy = yEpaule + 3;
+    int hx = px + s * (int)(0.55f * u), hy = yEpaule + (int)(0.55f * u) + (marche ? (int)(0.1f * u * ps * s) : (int)(2 * sinf(t / 600.0f + s)));
+    if (vitre) { hx = px + s * (int)(0.5f * u); hy = yTete; }
+    else if (charge || danse || geste == G_EUREKA) { bool haut = danse ? ((int)((t / 300) % 2) == (s < 0 ? 0 : 1)) : true; hx = px + s * (int)(0.55f * u); hy = haut ? yTete - hr : yEpaule + (int)(0.3f * u); }
+    else if (enerve) { hx = px + s * (int)(0.6f * u); hy = yEpaule - (int)(0.1f * u) + (int)(3 * sinf(t / 60.0f + s)); }
+    else if (s > 0 && geste == G_LOUPE) { hx = px + (int)(0.25f * u); hy = yTete; }
+    else if (s > 0 && (geste == G_FIOLE || geste == G_PORTAIL || geste == G_NOTE)) { hx = px + (int)(0.45f * u); hy = yEpaule + (int)(0.3f * u); }
+    else if (s < 0 && geste == G_NOTE) { hx = px + (int)(0.1f * u); hy = yEpaule + (int)(0.35f * u) + (int)(2 * sinf(t / 80.0f)); }
+    epais(sx, sy, hx, hy, max(3, (int)(0.16f * u)), blouse);
+    if (vitre) { int sz = (int)(0.3f * u); cv.fillRect(hx - sz / 2, hy - sz / 2, sz, sz, peau); cv.drawRect(hx - sz / 2 - 2, hy - sz / 2 - 2, sz + 4, sz + 4, C(150, 190, 230)); }
+    else cv.fillCircle(hx, hy, mainR, peau);
+    if (s > 0) {
+      if (geste == G_FIOLE) {                       // il mélange une potion... qui finit en petite explosion
+        int fx = hx, fy = hy - mainR - 6; cv.fillCircle(fx, fy + 4, 6, neon); cv.drawCircle(fx, fy + 4, 6, C(200, 230, 255)); cv.drawRect(fx - 2, fy - 6, 5, 7, C(200, 230, 255));
+        for (int i = 0; i < 3; i++) { float q = fmodf(t / 400.0f + i * 0.33f, 1.0f); cv.drawCircle(fx - 3 + i * 3, fy - 6 - (int)(q * 14), 1 + (int)(q * 2), neon); }
+        if (pg > 0.8f) { int k = (int)((pg - 0.8f) * 120); for (int i = 0; i < 5; i++) cv.fillCircle(fx + (int)(cosf(i * 1.25f) * k), fy - 8 + (int)(sinf(i * 1.25f) * k * 0.6f), 3 + k / 6, C(150, 150, 160)); }
+      } else if (geste == G_PORTAIL) { cv.fillRect(hx - 3, hy - 9, 7, 10, C(60, 60, 80)); cv.fillCircle(hx, hy - 6, 2, ((t / 150) % 2) ? C(255, 60, 60) : C(80, 255, 140)); }   // sa télécommande
+      else if (geste == G_NOTE) { cv.fillRect(px - (int)(0.05f * u), yEpaule + (int)(0.2f * u), (int)(0.4f * u), (int)(0.45f * u), C(200, 170, 120)); for (int i = 0; i < 3; i++) cv.drawFastHLine(px, yEpaule + (int)(0.3f * u) + i * 4, (int)(0.25f * u), C(60, 60, 80)); }   // bloc-notes
+    }
+  }
+  // la tête
+  cv.fillCircle(px, yTete, hr, peau);
+  if (enerve) for (int s = -1; s <= 1; s += 2) { float q = fmodf(t / 300.0f, 1.0f); cv.fillCircle(px + s * (hr + 3 + (int)(q * 8)), yTete - (int)(q * 10), 2 + (int)(q * 3), C(240, 240, 250)); }   // fumée par les oreilles
+  // les cheveux en pétard : ils poussent avec l'âge, se dressent quand il est branché
+  int nbM = bebe ? 1 : (ph == ENFANT ? 4 : 9);
+  for (int i = 0; i < nbM; i++) {
+    float a = (nbM == 1) ? -1.57f : (-3.14159f + (i + 0.5f) * 3.14159f / nbM);
+    if (ph == ANCIEN && fabsf(a + 1.57f) < 0.9f) continue;          // l'ancien est chauve sur le dessus
+    float l = hr * ((ph == ENFANT) ? 0.35f : (ph == ADO ? 0.6f : 0.75f)) * (charge ? 1.5f : 1.0f);
+    float aa = charge ? (a * 0.35f - 1.57f * 0.65f) : a + 0.15f * sinf(t / 250.0f + i);
+    int bx = px + (int)(cosf(a) * hr * 0.85f), by = yTete + (int)(sinf(a) * hr * 0.85f);
+    int ex = bx + (int)(cosf(aa) * l), ey = by + (int)(sinf(aa) * l);
+    cv.fillTriangle(bx - (int)(sinf(a) * 4), by + (int)(cosf(a) * 4), bx + (int)(sinf(a) * 4), by - (int)(cosf(a) * 4), ex, ey, cheveux);
+    if (charge && (t / 90 + i) % 3 == 0) cv.drawLine(ex, ey, ex + random(-5, 6), ey - 6, C(120, 220, 255));                  // étincelles dans les cheveux
+  }
+  // les yeux, derrière des lunettes rondes (adulte et ancien) ou des lunettes de labo (enfant, ado)
+  int ey0 = yTete - hr / 6 + (int)(regardY * 2 * e), ex0 = (int)(hr * 0.42f), lr = max(3, (int)(hr * 0.32f));
+  int rg = (int)(regardX * lr * 0.6f);
+  bool grosYeux = vitre || geste == G_LOUPE;
+  for (int s = -1; s <= 1; s += 2) {
+    int cx = px + s * ex0, rr = (grosYeux && (vitre || s > 0)) ? lr * 3 / 2 : lr;
+    if (ph == ADULTE || ph == ANCIEN) { cv.fillCircle(cx, ey0, rr, charge ? C(150, 230, 255) : C(235, 245, 255)); cv.drawCircle(cx, ey0, rr, noir); cv.drawCircle(cx, ey0, rr + 1, noir); }
+    else if (!bebe) { cv.fillRoundRect(cx - rr, ey0 - rr, rr * 2, rr * 2, 3, C(200, 255, 220)); cv.drawRoundRect(cx - rr, ey0 - rr, rr * 2, rr * 2, 3, neon); }
+    if (P.attitude == SOMMEIL || ((t % 3600) < 120)) cv.drawFastHLine(cx - rr / 2, ey0, rr, noir);
+    else if (P.attitude == SURPRIS || P.attitude == PEUR) cv.drawCircle(cx, ey0, rr / 2, noir);
+    else if (P.attitude == ETOURDI) { cv.drawLine(cx - 3, ey0 - 3, cx + 3, ey0 + 3, noir); cv.drawLine(cx - 3, ey0 + 3, cx + 3, ey0 - 3, noir); }
+    else cv.fillCircle(cx + rg, ey0, max(1, rr / 3 + (rr > lr ? 1 : 0)), noir);
+  }
+  if (ph == ADULTE || ph == ANCIEN) cv.drawFastHLine(px - ex0 + lr, ey0, (ex0 - lr) * 2, noir);
+  if (ph == ENFANT || ph == ADO) cv.fillRect(px - ex0 - lr, ey0 - 1, (ex0 + lr) * 2, 2, neon);      // l'élastique des lunettes de labo
+  if (bebe) { cv.fillRoundRect(px - hr / 2, yTete - hr + 2, hr, hr / 3, 2, neon); }                  // petites lunettes de labo sur le front
+  if (geste == G_LOUPE) { int lx = px + ex0, ly = ey0; cv.drawCircle(lx, ly, lr * 2, C(200, 160, 80)); cv.drawCircle(lx, ly, lr * 2 + 1, C(200, 160, 80)); epais(lx + lr * 2 - 2, ly + lr * 2 - 2, lx + lr * 3, ly + lr * 3, 3, C(140, 90, 50)); }
+  // bouche et moustache
+  int my = yTete + hr / 2;
+  if (ph == ANCIEN) { cv.fillTriangle(px - hr / 2, my - 1, px, my - 4, px, my + 1, cheveux); cv.fillTriangle(px + hr / 2, my - 1, px, my - 4, px, my + 1, cheveux); }
+  if (P.attitude == CONTENT || charge || geste == G_EUREKA || danse) cv.fillArc(px, my - 3, max(2, hr / 5), max(3, hr / 3), 20, 160, noir);
+  else if (P.attitude == TRISTE) cv.drawArc(px, my + 4, max(2, hr / 5), max(3, hr / 4), 200, 340, noir);
+  else if (P.attitude == SURPRIS || P.attitude == PEUR || P.attitude == AFFAME || millis() < finRepas) cv.fillCircle(px, my, max(2, hr / 6), noir);
+  else if (enerve) cv.drawLine(px - hr / 4, my + 1, px + hr / 4, my - 1, noir);
+  else cv.drawFastHLine(px - hr / 5, my, hr * 2 / 5, noir);
+  if (geste == G_EUREKA) { int bx = px, by = yTete - hr - (int)(0.6f * u); cv.fillCircle(bx, by, (int)(0.2f * u), C(255, 240, 120)); cv.fillRect(bx - 3, by + (int)(0.15f * u), 7, 5, C(170, 170, 180)); for (int k = 0; k < 6; k++) { float a = k * 1.047f; cv.drawLine(bx + (int)(cosf(a) * 0.28f * u), by + (int)(sinf(a) * 0.28f * u), bx + (int)(cosf(a) * 0.4f * u), by + (int)(sinf(a) * 0.4f * u), C(255, 240, 120)); } }   // eurêka : une ampoule s'allume
+  if (charge) for (int k = 0; k < 2; k++) { int bx = px + (k ? 1 : -1) * (int)(0.6f * u), by = yTete - hr; cv.drawLine(bx, by, bx + 4, by - 8, C(120, 220, 255)); cv.drawLine(bx + 4, by - 8, bx - 2, by - 12, C(120, 220, 255)); cv.drawLine(bx - 2, by - 12, bx + 3, by - 20, C(120, 220, 255)); }   // éclairs : il se recharge
+  if (P.attitude == SOMMEIL) { cv.setTextColor(C(220, 220, 255)); cv.setFont(&fonts::lgfxJapanGothic_16); cv.drawString("z z", px + hr, yTete - hr - 18); }
+  if (P.attitude == PLUIE) { int fx = px + (int)(0.1f * u), fy = yTete - hr - (int)(0.25f * u); cv.fillTriangle(fx - (int)(0.6f * u), fy, fx + (int)(0.6f * u), fy, fx, fy - (int)(0.4f * u), C(200, 220, 240)); cv.drawLine(fx, fy - (int)(0.4f * u), fx, fy - (int)(0.55f * u), C(200, 220, 240));   // un entonnoir en guise de parapluie
+    if (!modeApercu) for (int i = 0; i < 8; i++) cv.drawLine(20 + (i * 41 + millis() / 8) % 280, 40 + (i * 29 + millis() / 5) % 120, 18 + (i * 41 + millis() / 8) % 280, 48 + (i * 29 + millis() / 5) % 120, C(130, 170, 255)); }
+  if (P.attitude == ETOURDI) { for (int i = 0; i < 3; i++) { float a = millis() / 150.0f + i * 2.1f; cv.fillCircle(px + (int)(cosf(a) * 20), yTete - hr - 8 + (int)(sinf(a) * 5), 3, C(255, 230, 90)); } }
+  if (ph != ANCIEN || true) dessinerChapeau(px, yTete - hr + 2, hr);
+}
+
 void dessinerBulle(int px, int py, float e);
 void dessinerPersonnage(int px, int py, float e) {
-  if (phase() == OEUF && !modeApercu) { if (FA.forme == 1) dessinerOeufEnclume(px, py, e); else dessinerOeuf(px, py, e); }
+  if (phase() == OEUF && !modeApercu) { if (FA.forme == 1) dessinerOeufEnclume(px, py, e); else if (FA.forme == 2) dessinerOeufSavant(px, py, e); else dessinerOeuf(px, py, e); }
   else if (FA.forme == 1) dessinerEnclume(px, py, e);
+  else if (FA.forme == 2) dessinerSavant(px, py, e);
   else dessinerBulle(px, py, e);
 }
 
@@ -1160,7 +1350,7 @@ void pousserAccueil() {          // en hauteur, l'image tourne avec l'écran
   cv.pushRotateZoom(&M5.Display, 160, 120, (float)rotEcran, 0.75f, 0.75f);
 }
 void dessinerAccueil() {
-  bool sol = (FA.forme == 1 && phase() != OEUF), dessus = (vue == 1 && rotEcran == 0);
+  bool sol = (FA.forme >= 1 && phase() != OEUF), dessus = (vue == 1 && rotEcran == 0);
   if (dessus) dessinerBoiteDessus(); else dessinerBoite();
   int px, py; float e; positionEcran(px, py, e);
   uint32_t m = millis();
@@ -1178,6 +1368,7 @@ void dessinerAccueil() {
   bool pesanteur = R.actif[M_GRAVITE] && W.gravite;
   if (!sol && !pesanteur && !W.charge && !miroir) { int rr = (int)(30 * e) + (int)(3 * sinf(m / 400.0f)); cv.drawEllipse(px, py + (int)(46 * e), rr, 5, C(0, 230, 255)); cv.drawEllipse(px, py + (int)(46 * e), rr - 8, 3, C(255, 40, 170)); }   // anneau de lévitation
   if (!sol && m < finVol) { int fy = py + (int)(38 * e), l = 8 + (int)((m / 40) % 8); cv.fillTriangle(px - 14, fy, px - 6, fy, px - 10, fy + l, C(255, 200, 60)); cv.fillTriangle(px + 6, fy, px + 14, fy, px + 10, fy + l, C(255, 200, 60)); }   // petits réacteurs quand il vole
+  if (FA.forme == 2 && phase() != OEUF) dessinerPortail();
   dessinerObjets(false); dessinerPersonnage(px, py, e); dessinerObjets(true);
   if (miroir && contreVitre) {     // contre la vitre : sa buée, et pour Bulle ses mains à plat
     int bx = px, by = sol ? py - (int)(14 * e) : py + (int)(12 * e), rr = (int)(12 * e) + (int)(3 * sinf(m / 600.0f));
@@ -1186,6 +1377,7 @@ void dessinerAccueil() {
   }
   if (m < finCaresse) {
     if (!sol) { for (int i = 0; i < 3; i++) { int hx = px - 22 + i * 22, hy = py - (int)(44 * e) - (int)((1500 - (finCaresse - m)) / 40) - (i % 2) * 6; cv.fillCircle(hx - 3, hy, 3, C(255, 60, 150)); cv.fillCircle(hx + 3, hy, 3, C(255, 60, 150)); cv.fillTriangle(hx - 6, hy + 1, hx + 6, hy + 1, hx, hy + 8, C(255, 60, 150)); } }   // petits cœurs
+    else if (FA.forme == 2) { for (int i = 0; i < 5; i++) { int k = (int)((1500 - (finCaresse - m)) / 25) + i * 9; cv.drawCircle(px - 20 + i * 10, py - (int)(40 * e) - k, 2 + i % 3, C(150, 255, 200)); } }   // lui, il fait des bulles de joie
     else { float u = 34.0f * e * tailleAge(); int top = py - (int)(0.85f * u); for (int i = 0; i < 3; i++) { int k = (int)((1500 - (finCaresse - m)) / 30) + i * 7; int hx = px + (i - 1) * (int)(0.5f * u), hy = top - k; cv.fillRect(hx - 3 - k / 10, hy - 3 - k / 10, 6 + k / 5, 6 + k / 5, C(180, 220, 255)); } }   // lui, il fume de contentement par ses évents
   }
   if (W.charge && !sol) effetChargeApres(px, py, e);
@@ -2352,7 +2544,7 @@ void dessinerGriffes(int px, int py) { for (int i = 0; i < 3; i++) { int x = px 
 void dessinerPerso1() { int px, py; float e; positionEcran(px, py, e); dessinerPersonnage(px, py, e); if (millis() < finGriffe) dessinerGriffes(px, py); }
 // Bulle fait un petit salut de la main avant de s'endormir.
 void saluerAuRevoir() {
-  if (FA.forme == 1) return;      // le salut de la main est le geste de Bulle
+  if (FA.forme >= 1) return;      // le salut de la main est le geste de Bulle
   int px, py; float e;
   for (int f = 0; f < 16; f++) {
     uint32_t t0 = millis();
@@ -2448,10 +2640,11 @@ void gererTactile() {
   int x = t.x, y = t.y;
   if (rotEcran) { float th = rotEcran * 0.0174533f, dx = x - 160, dy = y - 120; x = 160 + (int)((dx * cosf(th) + dy * sinf(th)) / 0.75f); y = 120 + (int)((-dx * sinf(th) + dy * cosf(th)) / 0.75f); }
   bool dehors = (x < 0 || x >= 320 || y < 0 || y >= 240);
-  bool sol = (FA.forme == 1 && phase() != OEUF);
+  bool sol = (FA.forme >= 1 && phase() != OEUF);
   if (t.wasPressed() && !dehors) {
     if (y >= 204) { int b = constrain((x - 4) / 106, 0, 2); if (b == 1 && x >= 161) { pageRetourPerso = 24; page = 24; bip(700, 40); } else actionBarre(b); return; }
     if (hypot(x - px, y - py) < 64 * e) { touchePerso = true; debutToucher = m; xPrec = x; yPrec = y; }   // zone de toucher large : on l'attrape facilement
+    else if (FA.forme == 2 && phase() != OEUF && [&]() { int sx, sy; float e2; ecranSol(PORTAIL_X, PORTAIL_Y, 26, sx, sy, e2); return hypot(x - sx, y - sy) < 30; }()) { ouvrirPortail(); geste = G_PORTAIL; debutGeste = m; finGeste = m + 1800; }   // toucher le fond : le portail s'ouvre
     else if (phase() != OEUF) { miroirFin = m + 6000; miroirX = x; miroirY = y; }                          // un doigt sur la vitre : il vient voir
   }
   if (t.isPressed() && !dehors) {
