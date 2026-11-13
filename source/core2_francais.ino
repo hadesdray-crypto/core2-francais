@@ -1260,14 +1260,14 @@ void dessinerDessus(int px, int py, float e) {
   if (FA.forme == 1) {        // Enclume : le dessus du bloc, ses trois évents, ses deux gros poings
     uint16_t neon = FA.couleurAuto ? C(40, 130, 255) : C(FA.r, FA.g, FA.b); if (FA.humeurCouleur) neon = couleurHumeur(P.attitude, neon);
     uint16_t mid = (neon >> 1) & 0x7BEF, dark = (neon >> 2) & 0x39E7;
-    int W = (int)(0.95f * u), Hh = (int)(0.7f * u), fs = (int)(0.8f * u);
-    cv.fillRoundRect(px - W + ombre, py - Hh + ombre, W * 2, Hh * 2, 6, C(30, 8, 46));
+    int Wd = (int)(0.95f * u), Hh = (int)(0.7f * u), fs = (int)(0.8f * u);
+    cv.fillRoundRect(px - Wd + ombre, py - Hh + ombre, Wd * 2, Hh * 2, 6, C(30, 8, 46));
     float ps = enMarche ? sinf(pasPhase) : 0;
     for (int s = -1; s <= 1; s += 2) { int fy = py + (int)(Hh * 0.9f) + (int)(s * ps * 4 * e); cv.fillRoundRect(px + s * (int)(0.5f * u) - (int)(0.3f * u), fy, (int)(0.6f * u), (int)(0.25f * u), 3, mid); }   // les pieds dépassent devant
-    for (int s = -1; s <= 1; s += 2) { int fx = px + s * (W + fs / 2 + 2), fy = py + (int)(s * ps * -5 * e) + (P.attitude == ENERVE ? (int)(4 * sinf(t / 60.0f + s)) : 0); cv.fillRect(fx - fs / 2, fy - fs / 2, fs, fs, neon); cv.fillRect(fx - fs / 2 + 2, fy - fs / 2 + 2, fs - 4, fs - 4, mid); }
-    cv.fillRoundRect(px - W, py - Hh, W * 2, Hh * 2, 6, mid); cv.drawRoundRect(px - W, py - Hh, W * 2, Hh * 2, 6, neon);
+    for (int s = -1; s <= 1; s += 2) { int fx = px + s * (Wd + fs / 2 + 2), fy = py + (int)(s * ps * -5 * e) + (P.attitude == ENERVE ? (int)(4 * sinf(t / 60.0f + s)) : 0); cv.fillRect(fx - fs / 2, fy - fs / 2, fs, fs, neon); cv.fillRect(fx - fs / 2 + 2, fy - fs / 2 + 2, fs - 4, fs - 4, mid); }
+    cv.fillRoundRect(px - Wd, py - Hh, Wd * 2, Hh * 2, 6, mid); cv.drawRoundRect(px - Wd, py - Hh, Wd * 2, Hh * 2, 6, neon);
     int n = (ph == BEBE) ? 0 : (ph == ENFANT) ? 1 : (ph == ADO) ? 2 : 3;
-    for (int i = 0; i < n; i++) { int vx = px + (int)((i - (n - 1) / 2.0f) * W * 0.55f); cv.fillRect(vx - 4, py - 4, 9, 9, dark); cv.drawRect(vx - 4, py - 4, 9, 9, neon); if (W.charge || P.attitude == ENERVE) cv.fillRect(vx - 2, py - 2, 5, 5, P.attitude == ENERVE ? C(255, 140, 40) : C(150, 225, 255)); }
+    for (int i = 0; i < n; i++) { int vx = px + (int)((i - (n - 1) / 2.0f) * Wd * 0.55f); cv.fillRect(vx - 4, py - 4, 9, 9, dark); cv.drawRect(vx - 4, py - 4, 9, 9, neon); if (W.charge || P.attitude == ENERVE) cv.fillRect(vx - 2, py - 2, 5, 5, P.attitude == ENERVE ? C(255, 140, 40) : C(150, 225, 255)); }
   } else if (FA.forme == 2) {  // le Savant : ses épaules en blouse blanche et sa tête hérissée de cheveux blancs
     int hr = (int)(0.5f * u);
     cv.fillEllipse(px + ombre, py + ombre + hr / 2, (int)(0.7f * u), (int)(0.4f * u), C(30, 8, 46));
