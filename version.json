@@ -1,7 +1,12 @@
 {
-    "version": "2.2.0",
+    "version": "2.3.0",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
+        "La pièce est un vrai cube : quand tu penches le Core2 dans ta main, le fond se décale comme dans une vraie boîte ; l'image ne tourne plus.",
+        "Posé presque à plat, tu vois la pièce d'en haut, avec les personnages, la balle et la caisse vus de dessus ; redressé, tout revient de face.",
+        "La balle et la caisse restent au sol, glissent selon leur poids, ne collent plus au personnage, et tu peux les déplacer au doigt.",
+        "Sur le mur de gauche, un objet différent pour chaque personnage : touche-le et il va jouer avec (sac de frappe, tableau noir, hublot).",
+        "Bouton Perso : changer de personnage, changer d'habitat (ville néon, laboratoire, atelier forge), et le reste ; la tuile Personnage s'appelle Accueil.",
         "Nouveau personnage : le Savant fou. Il a son œuf (une fiole qui bouillonne), ses phases de bébé à ancien et ses gestes à lui : loupe, potion qui explose, eurêka, prise de notes.",
         "Son portail temporel s'ouvre à chaque heure pile (ou quand tu touches le fond de la pièce) : il en sort un objet d'une époque qui suit l'heure, et il court l'examiner.",
         "Bouton « Matinale » en tête du menu : le flash, l'édition complète et chaque sujet en voix, avec les jours d'avant (flèches en haut).",

@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.2.0"
+#define VERSION_PROGRAMME "2.3.0"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -42,7 +42,7 @@ struct Reglages {
   String ssid, motDePasse, ssid2, mdp2, nom = "Bulle";
   float lat = 48.85f, lon = 2.35f;     // Paris par défaut ; réglable depuis la page web ou l'appli
   int luminosite = 160, volume = 120;
-  int perso = 0; String reveil = ""; bool objets = true;
+  int perso = 0; String reveil = ""; bool objets = true; int habitat = 0;
 } R;
 Preferences prefs;
 
@@ -75,7 +75,7 @@ void chargerReglages() {
   R.lon = prefs.getFloat("lon", 2.35f);
   R.luminosite = prefs.getInt("lum", 160);
   R.volume = prefs.getInt("vol", 120);
-  R.perso = constrain(prefs.getInt("perso", 0), 0, NB_PERSOS - 1); R.reveil = prefs.getString("reveil", ""); R.objets = prefs.getBool("objets", true);
+  R.perso = constrain(prefs.getInt("perso", 0), 0, NB_PERSOS - 1); R.reveil = prefs.getString("reveil", ""); R.objets = prefs.getBool("objets", true); R.habitat = prefs.getInt("hab", 0);
   chargerConnus();
 }
 void sauverReglages() {
@@ -86,7 +86,7 @@ void sauverReglages() {
   prefs.putString("ssid2", R.ssid2); prefs.putString("mdp2", R.mdp2);
   prefs.putFloat("lat", R.lat); prefs.putFloat("lon", R.lon);
   prefs.putInt("lum", R.luminosite); prefs.putInt("vol", R.volume);
-  prefs.putInt("perso", R.perso); prefs.putString("reveil", R.reveil); prefs.putBool("objets", R.objets);
+  prefs.putInt("perso", R.perso); prefs.putString("reveil", R.reveil); prefs.putBool("objets", R.objets); prefs.putInt("hab", R.habitat);
 }
 
 // ---------- Personnage ----------
@@ -568,6 +568,13 @@ float pasPhase = 0; bool enMarche = false; uint32_t poussiere = 0, prochaineMarc
 float gzL = 0;
 int pageRetourPerso = 6, retourSous = 15;
 float cibleSolX[4] = {0, 0.46f, -0.54f, 0}, cibleSolY[4] = {0, 0.72f, 0.72f, 0.1f};   // lit, gamelle, prise : sur le sol, au fond
+float parX = 0, parY = 0;            // effet de profondeur : le fond se décale quand on penche le Core2 dans la main
+uint32_t murFin = 0; bool murFait = false; float sacAngle = 0, sacVit = 0; int lignesTableau = 2;   // l'objet du mur de gauche
+void ecranSol(float x, float y, float h, int& sx, int& sy, float& e) {        // un point du sol vers l'écran
+  if (vue == 1) { e = 0.8f; sx = 160 + (int)(x * 130 + parX * 0.4f); sy = 100 + (int)(y * 80 + parY * 0.4f) - (int)(h * 0.5f); return; }
+  float d = constrain((y + 0.78f) / 1.56f, 0.0f, 1.0f); e = 1.0f - 0.38f * d;
+  sx = 160 + (int)(x / 0.78f * (160 - 52 * d) * 0.82f + parX * d); sy = 197 - (int)(d * 33) + (int)(parY * d) - (int)(h * e);
+}
 float tailleAge() { Phase ph = modeApercu ? ADULTE : phase(); return (ph == BEBE) ? 0.6f : (ph == ENFANT) ? 0.8f : (ph == ADO) ? 0.95f : (ph == ADULTE) ? 1.1f : 1.0f; }
 
 // Un choc contre une paroi : le corps s'écrase en ressort, ça fait « boum » et le boîtier vibre.
@@ -601,7 +608,7 @@ void majPortail(float dt) {
     if (W.heureValide && getLocalTime(&th, 0) && th.tm_min == 0 && th.tm_hour != derniereHeure) { derniereHeure = th.tm_hour; ouvrirPortail(); } }
   if (m < portailFin && !objT.actif && m - portailDebut > 1800) {             // l'objet sort du portail
     objT = {PORTAIL_X, PORTAIL_Y - 0.05f, 46, 40, true, portailEre, m + 25000};
-    objT.ere = portailEre; dire("Ooh ! " + String(NOMS_ERES[portailEre]) + " !", 3500);
+    objT.ere = portailEre; dire((String("Ooh ! ") + NOMS_ERES[portailEre] + " !").c_str(), 3500);
   }
   if (objT.actif) {
     float tx = 0.1f + 0.3f * sinf(portailDebut), ty = 0.25f;                    // il roule vers le milieu de la pièce
@@ -621,7 +628,13 @@ void physiqueSol(float dt, bool pesanteur, float linx) {
   if (fabsf(linx) > 0.1f) ax2 += -linx * 5.0f / sqrtf(ms);             // la main qui bouge : il garde son inertie
   bool miroir = m < miroirFin;
   float tx = marcheX, ty = marcheY; bool bouge = true;
-  if (miroir) { float d0 = 1.0f; tx = constrain((miroirX - 160) / (108.0f * 0.82f) * 0.78f * d0, -0.7f, 0.7f); ty = -0.74f; }
+  bool dessus = (vue == 1), auMur = m < murFin;
+  if (miroir && dessus) { tx = constrain((miroirX - 160) / 130.0f, -0.75f, 0.75f); ty = constrain((miroirY - 100) / 80.0f, -0.75f, 0.75f); }   // vu d'en haut : il va là où on a touché
+  else if (miroir) { tx = constrain((miroirX - 160) / (108.0f * 0.82f) * 0.78f, -0.7f, 0.7f); ty = -0.74f; }
+  else if (auMur) {          // il va jouer avec l'objet du mur de gauche
+    tx = -0.72f; ty = 0.1f;
+    if (!murFait && fabsf(tx - P.x) + fabsf(ty - P.y) < 0.12f) { murFait = true; geste = (FA.forme == 1) ? G_POINGS : G_NOTE; debutGeste = m; finGeste = m + (FA.forme == 1 ? 1600 : 3000); if (FA.forme == 2) lignesTableau = (lignesTableau >= 6) ? 1 : lignesTableau + 1; }
+  }
   else if (cible) { tx = cibleSolX[cible]; ty = cibleSolY[cible]; }
   else if (FA.forme == 2 && objT.actif) {      // le savant court voir l'objet sorti du portail, puis l'examine à la loupe
     tx = objT.x; ty = objT.y - 0.1f;
@@ -641,7 +654,11 @@ void physiqueSol(float dt, bool pesanteur, float linx) {
   const float lim = 0.78f;
   if (P.x > lim) { P.x = lim; choc(fabsf(P.vx) * 3, false); P.vx = 0; } if (P.x < -lim) { P.x = -lim; choc(fabsf(P.vx) * 3, false); P.vx = 0; }
   if (P.y > lim) { P.y = lim; P.vy = 0; } if (P.y < -lim) { P.y = -lim; P.vy = 0; }
-  contreVitre = miroir && P.y < -0.68f;
+  contreVitre = miroir && !dessus && P.y < -0.68f;
+  { static bool frappe = false; float pg = progGeste();             // le sac de frappe : un pendule
+    if (FA.forme == 1 && geste == G_POINGS && P.x < -0.55f && pg > 0.45f && !frappe) { frappe = true; sacVit += 2.6f; jouer(S_CHOC); vibrer(60); }
+    if (geste != G_POINGS) frappe = false;
+    sacVit += -sinf(sacAngle) * 9.0f * dt; sacVit *= expf(-0.7f * dt); sacAngle += sacVit * dt; }
   P.z = 0.35f;
 }
 void physique(float dt) {
@@ -656,12 +673,11 @@ void physique(float dt) {
     {   // comment le Core2 est posé : debout, à plat sur la table, ou en hauteur
       static float ox = 0, oy = 1, oz = 0; static int cand = 0; static uint32_t tCand = 0;
       float a0 = 1.0f - expf(-dt / 0.4f); ox += (ax - ox) * a0; oy += (ay - oy) * a0; oz += (az - oz) * a0;
-      int c = 0;
-      if (fabsf(oz) > 0.85f) c = 1; else if (ox > 0.75f && fabsf(oz) < 0.6f) c = 2; else if (ox < -0.75f && fabsf(oz) < 0.6f) c = 3;
+      int c = vue;                                  // la pièce reste d'un seul bloc ; presque à plat on la voit d'en haut, redressé on revient de face
+      if (fabsf(oz) > 0.92f) c = 1; else if (fabsf(oz) < 0.6f) c = 0;
       if (c != cand) { cand = c; tCand = m; }
-      else if (m - tCand > 900) { int nv = (c == 1) ? 1 : 0, nr = (c == 2) ? -90 : (c == 3 ? 90 : 0); if (nv != vue || nr != rotEcran) { vue = nv; rotEcran = nr; changeVue = true; } }
+      else if (m - tCand > 500 && c != vue) { vue = c; rotEcran = 0; changeVue = true; }
     }
-    if (rotEcran) { float rx = ax, ry = ay; if (rotEcran == -90) { ax = -ry; ay = rx; } else { ax = ry; ay = -rx; } }   // en hauteur : la gravité tourne avec l'image
     if (changeVue) { changeVue = false; axPrec = ax; ayPrec = ay; azPrec = az; }
     float sec = fabs(ax - axPrec) + fabs(ay - ayPrec) + fabs(az - azPrec);
     { static uint32_t debutRenverse = 0; static bool renverseDit = false;      // retourné la tête en bas
@@ -680,6 +696,7 @@ void physique(float dt) {
     }
     float a = 1.0f - expf(-dt / 0.35f);                // la gravité est la partie lente du signal, le reste est le mouvement de la main
     gxL += (ax - gxL) * a; gyL += (ay - gyL) * a; gzL += (az - gzL) * a;
+    { float tx = constrain(gxL * 18.0f, -14.0f, 14.0f), ty = constrain(vue == 1 ? -gyL * 14.0f : -gzL * 16.0f, -12.0f, 12.0f); parX += (tx - parX) * 0.2f; parY += (ty - parY) * 0.2f; }
     linx = ax - gxL; liny = ay - gyL;
     float gf0 = pesanteur ? FA.gravite / 100.0f : (FA.mode0g == 1 ? 0.12f : (FA.mode0g == 2 ? 0.22f : 0.0f));
     gSceneX = -(gxL * 7.0f * gf0 + linx * 8.0f); gSceneY = gyL * 7.0f * gf0 + liny * 8.0f;
@@ -693,8 +710,14 @@ void physique(float dt) {
   if (m < miroirFin && phase() != OEUF) {      // Bulle vient tout contre la vitre, face au doigt
     float tx = constrain((miroirX - 160) / 110.0f, -0.7f, 0.7f), ty = constrain((miroirY - 100) / 70.0f, -0.6f, 0.5f);
     P.vx += ((tx - P.x) * 6.0f - P.vx * 3.5f) * dt; P.vy += ((ty - P.y) * 6.0f - P.vy * 3.5f) * dt;
-    P.x += P.vx * dt; P.y += P.vy * dt; zLisse += (-0.25f - zLisse) * min(1.0f, dt * 2.5f); P.z = zLisse; finVol = 0;
-    contreVitre = P.z < -0.18f; return;
+    P.x += P.vx * dt; P.y += P.vy * dt; zLisse += ((vue == 1 ? 0.35f : -0.25f) - zLisse) * min(1.0f, dt * 2.5f); P.z = zLisse; finVol = 0;
+    contreVitre = vue != 1 && P.z < -0.18f; return;
+  }
+  if (m < murFin && phase() != OEUF) {          // Bulle vole jusqu'au hublot du mur de gauche et regarde les étoiles
+    float tx = -0.7f, ty = -0.15f;
+    P.vx += ((tx - P.x) * 5.0f - P.vx * 3.5f) * dt; P.vy += ((ty - P.y) * 5.0f - P.vy * 3.5f) * dt; P.x += P.vx * dt; P.y += P.vy * dt; finVol = 0;
+    if (!murFait && fabsf(tx - P.x) + fabsf(ty - P.y) < 0.1f) { murFait = true; geste = G_REGARDE; debutGeste = m; finGeste = m + 3000; }
+    return;
   }
   if (cible && !(pesanteur && (fabs(ax) > 0.45f || fabs(ay) > 0.45f))) {   // il va au lit ou à la gamelle
     P.z = 0.5f;
@@ -746,55 +769,97 @@ uint16_t C(uint8_t r, uint8_t g, uint8_t b) { return cv.color565(r, g, b); }
 // ---------- Décor : ville néon, lit et gamelle ----------
 static const int LIT_X = 188, LIT_W = 52, GAM_X = 74, GAM_W = 44;   // position à l'écran, au pied du mur du fond
 
+// Le mur de gauche : un point (u de 0 = bord avant à 1 = fond, v de 0 = haut à 1 = bas) vers l'écran.
+static int murGx(float u) { return (int)(u * (52 + parX)); }
+static int murGy(float u, float v) { float yt = u * (36 + parY), yb = 200 + u * ((200 - 36 + parY) - 200); return (int)(yt + v * (yb - yt)); }
+static void quadMur(float u0, float v0, float u1, float v1, uint16_t c) {
+  int x0 = murGx(u0), x1 = murGx(u1);
+  cv.fillTriangle(x0, murGy(u0, v0), x1, murGy(u1, v0), x0, murGy(u0, v1), c); cv.fillTriangle(x1, murGy(u1, v0), x1, murGy(u1, v1), x0, murGy(u0, v1), c);
+}
+void dessinerObjetMur() {        // l'objet du mur de gauche, différent pour chaque personnage
+  uint32_t t = millis();
+  if (FA.forme == 1) {           // Enclume : un sac de frappe qui se balance
+    int ax = murGx(0.55f), ay = murGy(0.55f, 0.0f), l = 46;
+    int bx = ax + (int)(sinf(sacAngle) * l), by = ay + (int)(cosf(sacAngle) * l);
+    cv.drawLine(ax, ay, bx, by, C(150, 150, 160));
+    cv.fillRoundRect(bx - 9, by, 18, 40, 7, C(150, 40, 40)); cv.drawRoundRect(bx - 9, by, 18, 40, 7, C(255, 120, 90)); cv.drawFastHLine(bx - 8, by + 12, 16, C(90, 20, 20)); cv.drawFastHLine(bx - 8, by + 28, 16, C(90, 20, 20));
+  } else if (FA.forme == 2) {    // le Savant : un tableau noir couvert de formules
+    quadMur(0.2f, 0.22f, 0.85f, 0.58f, C(20, 60, 40)); 
+    for (int i = 0; i < lignesTableau && i < 6; i++) { float v = 0.27f + i * 0.05f; int x0 = murGx(0.28f), x1 = murGx(0.28f + 0.1f * ((i * 37) % 5 + 2)); cv.drawLine(x0, murGy(0.28f, v), x1, murGy(0.28f + 0.1f * ((i * 37) % 5 + 2), v), C(230, 235, 220)); }
+    cv.drawLine(murGx(0.2f), murGy(0.2f, 0.58f), murGx(0.85f), murGy(0.85f, 0.58f), C(170, 120, 70));
+  } else {                       // Bulle : un hublot qui donne sur les étoiles
+    int cx = murGx(0.5f), cy = murGy(0.5f, 0.38f), rx = max(6, (int)((52 + parX) * 0.16f)), ry = 20;
+    cv.fillEllipse(cx, cy, rx, ry, C(8, 6, 30)); cv.drawEllipse(cx, cy, rx, ry, C(0, 230, 255)); cv.drawEllipse(cx, cy, rx + 2, ry + 2, C(180, 190, 220));
+    for (int i = 0; i < 5; i++) if (((t / 400) + i) % 4) cv.drawPixel(cx - rx / 2 + (i * 7) % (rx + 1), cy - ry / 2 + (i * 11) % ry, C(255, 255, 255));
+  }
+}
+static const char* NOMS_HABITAT[3] = {"Ville néon", "Laboratoire", "Atelier forge"};
 void dessinerBoite() {
   const int L = 320, H = 200;           // zone de la boîte (le bas est pour les boutons)
-  int ix = 52, iy = 36;                 // fond de la boîte
-  uint16_t cyan = C(0, 230, 255), rose = C(255, 40, 170), mur = C(14, 12, 34), murCote = C(18, 14, 44), sol = C(22, 16, 46);
+  const int ix = 52, iy = 36;
+  int bx0 = ix + (int)parX, by0 = iy + (int)parY, bx1 = L - ix + (int)parX, by1 = H - iy + (int)parY, bw = bx1 - bx0, bh = by1 - by0;   // le fond se décale quand on penche : effet de profondeur
+  int hab = constrain(R.habitat, 0, 2);
+  uint16_t cyan = C(0, 230, 255), rose = C(255, 40, 170);
+  uint16_t mur = hab == 1 ? C(30, 40, 46) : (hab == 2 ? C(36, 20, 16) : C(14, 12, 34)), murCote = hab == 1 ? C(38, 50, 56) : (hab == 2 ? C(48, 26, 20) : C(18, 14, 44)), sol = hab == 1 ? C(40, 46, 52) : (hab == 2 ? C(40, 30, 26) : C(22, 16, 46));
+  uint16_t grille = hab == 1 ? C(80, 100, 110) : (hab == 2 ? C(90, 60, 40) : C(70, 30, 120)), arete = hab == 2 ? C(255, 140, 40) : rose;
   cv.fillScreen(C(6, 6, 16));
-  // fond : la ville la nuit
-  bool jour = R.actif[M_HEURE] && W.heureValide && !W.nuit;      // le décor suit l'heure : jour ou nuit
-  cv.fillRect(ix, iy, L - 2 * ix, H - 2 * iy, jour ? C(30, 70, 130) : C(10, 8, 28));
-  if (jour) { int sx = ix + 190, sy = iy + 22; cv.fillCircle(sx, sy, 9, C(255, 225, 90)); for (int k = 0; k < 8; k++) { float a = k * 0.785f + millis() / 4000.0f; cv.drawLine(sx + (int)(cosf(a) * 12), sy + (int)(sinf(a) * 12), sx + (int)(cosf(a) * 17), sy + (int)(sinf(a) * 17), C(255, 225, 90)); } }
-  else { int sx = ix + 190, sy = iy + 22; cv.fillCircle(sx, sy, 8, C(225, 225, 255)); cv.fillCircle(sx + 4, sy - 2, 7, C(10, 8, 28)); }
-  static const uint8_t haut[9] = {50, 78, 40, 92, 62, 84, 46, 70, 56};
-  for (int i = 0; i < 9; i++) {
-    int bx = ix + 4 + i * 23, bh = haut[i], by = H - iy - bh;
-    cv.fillRect(bx, by, 20, bh, jour ? C(40, 52, 96) : C(16, 14, 40)); cv.drawRect(bx, by, 20, bh, jour ? C(90, 110, 170) : C(44, 32, 96));
-    for (int f = 0; f < 6; f++) {
-      int wx = bx + 3 + (f % 3) * 6, wy = by + 5 + (f / 3) * 10 + ((i * 7 + f * 3) % 4) * 6;
-      if (wy < H - iy - 6 && (jour ? ((i * 5 + f * 3) % 5 == 0) : (((i * 5 + f * 3 + (int)(millis() / 3000)) % 3) != 0))) cv.fillRect(wx, wy, 3, 4, ((i + f) % 2) ? C(255, 220, 90) : cyan);
+  bool jour = R.actif[M_HEURE] && W.heureValide && !W.nuit;
+  // la vue du dehors : tout le mur du fond (ville) ou une fenêtre (laboratoire, atelier)
+  int fx = bx0, fy = by0, fw = bw, fh = bh;
+  if (hab != 0) {
+    cv.fillRect(bx0, by0, bw, bh, hab == 1 ? C(200, 215, 210) : C(110, 50, 36));
+    if (hab == 1) { for (int k = 0; k < bw; k += 14) cv.drawFastVLine(bx0 + k, by0, bh, C(170, 185, 180)); for (int k = 0; k < bh; k += 14) cv.drawFastHLine(bx0, by0 + k, bw, C(170, 185, 180));
+      for (int s = 0; s < 2; s++) { int sy = by0 + 70 + s * 30; cv.fillRect(bx0 + 110, sy, 90, 4, C(120, 90, 60)); for (int f = 0; f < 4; f++) cv.fillRoundRect(bx0 + 116 + f * 21, sy - 14, 9, 14, 3, (f + s) % 3 == 0 ? C(80, 255, 140) : ((f + s) % 3 == 1 ? C(255, 80, 180) : C(80, 160, 255))); } }   // étagères de fioles
+    else { for (int r = 0; r < bh; r += 10) for (int k = ((r / 10) % 2) * 10; k < bw; k += 20) cv.drawRect(bx0 + k, by0 + r, 20, 10, C(80, 34, 24));
+      int fx2 = bx0 + 140, fy2 = by0 + 60; cv.fillRoundRect(fx2, fy2, 56, 58, 6, C(60, 30, 26)); cv.fillRoundRect(fx2 + 10, fy2 + 18, 36, 30, 10, ((millis() / 200) % 2) ? C(255, 140, 30) : C(255, 90, 20)); }   // le four de la forge
+    fx = bx0 + 16; fy = by0 + 12; fw = 80; fh = 54;
+  }
+  cv.fillRect(fx, fy, fw, fh, jour ? C(30, 70, 130) : C(10, 8, 28));
+  if (jour) { int sx = fx + fw - 26, sy = fy + 18; cv.fillCircle(sx, sy, 8, C(255, 225, 90)); }
+  else { int sx = fx + fw - 26, sy = fy + 18; cv.fillCircle(sx, sy, 7, C(225, 225, 255)); cv.fillCircle(sx + 4, sy - 2, 6, C(10, 8, 28)); }
+  if (hab == 0) {
+    static const uint8_t haut[9] = {50, 78, 40, 92, 62, 84, 46, 70, 56};
+    for (int i = 0; i < 9; i++) {
+      int bx = bx0 + 4 + i * 23, bhh = haut[i], by = by1 - bhh;
+      cv.fillRect(bx, by, 20, bhh, jour ? C(40, 52, 96) : C(16, 14, 40)); cv.drawRect(bx, by, 20, bhh, jour ? C(90, 110, 170) : C(44, 32, 96));
+      for (int f = 0; f < 6; f++) { int wx = bx + 3 + (f % 3) * 6, wy = by + 5 + (f / 3) * 10 + ((i * 7 + f * 3) % 4) * 6;
+        if (wy < by1 - 6 && (jour ? ((i * 5 + f * 3) % 5 == 0) : (((i * 5 + f * 3 + (int)(millis() / 3000)) % 3) != 0))) cv.fillRect(wx, wy, 3, 4, ((i + f) % 2) ? C(255, 220, 90) : cyan); }
     }
+    cv.drawRect(bx0 + 150, by0 + 8, 40, 12, rose); cv.drawFastHLine(bx0 + 154, by0 + 14, 32, rose);
   }
-  cv.drawRect(ix + 150, iy + 8, 40, 12, rose); cv.drawFastHLine(ix + 154, iy + 14, 32, rose);     // enseigne néon
-  if (R.actif[M_METEO] && W.meteoValide) {      // le temps qu'il fait dehors, visible d'un coup d'œil derrière lui
-    int cm = W.codeMeteo, x0 = ix + 1, y0 = iy + 1, lw = L - 2 * ix - 2, lh = H - 2 * iy - 2; uint32_t tm = millis();
+  if (R.actif[M_METEO] && W.meteoValide) {      // le temps qu'il fait dehors
+    int cm = W.codeMeteo, x0 = fx + 1, y0 = fy + 1, lw = fw - 2, lh = fh - 2; uint32_t tm = millis();
     bool nuages = (cm >= 1 && cm <= 3) || cm >= 45, pluie = (cm >= 51 && cm <= 67) || (cm >= 80 && cm <= 82) || cm >= 95, neige = (cm >= 71 && cm <= 77) || cm == 85 || cm == 86, brouillard = (cm == 45 || cm == 48);
+    cv.setClipRect(fx, fy, fw, fh);
     if (nuages) { uint16_t cn = jour ? C(200, 205, 225) : C(70, 70, 100); int n = (cm >= 3) ? 4 : 2; for (int k = 0; k < n; k++) { int cx = x0 + (int)((k * 67 + tm / 120) % (lw + 40)) - 20, cy = y0 + 12 + (k % 2) * 14; cv.fillCircle(cx, cy, 8, cn); cv.fillCircle(cx + 9, cy - 3, 10, cn); cv.fillCircle(cx + 19, cy, 8, cn); } }
-    if (pluie) for (int k = 0; k < 18; k++) { int rx = x0 + (k * 37 + tm / 9) % lw, ry = y0 + (k * 23 + tm / 4) % lh; cv.drawLine(rx, ry, rx - 2, ry + 6, C(130, 170, 255)); }
-    if (neige) for (int k = 0; k < 16; k++) { int rx = x0 + (k * 41 + (int)(6 * sinf(tm / 700.0f + k))) % lw, ry = y0 + (k * 29 + tm / 25) % lh; cv.fillCircle(rx, ry, 1, C(240, 245, 255)); }
-    if (brouillard) for (int k = 0; k < 4; k++) cv.drawFastHLine(x0, y0 + 30 + k * 22, lw, C(150, 150, 170));
-    if (cm >= 95 && (tm % 4000) < 140) cv.fillRect(x0, y0, lw, lh, C(220, 220, 255));                 // éclair d'orage
-    cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_right); cv.setTextColor(C(255, 255, 255)); cv.drawString(String((int)roundf(W.temperature)) + " °C", L - ix - 4, y0 + 2); cv.setTextDatum(top_left);
+    if (pluie) for (int k = 0; k < 18; k++) { int rx = x0 + (k * 37 + tm / 9) % max(1, lw), ry = y0 + (k * 23 + tm / 4) % max(1, lh); cv.drawLine(rx, ry, rx - 2, ry + 6, C(130, 170, 255)); }
+    if (neige) for (int k = 0; k < 16; k++) { int rx = x0 + (k * 41 + (int)(6 * sinf(tm / 700.0f + k))) % max(1, lw), ry = y0 + (k * 29 + tm / 25) % max(1, lh); cv.fillCircle(rx, ry, 1, C(240, 245, 255)); }
+    if (brouillard) for (int k = 0; k < 4; k++) cv.drawFastHLine(x0, y0 + 10 + k * (lh / 5), lw, C(150, 150, 170));
+    if (cm >= 95 && (tm % 4000) < 140) cv.fillRect(x0, y0, lw, lh, C(220, 220, 255));
+    cv.clearClipRect();
+    cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_right); cv.setTextColor(C(255, 255, 255)); cv.drawString(String((int)roundf(W.temperature)) + " °C", fx + fw - 3, fy + 2); cv.setTextDatum(top_left);
   }
-  cv.fillTriangle(0, 0, L, 0, L - ix, iy, mur); cv.fillTriangle(0, 0, ix, iy, L - ix, iy, mur);               // plafond
-  cv.fillTriangle(0, H, L, H, L - ix, H - iy, sol); cv.fillTriangle(0, H, ix, H - iy, L - ix, H - iy, sol); // sol
-  cv.fillTriangle(0, 0, 0, H, ix, H - iy, murCote); cv.fillTriangle(0, 0, ix, iy, ix, H - iy, murCote);       // mur gauche
-  cv.fillTriangle(L, 0, L, H, L - ix, H - iy, murCote); cv.fillTriangle(L, 0, L - ix, iy, L - ix, H - iy, murCote);
-  // grille du sol
-  for (int k = 0; k <= 8; k++) cv.drawLine(k * L / 8, H, ix + k * (L - 2 * ix) / 8, H - iy, C(70, 30, 120));
-  for (int j = 1; j <= 3; j++) { float t = j * j / 9.0f; int y = H - (int)(iy * t), xl = (int)(ix * t); cv.drawFastHLine(xl, y, L - 2 * xl, C(70, 30, 120)); }
-  // arêtes néon
-  cv.drawRect(ix, iy, L - 2 * ix, H - 2 * iy, cyan);
-  cv.drawLine(0, 0, ix, iy, rose); cv.drawLine(L, 0, L - ix, iy, rose);
-  cv.drawLine(0, H, ix, H - iy, rose); cv.drawLine(L, H, L - ix, H - iy, rose);
-  // le lit (capsule de sommeil), à droite
-  cv.fillRoundRect(LIT_X, 146, LIT_W, 18, 5, C(36, 28, 76)); cv.drawRoundRect(LIT_X, 146, LIT_W, 18, 5, rose);
-  cv.fillRoundRect(LIT_X + 4, 140, 16, 9, 4, C(200, 200, 255)); cv.drawFastHLine(LIT_X + 4, 162, LIT_W - 8, rose);
-  // la gamelle (distributeur de granulés), à gauche
-  cv.fillRect(GAM_X + 10, 126, GAM_W - 20, 22, C(30, 28, 60)); cv.drawRect(GAM_X + 10, 126, GAM_W - 20, 22, cyan);
-  cv.fillCircle(GAM_X + GAM_W / 2, 132, 2, ((millis() / 600) % 2) ? C(80, 255, 140) : C(20, 80, 50));
-  cv.fillRoundRect(GAM_X, 150, GAM_W, 14, 5, C(30, 28, 60)); cv.drawRoundRect(GAM_X, 150, GAM_W, 14, 5, cyan);
-  for (int g = 0; g < 4; g++) cv.fillCircle(GAM_X + 9 + g * 9, 150, 2, C(80, 255, 140));
+  if (hab != 0) { cv.drawRect(fx, fy, fw, fh, C(220, 220, 230)); cv.drawFastVLine(fx + fw / 2, fy, fh, C(220, 220, 230)); }
+  // les murs, le plafond et le sol : la boîte en profondeur
+  cv.fillTriangle(0, 0, L, 0, bx1, by0, mur); cv.fillTriangle(0, 0, bx0, by0, bx1, by0, mur);
+  cv.fillTriangle(0, H, L, H, bx1, by1, sol); cv.fillTriangle(0, H, bx0, by1, bx1, by1, sol);
+  cv.fillTriangle(0, 0, 0, H, bx0, by1, murCote); cv.fillTriangle(0, 0, bx0, by0, bx0, by1, murCote);
+  cv.fillTriangle(L, 0, L, H, bx1, by1, murCote); cv.fillTriangle(L, 0, bx1, by0, bx1, by1, murCote);
+  for (int k = 0; k <= 8; k++) cv.drawLine(k * L / 8, H, bx0 + k * bw / 8, by1, grille);
+  for (int j = 1; j <= 3; j++) { float t = j * j / 9.0f; int y = H + (int)((by1 - H) * t), xl = (int)(bx0 * t), xr = L + (int)((bx1 - L) * t); cv.drawLine(xl, y, xr, y, grille); }
+  for (int j = 1; j <= 3; j++) { float t = j / 4.0f; cv.drawLine((int)(bx0 * t), (int)(by0 * t), (int)(bx0 * t), H + (int)((by1 - H) * t), murCote == C(18, 14, 44) ? C(28, 22, 60) : grille); cv.drawLine(L + (int)((bx1 - L) * t), (int)(by0 * t), L + (int)((bx1 - L) * t), H + (int)((by1 - H) * t), murCote == C(18, 14, 44) ? C(28, 22, 60) : grille); }   // les lignes des murs donnent la profondeur
+  cv.drawRect(bx0, by0, bw, bh, hab == 0 ? cyan : arete);
+  cv.drawLine(0, 0, bx0, by0, arete); cv.drawLine(L, 0, bx1, by0, arete);
+  cv.drawLine(0, H, bx0, by1, arete); cv.drawLine(L, H, bx1, by1, arete);
+  dessinerObjetMur();
+  // le lit et la gamelle, au pied du mur du fond
+  int lx = LIT_X + (int)(parX * 0.95f), gx = GAM_X + (int)(parX * 0.95f), dy = (int)(parY * 0.95f);
+  cv.fillRoundRect(lx, 146 + dy, LIT_W, 18, 5, C(36, 28, 76)); cv.drawRoundRect(lx, 146 + dy, LIT_W, 18, 5, rose);
+  cv.fillRoundRect(lx + 4, 140 + dy, 16, 9, 4, C(200, 200, 255)); cv.drawFastHLine(lx + 4, 162 + dy, LIT_W - 8, rose);
+  cv.fillRect(gx + 10, 126 + dy, GAM_W - 20, 22, C(30, 28, 60)); cv.drawRect(gx + 10, 126 + dy, GAM_W - 20, 22, cyan);
+  cv.fillCircle(gx + GAM_W / 2, 132 + dy, 2, ((millis() / 600) % 2) ? C(80, 255, 140) : C(20, 80, 50));
+  cv.fillRoundRect(gx, 150 + dy, GAM_W, 14, 5, C(30, 28, 60)); cv.drawRoundRect(gx, 150 + dy, GAM_W, 14, 5, cyan);
+  for (int g = 0; g < 4; g++) cv.fillCircle(gx + 9 + g * 9, 150 + dy, 2, C(80, 255, 140));
 }
 
 
@@ -819,15 +884,15 @@ void dessinerBoiteDessus() {
 void positionEcran(int& px, int& py, float& echelle) {
   const int L = 320, H = 200;
   bool sol = (FA.forme >= 1 && phase() != OEUF);
-  if (vue == 1 && rotEcran == 0) { echelle = 0.8f; px = 160 + (int)(P.x * 130); py = 100 + (int)(P.y * 80); if (sol) py -= (int)(0.45f * 34 * echelle * tailleAge()); return; }
+  if (vue == 1) { echelle = 0.8f; px = 160 + (int)(P.x * 130 + parX * 0.4f); py = 100 + (int)(P.y * 80 + parY * 0.4f); return; }
   if (sol) {        // sur le sol : plus il est au fond, plus il est petit et haut
     float d = constrain((P.y + 0.78f) / 1.56f, 0.0f, 1.0f); echelle = 1.0f - 0.38f * d;
-    float demi = 160 - 52 * d; px = 160 + (int)(P.x / 0.78f * demi * 0.82f);
-    py = 197 - (int)(d * 33) - (int)(0.9f * 34.0f * echelle * tailleAge()); if (P.porte) py -= (int)(22 * echelle); return;
+    float demi = 160 - 52 * d; px = 160 + (int)(P.x / 0.78f * demi * 0.82f + parX * d);
+    py = 197 - (int)(d * 33) + (int)(parY * d) - (int)(0.9f * 34.0f * echelle * tailleAge()); if (P.porte) py -= (int)(22 * echelle); return;
   }
   echelle = 1.0f - 0.45f * P.z;
-  px = L / 2 + (int)(P.x * 110 * echelle);
-  py = H / 2 + (int)(P.y * 70 * echelle);
+  px = L / 2 + (int)(P.x * 110 * echelle + parX * 0.5f);
+  py = H / 2 + (int)(P.y * 70 * echelle + parY * 0.5f);
 }
 
 // ---------- Animation de charge : il se branche, il prend le courant, il se sent bien ----------
@@ -1051,11 +1116,6 @@ void dessinerEnclume(int px, int py, float e) {
   if (!modeApercu && millis() - poussiere < 350) { int k = (millis() - poussiere) / 40; for (int s = -1; s <= 1; s += 2) cv.drawCircle(px + s * (W + k * 2), yPied - 2, 2 + k, C(110, 100, 140)); }   // poussière à chaque pas
 }
 
-void ecranSol(float x, float y, float h, int& sx, int& sy, float& e) {        // un point du sol vers l'écran
-  if (vue == 1 && rotEcran == 0) { e = 0.8f; sx = 160 + (int)(x * 130); sy = 100 + (int)(y * 80) - (int)(h * 0.5f); return; }
-  float d = constrain((y + 0.78f) / 1.56f, 0.0f, 1.0f); e = 1.0f - 0.38f * d;
-  sx = 160 + (int)(x / 0.78f * (160 - 52 * d) * 0.82f); sy = 197 - (int)(d * 33) - (int)(h * e);
-}
 void dessinerObjetEre(int x, int y, int ere, float e) {
   int r = max(4, (int)(9 * e)); uint16_t or_ = C(255, 200, 80), gris = C(170, 175, 190), bleu = C(80, 140, 255);
   switch (ere) {
@@ -1192,7 +1252,47 @@ void dessinerSavant(int px, int py, float e) {
 }
 
 void dessinerBulle(int px, int py, float e);
+// ---------- Les personnages vus d'en haut (Core2 posé à plat) ----------
+void dessinerDessus(int px, int py, float e) {
+  Phase ph = phase(); uint32_t t = millis();
+  float u = 34.0f * e * tailleAge();
+  int ombre = (FA.forme == 0) ? (int)(6 + 10 * P.z) : 3;          // Bulle vole : son ombre est plus loin
+  if (FA.forme == 1) {        // Enclume : le dessus du bloc, ses trois évents, ses deux gros poings
+    uint16_t neon = FA.couleurAuto ? C(40, 130, 255) : C(FA.r, FA.g, FA.b); if (FA.humeurCouleur) neon = couleurHumeur(P.attitude, neon);
+    uint16_t mid = (neon >> 1) & 0x7BEF, dark = (neon >> 2) & 0x39E7;
+    int W = (int)(0.95f * u), Hh = (int)(0.7f * u), fs = (int)(0.8f * u);
+    cv.fillRoundRect(px - W + ombre, py - Hh + ombre, W * 2, Hh * 2, 6, C(30, 8, 46));
+    float ps = enMarche ? sinf(pasPhase) : 0;
+    for (int s = -1; s <= 1; s += 2) { int fy = py + (int)(Hh * 0.9f) + (int)(s * ps * 4 * e); cv.fillRoundRect(px + s * (int)(0.5f * u) - (int)(0.3f * u), fy, (int)(0.6f * u), (int)(0.25f * u), 3, mid); }   // les pieds dépassent devant
+    for (int s = -1; s <= 1; s += 2) { int fx = px + s * (W + fs / 2 + 2), fy = py + (int)(s * ps * -5 * e) + (P.attitude == ENERVE ? (int)(4 * sinf(t / 60.0f + s)) : 0); cv.fillRect(fx - fs / 2, fy - fs / 2, fs, fs, neon); cv.fillRect(fx - fs / 2 + 2, fy - fs / 2 + 2, fs - 4, fs - 4, mid); }
+    cv.fillRoundRect(px - W, py - Hh, W * 2, Hh * 2, 6, mid); cv.drawRoundRect(px - W, py - Hh, W * 2, Hh * 2, 6, neon);
+    int n = (ph == BEBE) ? 0 : (ph == ENFANT) ? 1 : (ph == ADO) ? 2 : 3;
+    for (int i = 0; i < n; i++) { int vx = px + (int)((i - (n - 1) / 2.0f) * W * 0.55f); cv.fillRect(vx - 4, py - 4, 9, 9, dark); cv.drawRect(vx - 4, py - 4, 9, 9, neon); if (W.charge || P.attitude == ENERVE) cv.fillRect(vx - 2, py - 2, 5, 5, P.attitude == ENERVE ? C(255, 140, 40) : C(150, 225, 255)); }
+  } else if (FA.forme == 2) {  // le Savant : ses épaules en blouse blanche et sa tête hérissée de cheveux blancs
+    int hr = (int)(0.5f * u);
+    cv.fillEllipse(px + ombre, py + ombre + hr / 2, (int)(0.7f * u), (int)(0.4f * u), C(30, 8, 46));
+    cv.fillEllipse(px, py + hr / 2, (int)(0.7f * u), (int)(0.38f * u), C(235, 240, 250));
+    float ps = enMarche ? sinf(pasPhase) : 0;
+    for (int s = -1; s <= 1; s += 2) cv.fillCircle(px + s * (int)(0.75f * u), py + hr / 2 + (int)(s * ps * 4 * e), max(2, (int)(0.12f * u)), C(255, 215, 180));
+    uint16_t ch = (ph == ADULTE || ph == ANCIEN) ? C(245, 245, 255) : C(200, 120, 60);
+    int nb = ph == BEBE ? 1 : (ph == ENFANT ? 5 : 12);
+    for (int i = 0; i < nb; i++) { float a = i * 6.283f / nb + 0.1f * sinf(t / 300.0f + i); float l = hr * (W.charge ? 1.0f : 0.6f); cv.fillTriangle(px + (int)(cosf(a + 0.3f) * hr * 0.7f), py + (int)(sinf(a + 0.3f) * hr * 0.7f), px + (int)(cosf(a - 0.3f) * hr * 0.7f), py + (int)(sinf(a - 0.3f) * hr * 0.7f), px + (int)(cosf(a) * (hr + l)), py + (int)(sinf(a) * (hr + l)), ch); }
+    cv.fillCircle(px, py, hr, ph == ANCIEN ? C(255, 220, 190) : C(255, 215, 180));
+    if (ph != ANCIEN && ph != BEBE) cv.fillCircle(px, py, hr * 2 / 3, ch);
+    cv.drawLine(px - hr / 2, py + hr - 2, px + hr / 2, py + hr - 2, C(20, 20, 30));          // le bord de ses lunettes, côté visage
+  } else {                     // Bulle : le dessus de sa coque, ses oreillettes et son antenne
+    Phase p2 = ph; uint16_t neon = FA.couleurAuto ? ((p2 == BEBE) ? C(255, 80, 200) : (p2 == ENFANT) ? C(255, 170, 40) : (p2 == ADO) ? C(0, 220, 255) : (p2 == ADULTE) ? C(80, 255, 140) : C(190, 120, 255)) : C(FA.r, FA.g, FA.b);
+    if (FA.humeurCouleur) neon = couleurHumeur(P.attitude, neon);
+    int r = (int)(34 * e * tailleAge());
+    cv.fillRoundRect(px - r + ombre, py - r + ombre, r * 2, r * 2, r / 2, C(30, 8, 46));
+    cv.fillRoundRect(px - r - 5, py - r / 3, 7, r * 2 / 3, 2, neon); cv.fillRoundRect(px + r - 2, py - r / 3, 7, r * 2 / 3, 2, neon);
+    cv.fillRoundRect(px - r, py - r, r * 2, r * 2, r / 2, neon); cv.fillRoundRect(px - r + 4, py - r + 4, r * 2 - 8, r * 2 - 8, r / 2, C(20, 20, 44));
+    cv.fillRect(px - r + 6, py + r - 8, r * 2 - 12, 4, C(80, 80, 140));                       // le haut de son écran-visage, côté avant
+    cv.fillCircle(px, py, max(2, r / 6), ((t / 500) % 2) ? C(255, 40, 170) : neon);           // l'antenne, vue d'en haut
+  }
+}
 void dessinerPersonnage(int px, int py, float e) {
+  if (vue == 1 && !modeApercu && phase() != OEUF) { dessinerDessus(px, py, e); return; }
   if (phase() == OEUF && !modeApercu) { if (FA.forme == 1) dessinerOeufEnclume(px, py, e); else if (FA.forme == 2) dessinerOeufSavant(px, py, e); else dessinerOeuf(px, py, e); }
   else if (FA.forme == 1) dessinerEnclume(px, py, e);
   else if (FA.forme == 2) dessinerSavant(px, py, e);
@@ -1613,7 +1713,7 @@ void boutonBas(int x, int w, const char* lib, uint16_t coul) {
 }
 struct Tuile { const char* nom; int page; uint16_t coul; };
 static const Tuile TUILES[] = {
-  {"Matinale", 31, 0x8B00}, {"Personnage", 0, 0x2C6B}, {"Radar Wi-Fi", 7, 0x0A5F}, {"Analyseur", 8, 0x8A0F},
+  {"Matinale", 31, 0x8B00}, {"Accueil", 0, 0x2C6B}, {"Radar Wi-Fi", 7, 0x0A5F}, {"Analyseur", 8, 0x8A0F},
   {"Détection", 9, 0x021F}, {"Météo", 10, 0x0C7A}, {"Horloge", 11, 0x6A1F},
   {"Niveau", 12, 0x05EB}, {"Sonomètre", 13, 0xFB40}, {"Lampe", 14, 0x8420},
   {"Réglages", 1, 0x4A4F}, {"Matériel", 5, 0x3269}, {"Apparence", 15, 0xC1E8}, {"Jeux", 20, 0x2D6B}, {"Wi-Fi", 2, 0x03B5},
@@ -1900,41 +2000,62 @@ void gererTactileApparence(const m5::touch_detail_t& t) {
 }
 
 
-// ---------- Objets dans la pièce : une balle légère et une caisse lourde (ils se poussent selon le poids) ----------
-struct Objet { float x, y, vx, vy, m, reb, drag; int rayon; };
-Objet objs[2] = {{0.35f, -0.3f, 0, 0, 0.4f, 0.75f, 0.25f, 9}, {-0.45f, 0.55f, 0, 0, 2.2f, 0.12f, 1.4f, 13}};
+// ---------- Objets dans la pièce : une balle légère et une caisse lourde, posées au sol ----------
+// Elles glissent selon leur poids quand on penche, ne collent jamais au personnage, et se déplacent au doigt.
+struct Objet { float x, y, vx, vy, m, reb; int rayon; bool caisse; };
+Objet objs[2] = {{0.35f, -0.2f, 0, 0, 0.4f, 0.6f, 8, false}, {-0.4f, 0.35f, 0, 0, 2.5f, 0.1f, 12, true}};
+int objTenu = -1;
 void objetsPhysique(float dt) {
   if (!R.objets || phase() == OEUF || veille) return;
+  bool dessus = (vue == 1), pes = R.actif[M_GRAVITE] && W.gravite;
+  float sx = -gxL, sz = dessus ? gyL : gzL, pente = sqrtf(sx * sx + sz * sz);
+  static uint32_t secVu = 0; bool secoue = dernierSecouement != secVu && millis() - dernierSecouement < 200; if (secoue) secVu = dernierSecouement;
   for (int i = 0; i < 2; i++) {
     Objet& o = objs[i];
-    o.vx += gSceneX * dt; o.vy += gSceneY * dt;
-    float f = expf(-o.drag * dt); o.vx *= f; o.vy *= f;
+    if (i == objTenu) { o.vx = o.vy = 0; continue; }
+    float seuil = o.caisse ? 0.4f : 0.06f;
+    if (pes && pente > seuil) { float k = (pente - seuil) / pente * (o.caisse ? 3.0f : 7.0f); o.vx += sx * k * dt; o.vy += sz * k * dt; }
+    if (secoue) { o.vx += random(-100, 101) / (o.m * 220.0f); o.vy += random(-100, 101) / (o.m * 220.0f); }
+    float f = expf(-(o.caisse ? 6.0f : 0.9f) * dt); o.vx *= f; o.vy *= f;
     o.x += o.vx * dt; o.y += o.vy * dt;
-    const float lim = 0.85f;
+    const float lim = 0.8f;
     if (o.x > lim) { o.x = lim; o.vx = -o.vx * o.reb; } if (o.x < -lim) { o.x = -lim; o.vx = -o.vx * o.reb; }
     if (o.y > lim) { o.y = lim; o.vy = -o.vy * o.reb; } if (o.y < -lim) { o.y = -lim; o.vy = -o.vy * o.reb; }
-    float dx = (o.x - P.x) * 110, dy = (o.y - P.y) * 70, d = sqrtf(dx * dx + dy * dy), rr = 26 + o.rayon;   // choc avec le personnage
-    if (d < rr && d > 0.01f) {
-      float nx = dx / d, ny = dy / d, ms = masse();
-      float vn = (o.vx - P.vx) * 110 * nx + (o.vy - P.vy) * 70 * ny;
-      if (vn < 0) {
-        float j = -1.5f * vn / (1.0f / o.m + 1.0f / ms);
-        o.vx += (j / o.m * nx) / 110; o.vy += (j / o.m * ny) / 70;
-        if (!P.porte) { P.vx -= (j / ms * nx) / 110; P.vy -= (j / ms * ny) / 70; }
-        if (-vn > 40) { jouer(S_CHOC); tremble = max(tremble, min(3.0f, -vn / 60.0f)); }
+    if (FA.forme >= 1 && !P.porte) {             // le personnage au sol pousse les objets (il ne les attire jamais)
+      float dx = o.x - P.x, dy = o.y - P.y, d = sqrtf(dx * dx + dy * dy), rr = 0.14f + o.rayon / 220.0f;
+      if (d < rr && d > 0.001f) {
+        float nx = dx / d, ny = dy / d, push = rr - d;
+        if (o.caisse && masse() < 1.5f) { P.x -= nx * push; P.y -= ny * push; }        // un léger ne pousse pas la caisse
+        else { o.x += nx * push; o.y += ny * push; float vn = (o.vx - P.vx) * nx + (o.vy - P.vy) * ny; if (vn < 0) { o.vx -= vn * nx * (1.0f + o.reb); o.vy -= vn * ny * (1.0f + o.reb); } }
       }
-      float push = rr - d; o.x += nx * push / 110 * 0.8f; o.y += ny * push / 70 * 0.8f;
     }
   }
+  { Objet &a = objs[0], &b = objs[1]; float dx = b.x - a.x, dy = b.y - a.y, d = sqrtf(dx * dx + dy * dy), rr = (a.rayon + b.rayon) / 200.0f;   // la balle rebondit sur la caisse
+    if (d < rr && d > 0.001f) { float nx = dx / d, ny = dy / d, push = rr - d, ta = b.m / (a.m + b.m); a.x -= nx * push * ta; a.y -= ny * push * ta; b.x += nx * push * (1 - ta); b.y += ny * push * (1 - ta);
+      float vn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny; if (vn < 0) { float j = -(1.0f + 0.5f) * vn / (1 / a.m + 1 / b.m); a.vx -= j / a.m * nx; a.vy -= j / a.m * ny; b.vx += j / b.m * nx; b.vy += j / b.m * ny; } } }
 }
 void dessinerObjets(bool devant) {
   if (!R.objets || phase() == OEUF) return;
+  bool sol = FA.forme >= 1, dessus = (vue == 1);
   for (int i = 0; i < 2; i++) {
-    const Objet& o = objs[i]; if ((o.y > P.y) != devant) continue;
-    int sx = 160 + (int)(o.x * 110 * 0.84f), sy = 100 + (int)(o.y * 70 * 0.84f), r = o.rayon;
-    cv.fillEllipse(sx, sy + r, r, 3, C(40, 10, 60));
-    if (i == 0) { cv.fillCircle(sx, sy, r - 1, C(0, 200, 255)); cv.drawCircle(sx, sy, r - 1, C(255, 255, 255)); cv.fillCircle(sx - 3, sy - 3, 2, C(255, 255, 255)); }
-    else { cv.fillRect(sx - r, sy - r, r * 2, r * 2, C(70, 40, 120)); cv.drawRect(sx - r, sy - r, r * 2, r * 2, C(255, 40, 170)); cv.drawLine(sx - r, sy - r, sx + r, sy + r, C(255, 40, 170)); cv.drawLine(sx + r, sy - r, sx - r, sy + r, C(255, 40, 170)); }
+    const Objet& o = objs[i];
+    bool av = sol ? (o.y < P.y) : false; if (av != devant) continue;     // ce qui est plus près de la vitre passe devant
+    int sx, sy; float e; ecranSol(o.x, o.y, 0, sx, sy, e); int r = max(3, (int)(o.rayon * e * 1.15f));
+    uint16_t bord = (i == objTenu) ? C(255, 255, 255) : (o.caisse ? C(255, 40, 170) : C(255, 255, 255));
+    if (dessus) {        // vus d'en haut
+      cv.fillEllipse(sx + 3, sy + 3, r, r, C(30, 8, 46));
+      if (!o.caisse) { cv.fillCircle(sx, sy, r, C(0, 200, 255)); cv.drawCircle(sx, sy, r, bord); cv.drawFastHLine(sx - r + 2, sy, r * 2 - 4, C(0, 120, 180)); cv.fillCircle(sx - r / 3, sy - r / 3, 2, C(255, 255, 255)); }
+      else { cv.fillRect(sx - r, sy - r, r * 2, r * 2, C(90, 56, 140)); cv.drawRect(sx - r, sy - r, r * 2, r * 2, bord); cv.drawRect(sx - r + 3, sy - r + 3, r * 2 - 6, r * 2 - 6, C(255, 40, 170)); cv.drawLine(sx - r + 3, sy - r + 3, sx + r - 3, sy + r - 3, C(255, 40, 170)); }
+    } else {             // vus de face, posés au sol, avec leur ombre
+      cv.fillEllipse(sx, sy, r + 1, max(2, r / 4), C(40, 10, 60));
+      if (!o.caisse) { int cy = sy - r; cv.fillCircle(sx, cy, r, C(0, 200, 255)); cv.drawCircle(sx, cy, r, bord); cv.fillCircle(sx - r / 3, cy - r / 3, 2, C(255, 255, 255)); }
+      else {
+        int dpx = max(2, r / 3), dpy = max(2, r / 4);       // la face du dessus de la caisse donne le volume
+        cv.fillTriangle(sx - r, sy - r * 2, sx + r, sy - r * 2, sx + r - dpx, sy - r * 2 - dpy, C(120, 80, 170)); cv.fillTriangle(sx - r, sy - r * 2, sx - r - dpx, sy - r * 2 - dpy, sx + r - dpx, sy - r * 2 - dpy, C(120, 80, 170));
+        cv.fillRect(sx - r, sy - r * 2, r * 2, r * 2, C(70, 40, 120)); cv.drawRect(sx - r, sy - r * 2, r * 2, r * 2, bord);
+        cv.drawLine(sx - r, sy - r * 2, sx + r, sy, C(255, 40, 170)); cv.drawLine(sx + r, sy - r * 2, sx - r, sy, C(255, 40, 170));
+      }
+    }
   }
 }
 
@@ -2092,8 +2213,8 @@ void gererTactileJeux(const m5::touch_detail_t& t) {
 // ---------- Menu rapide du personnage (bouton « Perso » de l'accueil) ----------
 void dessinerMenuPerso() {
   cadrePage("Mon personnage");
-  static const char* L[8] = {"Personnage", "Apparence et couleur", "Caractère", "Ce qu'il aime", "Couleurs d'humeur", "Corps et gravité", "Jeux et chapeaux", "Exercices du cerveau"};
-  for (int i = 0; i < 8; i++) ligneRegl(26 + i * 22, L[i], i == 0 ? String(FA.nom) : String(">"), nullptr);
+  static const char* L[8] = {"Changer de personnage", "Apparence et couleurs", "Habitat", "Caractère", "Ce qu'il aime", "Corps et gravité", "Jeux et chapeaux", "Exercices du cerveau"};
+  for (int i = 0; i < 8; i++) ligneRegl(26 + i * 22, L[i], i == 0 ? String(FA.nom) : (i == 2 ? String(NOMS_HABITAT[constrain(R.habitat, 0, 2)]) : String(">")), nullptr);
   dessinerApercu(); boutonBas(4, 100, "Accueil", C(52, 56, 96)); cv.pushSprite(0, 0);
 }
 
@@ -2302,7 +2423,8 @@ void gererTactilePersoCerveau(const m5::touch_detail_t& t) {
     if (x >= 200 || y < 26 || y >= 202) return;
     int l = (y - 26) / 22; bip(700, 40);
     if (l == 0) { R.perso = (R.perso + 1) % NB_PERSOS; sauverReglages(); return; }
-    static const int DEST[8] = {0, 15, 17, 16, 18, 19, 20, 25};
+    if (l == 2) { R.habitat = (R.habitat + 1) % 3; sauverReglages(); return; }
+    static const int DEST[8] = {0, 15, 0, 17, 16, 19, 20, 25};
     pageRetourPerso = 24; retourSous = 24; page = DEST[l]; return;
   }
   if (page == 25) {
@@ -2643,7 +2765,12 @@ void gererTactile() {
   bool sol = (FA.forme >= 1 && phase() != OEUF);
   if (t.wasPressed() && !dehors) {
     if (y >= 204) { int b = constrain((x - 4) / 106, 0, 2); if (b == 1 && x >= 161) { pageRetourPerso = 24; page = 24; bip(700, 40); } else actionBarre(b); return; }
-    if (hypot(x - px, y - py) < 64 * e) { touchePerso = true; debutToucher = m; xPrec = x; yPrec = y; }   // zone de toucher large : on l'attrape facilement
+    int oSous = -1;
+    if (R.objets) for (int i = 0; i < 2; i++) { int sx, sy; float e2; ecranSol(objs[i].x, objs[i].y, 0, sx, sy, e2); int r = max(6, (int)(objs[i].rayon * e2 * 1.15f)); int cy = (vue == 1) ? sy : sy - r; if (hypot(x - sx, y - cy) < r + 8) oSous = i; }
+    bool surPerso = hypot(x - px, y - py) < 64 * e;
+    if (oSous >= 0 && !(surPerso && hypot(x - px, y - py) < 30 * e)) { objTenu = oSous; xPrec = x; yPrec = y; }   // on prend la balle ou la caisse
+    else if (surPerso) { touchePerso = true; debutToucher = m; xPrec = x; yPrec = y; }   // zone de toucher large : on l'attrape facilement
+    else if (vue != 1 && x < 46 + (int)parX && y < 196 && phase() != OEUF) { murFin = m + 10000; murFait = false; bip(800, 40); }   // le mur de gauche
     else if (FA.forme == 2 && phase() != OEUF && [&]() { int sx, sy; float e2; ecranSol(PORTAIL_X, PORTAIL_Y, 26, sx, sy, e2); return hypot(x - sx, y - sy) < 30; }()) { ouvrirPortail(); geste = G_PORTAIL; debutGeste = m; finGeste = m + 1800; }   // toucher le fond : le portail s'ouvre
     else if (phase() != OEUF) { miroirFin = m + 6000; miroirX = x; miroirY = y; }                          // un doigt sur la vitre : il vient voir
   }
@@ -2658,12 +2785,17 @@ void gererTactile() {
         P.vx = (x - xPrec) / 10.0f; P.vy = (y - yPrec) / 10.0f; if (sol) { P.vx *= 0.1f; P.vy *= 0.1f; }
       } else if (abs(x - xPrec) + abs(y - yPrec) > 3) caresser();
       xPrec = x; yPrec = y;
+    } else if (objTenu >= 0) {
+      Objet& o = objs[objTenu];
+      if (vue == 1) { o.x = constrain((x - 160) / 130.0f, -0.8f, 0.8f); o.y = constrain((y - 100) / 80.0f, -0.8f, 0.8f); }
+      else { float d = constrain((197 - (y + o.rayon)) / 33.0f, 0.0f, 1.0f); o.y = d * 1.56f - 0.78f; o.x = constrain((x - 160 - parX * d) / ((160 - 52 * d) * 0.82f) * 0.78f, -0.8f, 0.8f); }
+      o.vx = (x - xPrec) / 120.0f; o.vy = -(y - yPrec) / 60.0f; if (vue == 1) o.vy = -o.vy; xPrec = x; yPrec = y;
     } else if (m < miroirFin) { miroirX = x; miroirY = y; miroirFin = max(miroirFin, m + 3000); }
   }
   if (t.wasReleased()) {
     if (touchePerso && !P.porte) caresser();       // un simple toucher = une caresse (il ne bouge plus)
     if (touchePerso && P.porte && sol) choc(1.6f, true);   // on le repose : boum
-    P.porte = false; touchePerso = false;
+    P.porte = false; touchePerso = false; objTenu = -1;
   }
 }
 
