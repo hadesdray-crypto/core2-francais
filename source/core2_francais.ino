@@ -2561,7 +2561,7 @@ void dessinerMatinale() {
   bool plusVieux = matJour + 1 < matNbJours, plusRecent = matJour > 0;
   cv.fillRoundRect(4, 26, 44, 22, 6, plusVieux ? C(52, 56, 96) : C(26, 28, 46)); cv.setTextColor(C(255, 255, 255)); cv.drawString("<", 26, 37);
   cv.fillRoundRect(272, 26, 44, 22, 6, plusRecent ? C(52, 56, 96) : C(26, 28, 46)); cv.drawString(">", 294, 37);
-  cv.setTextColor(C(0, 230, 255)); cv.drawString(matNbJours ? jourEnClair(matJours[matJour]) : String("..."), 160, 37);
+  cv.setTextColor(C(0, 230, 255)); cv.drawString((matNbJours && matEtat != 1) ? jourEnClair(matJours[matJour]) : String("..."), 160, 37);
   if (matEtat == 1 || matEtat == 0) { cv.setTextColor(C(255, 255, 255)); cv.drawString("Chargement...", 160, 120); }
   else if (matEtat == 3) { cv.setTextColor(C(255, 130, 110)); cv.drawString(matErreur, 160, 110); cv.setTextColor(C(255, 255, 255)); cv.drawString("Touche ici pour réessayer", 160, 136); }
   else {
