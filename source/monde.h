@@ -893,7 +893,7 @@ static bool camPilote(float dt) {
   }
   cmT += dt;
   { static int lent = 0;      // si l'image prend trop de temps (vue recomposée), on referme la caméra et on arrête les vues spontanées
-    if (msDessin > 80) { if (++lent > 20 && cmT > 2.0f && !cmFin) { lent = 0; if (cmAuto) { fermer(); gLarge = 1e8f; } else qDeg = true; } }      // une vue automatique se ferme ; une vue choisie reste et le dessin s'allège (qDeg) else if (lent > 0) lent--; }
+    if (msDessin > 80) { if (++lent > 20 && cmT > 2.0f && !cmFin) { lent = 0; if (cmAuto) { fermer(); gLarge = 1e8f; } else qDeg = true; } } else if (lent > 0) lent--; }
   if (bloque && !cmFin) { if (cm == CM_SUIVI && !cmAuto && suivi >= 0) suiviRet = suivi; fermer(); }      // événement voulu par l'utilisateur (main, appel, visiteur) : la vue le laisse passer puis revient
   float tz = ZN, tx = 160.0f, ty = 128.0f;
   if (!cmFin) {
