@@ -1,6 +1,6 @@
 {
-    "version": "3.1.15",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=8a09db1ff814",
+    "version": "3.1.16",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=f0c76e5a004a",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
         "En bas, une barre de nourriture (graines, viande, noix, pain, baies, objet brillant) : touche une icône ou touche l'écran, la nourriture tombe et un corbeau vient la prendre.",
@@ -114,17 +114,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "8a09db1ff814d3b2358128acc12de0b32d1ec277d8fc15d66b68208ad19f7b54",
-    "size": 5117376,
+    "sha256": "f0c76e5a004aad591a33ad2cb5652b4eae274daf4bafd8f08ef566b67d49fb81",
+    "size": 5122800,
     "canal": "test",
     "notes": [
-        "3.1.15 : numero de version (3.1.14 pris par le bouton Mettre a jour) : parent attitre du petit, entraide, protection, nourriture rare",
+        "3.1.16 : correction de compilation (BR est une macro du processeur, tableau renomme BRAIS) et reglage de la paume (plus haute, pouce vers l'avant, ond",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.15",
-        "run": "45041494399",
-        "commit": "e9c751abdc56"
+        "version": "3.1.16",
+        "run": "45050722035",
+        "commit": "1cc6411e3890"
     }
 }
