@@ -3,9 +3,33 @@
 // Tout est dessiné par le code (polygones, ellipses) : aucune image. Fond précalculé une seule fois,
 // puis seules les zones qui bougent sont redessinées et envoyées à l'écran (zones sales).
 // Les sons des corbeaux se mélangent au son déjà en cours (Matinale) sur des canaux libres du haut-parleur.
+#include <stdint.h>
+#include <pgmspace.h>
+// Deux jeux de sons, chacun dans son espace de noms (les tableaux portent les memes noms) :
+//   cbs = sons synthetiques (sons_corbeau.h), cbr = vrais cris (sons_corbeau_reel.h, facultatif).
 #if __has_include("sons_corbeau.h")
+namespace cbs {
 #include "sons_corbeau.h"
+#ifdef SONS_CORBEAU_RATE
+static const uint32_t RATE = SONS_CORBEAU_RATE;
+#else
+static const uint32_t RATE = 16000;
+#endif
+}
+#undef SONS_CORBEAU_RATE
 #define CB_AVEC_SONS 1
+#endif
+#if __has_include("sons_corbeau_reel.h")
+namespace cbr {
+#include "sons_corbeau_reel.h"
+#ifdef SONS_CORBEAU_RATE
+static const uint32_t RATE = SONS_CORBEAU_RATE;
+#else
+static const uint32_t RATE = 16000;
+#endif
+}
+#undef SONS_CORBEAU_RATE
+#define CB_AVEC_REEL 1
 #endif
 
 extern uint32_t finAffVolume;
@@ -44,7 +68,7 @@ static uint32_t tDernier = 0, tSec = 0, tPressee = 0;
 static int nImg = 0, fps = 0, msDessin = 0;
 static int choix = 0, presse = -1;
 static float gAction = 2.0f, gPoof = 18.0f, gObjet = 30.0f, gAttrib = 0.0f;
-static bool volVu = false, barreSale = false;
+static bool volVu = false, barreSale = false, sonsReels = false;
 
 struct Rect { int16_t x0, y0, x1, y1; };   // x1, y1 exclus
 static int bbx0, bby0, bbx1, bby1;
@@ -246,8 +270,13 @@ static void menuCb(M5Canvas& g) {
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Menu", 25, 12); g.setTextDatum(top_left);
 }
 
+static void boutonSons(M5Canvas& g) {
+  g.fillRoundRect(52, 2, 118, 20, 8, C(14, 4, 8)); g.drawRoundRect(52, 2, 118, 20, 8, C(110, 22, 30));
+  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160));
+  g.drawString(sonsReels ? "Sons : réels" : "Sons : synthétiques", 111, 12); g.setTextDatum(top_left);
+}
 static void construireFond() {
-  ciel(fond); arbre(fond); menuCb(fond); barreCb(fond, choix, -1);
+  ciel(fond); arbre(fond); menuCb(fond); boutonSons(fond); barreCb(fond, choix, -1);
 }
 
 // ---------- corbeaux ----------
@@ -283,22 +312,51 @@ static Rect liste[40]; static int nListe = 0;
 // ---------- sons (mélangés à la musique en cours : canaux 0 à 3, la Matinale utilise le 7) ----------
 enum { SN_CROA1 = 0, SN_CROA2, SN_CROA3, SN_CROASSE1, SN_CROASSE2, SN_AILES, SN_PLUMES, SN_ATTERRIT, SN_POP_APP, SN_POP_DISP, SN_GAZ, SN_CROC, SN_NB };
 static uint32_t dernierSon[SN_NB];
+// reglage « Sons : reels / synthetiques » (memorise : cle « cbsons »)
+static bool deuxJeux() {
+#if defined(CB_AVEC_SONS) && defined(CB_AVEC_REEL)
+  return true;
+#else
+  return false;
+#endif
+}
+static void chargerSons() {
+  uint8_t v = prefs.getUChar("cbsons", 255);      // 255 = jamais choisi
+  bool reel = false;
+#ifdef CB_AVEC_REEL
+  reel = (v == 255) ? true : (v == 1);
+#endif
+#ifndef CB_AVEC_SONS
+  reel = true;
+#endif
+  sonsReels = reel;
+}
 static void son(int id, int vol = 200) {
-#ifdef CB_AVEC_SONS
-  static const uint8_t* const D[SN_NB] = {SON_CROA1, SON_CROA2, SON_CROA3, SON_CROASSE1, SON_CROASSE2, SON_AILES, SON_PLUMES, SON_ATTERRIT, SON_POP_APPARAIT, SON_POP_DISPARAIT, SON_GAZOUILLIS, SON_CROC};
-  static const uint32_t N[SN_NB] = {SON_CROA1_LEN, SON_CROA2_LEN, SON_CROA3_LEN, SON_CROASSE1_LEN, SON_CROASSE2_LEN, SON_AILES_LEN, SON_PLUMES_LEN, SON_ATTERRIT_LEN, SON_POP_APPARAIT_LEN, SON_POP_DISPARAIT_LEN, SON_GAZOUILLIS_LEN, SON_CROC_LEN};
   if (id < 0 || id >= SN_NB || !R.actif[M_SON] || R.volume == 0) return;
+  const uint8_t* d = nullptr; uint32_t n = 0, rate = 16000;
+#ifdef CB_AVEC_REEL
+  if (sonsReels) {
+    static const uint8_t* const D[SN_NB] = {cbr::SON_CROA1, cbr::SON_CROA2, cbr::SON_CROA3, cbr::SON_CROASSE1, cbr::SON_CROASSE2, cbr::SON_AILES, cbr::SON_PLUMES, cbr::SON_ATTERRIT, cbr::SON_POP_APPARAIT, cbr::SON_POP_DISPARAIT, cbr::SON_GAZOUILLIS, cbr::SON_CROC};
+    static const uint32_t N[SN_NB] = {cbr::SON_CROA1_LEN, cbr::SON_CROA2_LEN, cbr::SON_CROA3_LEN, cbr::SON_CROASSE1_LEN, cbr::SON_CROASSE2_LEN, cbr::SON_AILES_LEN, cbr::SON_PLUMES_LEN, cbr::SON_ATTERRIT_LEN, cbr::SON_POP_APPARAIT_LEN, cbr::SON_POP_DISPARAIT_LEN, cbr::SON_GAZOUILLIS_LEN, cbr::SON_CROC_LEN};
+    d = D[id]; n = N[id]; rate = cbr::RATE;
+  }
+#endif
+#ifdef CB_AVEC_SONS
+  if (!d) {
+    static const uint8_t* const D[SN_NB] = {cbs::SON_CROA1, cbs::SON_CROA2, cbs::SON_CROA3, cbs::SON_CROASSE1, cbs::SON_CROASSE2, cbs::SON_AILES, cbs::SON_PLUMES, cbs::SON_ATTERRIT, cbs::SON_POP_APPARAIT, cbs::SON_POP_DISPARAIT, cbs::SON_GAZOUILLIS, cbs::SON_CROC};
+    static const uint32_t N[SN_NB] = {cbs::SON_CROA1_LEN, cbs::SON_CROA2_LEN, cbs::SON_CROA3_LEN, cbs::SON_CROASSE1_LEN, cbs::SON_CROASSE2_LEN, cbs::SON_AILES_LEN, cbs::SON_PLUMES_LEN, cbs::SON_ATTERRIT_LEN, cbs::SON_POP_APPARAIT_LEN, cbs::SON_POP_DISPARAIT_LEN, cbs::SON_GAZOUILLIS_LEN, cbs::SON_CROC_LEN};
+    d = D[id]; n = N[id]; rate = cbs::RATE;
+  }
+#endif
+  if (!d || !n) return;
   uint32_t m = millis(); if (m - dernierSon[id] < 150) return; dernierSon[id] = m;
   if (!M5.Speaker.isEnabled()) {
-    if (lectureEnCours) return;      // la Matinale démarre : on ne touche pas au haut-parleur
+    if (lectureEnCours) return;      // la Matinale demarre : on ne touche pas au haut-parleur
     M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume);
   }
   static uint8_t canal = 0; canal = (canal + 1) & 3;
   M5.Speaker.setChannelVolume(canal, vol);
-  M5.Speaker.playRaw(D[id], N[id], SONS_CORBEAU_RATE, false, 1, canal, true);
-#else
-  (void)id; (void)vol;
-#endif
+  M5.Speaker.playRaw(d, n, rate, false, 1, canal, true);
 }
 static void sonCri() { static const int ids[5] = {SN_CROA1, SN_CROA2, SN_CROA3, SN_CROASSE1, SN_CROASSE2}; son(ids[random(5)], 190); }
 
@@ -741,7 +799,7 @@ static void pousser(const Rect& r) {
 
 // ---------- ouverture / fermeture ----------
 static void ouvrir() {
-  ouvert = true; fondOk = false; plein = true;
+  ouvert = true; fondOk = false; plein = true; chargerSons();
   bpp = cv.getColorDepth() / 8; if (bpp < 1) bpp = 1;
   if (ESP.getFreePsram() < 300000UL && ESP.getFreeHeap() < 260000UL) return;
   fond.setColorDepth(cv.getColorDepth()); fond.setPsram(true);
@@ -814,6 +872,10 @@ static void toucher(const m5::touch_detail_t& t) {
     return;
   }
   if (x < 50 && y < 24) { page = 6; bip(700, 40); return; }
+  if (x >= 52 && x < 172 && y < 24) {
+    if (deuxJeux()) { sonsReels = !sonsReels; prefs.putUChar("cbsons", sonsReels ? 1 : 0); boutonSons(fond); plein = true; sonCri(); }
+    return;
+  }
   if (x >= 270 && y < 20) { debug = !debug; plein = true; return; }
   lacher(choix, (float)x);
 }
