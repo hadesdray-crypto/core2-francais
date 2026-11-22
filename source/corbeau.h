@@ -1260,6 +1260,8 @@ static int perchLibre() {
 }
 static int nbDehors() { int n = 0; for (int k = 0; k < NCB; k++) if (cr[k].etat == E_DEHORS || (cr[k].etat == E_VOL && cr[k].but == B_SORTIR) || cr[k].but == B_MONDE) n++; return n; }
 
+static int perchPour(const Corbeau& c);      // famille.h : perchoir attitré selon le rang
+static float rangPoids(int k);               // famille.h : les mieux classés sont servis d'abord
 static void posture(Corbeau& c) {      // posture perchée : tronc redressé (45 à 65 degrés), poitrine en avant, queue qui pend, tête dégagée
   switch (random(4)) {
     case 0: c.pr = 0.85f; c.tq = 0.20f; c.plume = 34; c.wd = 1.1f; break;
@@ -1298,7 +1300,7 @@ static void sortir(Corbeau& c) {
   decoller(c, tx, rnd(8, 90), B_SORTIR);
 }
 static void versPerchoir(Corbeau& c) {
-  int i = perchLibre();
+  int i = perchPour(c);
   if (i < 0) { if (nbDehors() < 3) sortir(c); else { c.t = 0; if (c.etat == E_SOL) { c.but = B_RIEN; c.sub = 2; } } return; }
   c.perch = i; c.item = -1; decoller(c, PERCH[i][0], perchY(i), B_PERCHOIR);
 }
@@ -1326,7 +1328,7 @@ static void attribuer(int iO) {       // un corbeau libre vient chercher la nour
     Corbeau& c = cr[k];
     bool ok = (c.etat == E_PERCHE && c.objet == 0 && c.perch < 10) || c.etat == E_DEHORS || (c.etat == E_SOL && c.but == B_RIEN);
     if (!ok || c.but == B_NOUR || c.rapporte) continue;
-    float px = (c.etat == E_DEHORS) ? 160.0f + (k % 2 ? 200.0f : -200.0f) : c.x; float dd = fabsf(px - o.x) + rnd(0, 25);
+    float px = (c.etat == E_DEHORS) ? 160.0f + (k % 2 ? 200.0f : -200.0f) : c.x; float dd = fabsf(px - o.x) + rnd(0, 25) + rangPoids(k);
     if (dd < bd) { bd = dd; best = k; }
   }
   if (best < 0) return;
@@ -1405,7 +1407,7 @@ static void acteur(Corbeau& c, float dt) {
 
 static void relacherMain(int k, float x, float y);
 static void retourLibre(Corbeau& c) {      // le corbeau en vol cherche un perchoir libre, sinon il sort et reviendra
-  int i = perchLibre();
+  int i = perchPour(c);
   if (i >= 0) { c.perch = i; c.but = B_PERCHOIR; c.tx = PERCH[i][0]; c.ty = perchY(i); c.aWp = false; }
   else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? bordG() - 16.0f : bordD() + 16.0f; c.ty = rnd(8, 90); c.aWp = false; c.fuite = true; }
 }
@@ -1430,6 +1432,7 @@ static void attraper(Corbeau& c) {      // il attrape l'objet lancé, puis le ra
 }
 
 #include "monde.h"
+#include "famille.h"
 
 static void majCorbeau(Corbeau& c, int idx, float dt) {
   c.t += dt; c.resp += dt;
@@ -1617,7 +1620,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
           c.rapporte = false; c.objet = 7 + random(4);
           float gx = rnd(110, 300); c.perch = -1; entrer(c, gx, solHaut(gx), B_OBJET);
         } else {
-          int i = perchLibre();
+          int i = perchPour(c);
           if (i >= 0) { c.perch = i; entrer(c, PERCH[i][0], perchY(i), B_PERCHOIR); }
           else c.tfin = c.t + 1.0f;
         }
@@ -1633,6 +1636,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
     } break;
   }
 
+  fam::pose(c, idx, dt);      // famille.h : rôles (couple, nid, poussins, protection)
   // la tête suit un regard imposé (toucher, nourriture) ; tous les mouvements sont lissés
   { float sqT = 1.0f;      // squash & stretch : écrasé avant le saut, étiré au départ, écrasé à l'atterrissage
     if (c.etat == E_DECOLLE) sqT = lerpf(1.0f, 0.86f, pas(c.t / 0.11f));
@@ -1943,7 +1947,7 @@ static void naissance(float x, float y, bool rare) {      // un petit corbeau du
   Corbeau& c = cr[PC]; initCorbeau(c, 0.62f);
   c.rare = rare; c.duvet = 1.0f; agePous = 0; c.d = random(2) ? 1 : -1; c.dv = (float)c.d;
   c.perch = -1; c.fx = x; c.fy = y; c.fp = (ytop(x + 4) - ytop(x - 4)) / 8.0f; c.pied = true; c.etat = E_PERCHE; c.visible = true; c.tfin = rnd(8, 14); c.t = 0;
-  c.flash = 0.8f; c.bec = 1; son(SN_GAZ, 230);
+  c.flash = 0.8f; c.bec = 1; son(SN_GAZ, 230); fam::appliquer(c, PC);
 }
 static void craquer() {      // un toucher : l'œuf tremble et se fissure
   if (!OE.actif || OE.etat != 0) return;
@@ -2272,7 +2276,7 @@ static void majGlobal(float dt) {
     if (eclT > 0.0f) eclT -= dt; else { gEcl -= dt; if (gEcl <= 0.0f && !panneau) { gEcl = rnd(40.0f, 120.0f); eclT = 0.42f; eclX = rnd(110.0f, 250.0f); eclGraine = (uint32_t)random(1000000) + 1; } }
   } else { lueurOeil = 1.0f; eclT = 0.0f; }
   gFeuille -= dt; if (gFeuille <= 0) { gFeuille = rnd(2.0f, 4.5f); feuille(); }
-  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt);
+  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt); fam::maj(dt);
   if (H.actif) H.ext += (1.0f - H.ext) * mnf(1.0f, dt * 5.0f); else if (H.ext > 0) { H.ext -= dt * 4.0f; if (H.ext < 0) H.ext = 0; }
   for (int i = 0; i < NPROJ; i++) {      // objets lancés : trajectoire, puis ils retombent et deviennent de l'objet au sol
     Proj& p = proj[i]; if (!p.actif) continue;
@@ -2640,13 +2644,14 @@ static void ouvrir() {
   for (int k = 0; k < NCB; k++) initCorbeau(cr[k], tailles[k]);
   cr[0].d = -1; cr[1].d = 1; cr[2].d = 1; placer(cr[0], 3); placer(cr[1], 1); placer(cr[2], 4);
   for (int k = 0; k < 3; k++) cr[k].tfin = rnd(3, 8);
+  fam::init();      // famille.h : la colonie (traits, rôles, rangs, perchoirs attitrés) est relue de la mémoire
   gCalme = 0; memset(&V, 0, sizeof(V)); memset(mini, 0, sizeof(mini)); memset(proj, 0, sizeof(proj)); memset(&H, 0, sizeof(H)); memset(&VS, 0, sizeof(VS)); memset(&FR, 0, sizeof(FR)); memset(&D, 0, sizeof(D));
   appelOn = false; modeCb = 0; choixL = 0; appelSub = 0; tpCible = 0; gVisite = delaiVisite(true); tAnim = millis() * 0.001f;
   cr[3].etat = E_DEHORS; cr[3].visible = false; cr[3].t = 0; cr[3].tfin = 1.2f;
   cr[4].etat = E_DEHORS; cr[4].visible = false; cr[4].t = 0; cr[4].tfin = 6.0f;
   cr[5].etat = E_DEHORS; cr[5].visible = false; cr[5].t = 0; cr[5].tfin = 9.0f;
   cr[PC].etat = E_OFF; cr[PC].visible = false;
-  zoomC = 0.0f; zoomU = 0.0f; pinceOn = false; mo::reinit();
+  zoomC = 0.0f; zoomU = 0.0f; pinceOn = false; mo::reinit(); fam::apresMonde();
   if (zoomC > 0.5f) { if (creerLarge()) { zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs); fondAct = &fondL; } else { zoomC = zoomU = 0.0f; } }
   if (zoomC < 0.5f) { zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); }
   memset(&GP, 0, sizeof(GP)); gVisGP = rnd(50.0f, 90.0f) * multFreq(OP.gp); tToucher = millis(); gEcl = rnd(30.0f, 70.0f); gBatt = rnd(35.0f, 80.0f); eclT = 0.0f; battT = 0.0f;
@@ -2658,7 +2663,7 @@ static void ouvrir() {
 }
 static void quitter() {
   if (!ouvert) return;
-  mo::fermerMonde(); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
+  fam::sauver(true); fam::pret = false; mo::fermerMonde(); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
   if (fondLOk) { fondL.deleteSprite(); fondLOk = false; }
   if (fondOk) { fond.deleteSprite(); fondOk = false; }
   if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); }     // la musique en cours (Matinale) n'est jamais touchée

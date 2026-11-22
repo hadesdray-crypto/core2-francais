@@ -1,5 +1,5 @@
 {
-    "version": "3.0.3",
+    "version": "3.1.0",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -51,6 +51,9 @@
         "Nouveau lieu : l'épouvantail du champ, sur les bras duquel les corbeaux aiment se percher. De retour de leur excursion, ils se posent de préférence près d'un ami. En vue Suivi, la caméra se rapproche quand l'oiseau suivi se dispute ou se fait lisser. Si la vue recomposée devient trop lente, la caméra se referme toute seule.",
         "La nourriture a maintenant un effet : la viande donne beaucoup d'énergie et rend le corbeau plus gros et plus fort pendant un moment ; les baies le rendent joyeux (il chante et sautille) ; le pain se partage en miettes ; la noix craque au bec ; les graines donnent un peu d'énergie. Un corbeau rassasié fait la sieste.",
         "Compétition : quand un seul gros morceau (viande, noix, pain, objet brillant) est lancé, un rival vient le lui disputer : ailes ouvertes, cris, choc, plumes ; le plus fort (rang, force, faim) l'emporte et l'autre s'en va. Quand il y a plusieurs morceaux, chacun prend le sien tranquillement.",
+        "Colonie cohérente dans le mode Corbeaux : les corbeaux sont toujours les mêmes d'une fois sur l'autre. Chacun a son caractère (audace, calme, curiosité, sociabilité, force), un rôle (couple dominant, adultes, jeune), un rang et des liens d'amitié ou de rivalité, gardés en mémoire quand tu quittes le mode.",
+        "Chacun a son perchoir attitré : le plus fort a le meilleur et déloge un dominé qui s'y est mis ; le plus fort est aussi servi le premier quand la nourriture tombe.",
+        "Le groupe bouge ensemble : un meneur part vers la maison, la mare ou le champ et d'autres le suivent ; la nuit, tout le groupe dort ensemble à ses places pendant qu'un sentinelle reste éveillé ; une alerte, une main, un visiteur, un objet lancé ou une secousse font réagir tout le groupe (têtes tournées, cris en chaîne, les plus audacieux foncent sur la main, retour dans l'ordre des rangs).",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",

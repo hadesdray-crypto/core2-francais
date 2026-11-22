@@ -324,7 +324,7 @@ static void retour(Corbeau& c, int idx) {      // retour vers un perchoir libre 
     int ami = -1, best = 0; for (int k = 0; k < NAD; k++) if (k != idx && cr[k].etat == E_PERCHE && cr[k].perch >= 0 && cr[k].perch < NPE && lien[idx][k] > best) { best = lien[idx][k]; ami = k; }
     if (ami >= 0) { float bd = 1e9f; for (int pp = 0; pp < NPE; pp++) if (!perchOccupe(pp)) { float d = fabsf(PERCH[pp][0] - cr[ami].x); if (d < bd) { bd = d; i = pp; } } }
   }
-  if (i < 0) i = perchLibre();
+  if (i < 0) i = perchPour(c);
   if (i < 0) { r.ph = 9; r.t = 0; return; }
   r.ph = 8; c.perch = i; c.item = -1; decoller(c, PERCH[i][0], perchY(i), B_PERCHOIR);
 }
