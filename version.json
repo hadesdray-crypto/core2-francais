@@ -1,6 +1,6 @@
 {
-    "version": "3.1.20",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=939b05d1a693",
+    "version": "3.1.21",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=7da16322a6fc",
     "changes": [
         "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -115,17 +115,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "939b05d1a69361905c11e6924fb77cac0884e12dba8314261143666581ade1f4",
-    "size": 5139376,
+    "sha256": "7da16322a6fcaf96bbdad3fe10c96368d39c52f827af93b53286cd3db84c21cc",
+    "size": 5146864,
     "canal": "test",
     "notes": [
-        "3.1.20 : fluidite par vue : dessin enregistre une fois puis rejoue (calculs de projection et de trigonometrie faits une seule fois), niveau de detail ",
+        "3.1.21 : mare a gauche plus grande, ruisseau et herbe sombre a droite, petites betes (escargot, lezard, scarabee) attrapees par les corbeaux, reglage ",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.20",
-        "run": "45054001574",
-        "commit": "2820f46bd54b"
+        "version": "3.1.21",
+        "run": "45054678694",
+        "commit": "a7aca503d5cc"
     }
 }
