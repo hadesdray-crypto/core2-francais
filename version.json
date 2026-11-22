@@ -1,12 +1,12 @@
 {
-    "version": "2.4.0",
+    "version": "2.4.1",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
         "En bas, une barre de nourriture (graines, viande, noix, pain, baies, objet brillant) : touche une icône ou touche l'écran, la nourriture tombe et un corbeau vient la prendre.",
         "Parfois un corbeau disparaît en un clin d'œil dans une explosion de plumes et un éclair rouge de l'œil, puis réapparaît ailleurs ; un autre rapporte un objet (bague, kunaï, shuriken, parchemin) et le dépose.",
         "Les cris et les battements d'ailes des corbeaux se mélangent au son déjà en cours (la Matinale n'est jamais coupée). Touche le coin en haut à droite pour afficher les images par seconde.",
-        "Dans le mode Corbeaux, un bouton en haut permet de choisir les sons : réels ou synthétiques (le choix est gardé en mémoire).",
+        "Dans le mode Corbeaux, un bouton en haut permet de choisir les sons : vrais cris de corbeau (par défaut) ou sons synthétiques ; le choix est gardé en mémoire.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",

@@ -310,7 +310,7 @@ static Rect nouv[NENT], anc[NENT];
 static Rect liste[40]; static int nListe = 0;
 
 // ---------- sons (mélangés à la musique en cours : canaux 0 à 3, la Matinale utilise le 7) ----------
-enum { SN_CROA1 = 0, SN_CROA2, SN_CROA3, SN_CROASSE1, SN_CROASSE2, SN_AILES, SN_PLUMES, SN_ATTERRIT, SN_POP_APP, SN_POP_DISP, SN_GAZ, SN_CROC, SN_NB };
+enum { SN_CROA1 = 0, SN_CROA2, SN_CROA3, SN_CROASSE1, SN_CROASSE2, SN_AILES, SN_PLUMES, SN_ATTERRIT, SN_POP_APP, SN_POP_DISP, SN_GAZ, SN_CROC, SN_ALARME, SN_TETON, SN_NB };
 static uint32_t dernierSon[SN_NB];
 // reglage « Sons : reels / synthetiques » (memorise : cle « cbsons »)
 static bool deuxJeux() {
@@ -336,15 +336,15 @@ static void son(int id, int vol = 200) {
   const uint8_t* d = nullptr; uint32_t n = 0, rate = 16000;
 #ifdef CB_AVEC_REEL
   if (sonsReels) {
-    static const uint8_t* const D[SN_NB] = {cbr::SON_CROA1, cbr::SON_CROA2, cbr::SON_CROA3, cbr::SON_CROASSE1, cbr::SON_CROASSE2, cbr::SON_AILES, cbr::SON_PLUMES, cbr::SON_ATTERRIT, cbr::SON_POP_APPARAIT, cbr::SON_POP_DISPARAIT, cbr::SON_GAZOUILLIS, cbr::SON_CROC};
-    static const uint32_t N[SN_NB] = {cbr::SON_CROA1_LEN, cbr::SON_CROA2_LEN, cbr::SON_CROA3_LEN, cbr::SON_CROASSE1_LEN, cbr::SON_CROASSE2_LEN, cbr::SON_AILES_LEN, cbr::SON_PLUMES_LEN, cbr::SON_ATTERRIT_LEN, cbr::SON_POP_APPARAIT_LEN, cbr::SON_POP_DISPARAIT_LEN, cbr::SON_GAZOUILLIS_LEN, cbr::SON_CROC_LEN};
-    d = D[id]; n = N[id]; rate = cbr::RATE;
+    static const uint8_t* const D[SN_NB] = {cbr::SON_CROA1, cbr::SON_CROA2, cbr::SON_CROA3, cbr::SON_CROASSE1, cbr::SON_CROASSE2, (const uint8_t*)nullptr, (const uint8_t*)nullptr, (const uint8_t*)nullptr, (const uint8_t*)nullptr, (const uint8_t*)nullptr, (const uint8_t*)nullptr, (const uint8_t*)nullptr, cbr::SON_ALARME, cbr::SON_CROA_TETON};
+    static const uint32_t N[SN_NB] = {cbr::SON_CROA1_LEN, cbr::SON_CROA2_LEN, cbr::SON_CROA3_LEN, cbr::SON_CROASSE1_LEN, cbr::SON_CROASSE2_LEN, 0, 0, 0, 0, 0, 0, 0, cbr::SON_ALARME_LEN, cbr::SON_CROA_TETON_LEN};
+    d = D[id]; n = N[id]; rate = cbr::RATE; if (!d || !n) d = nullptr;
   }
 #endif
 #ifdef CB_AVEC_SONS
   if (!d) {
-    static const uint8_t* const D[SN_NB] = {cbs::SON_CROA1, cbs::SON_CROA2, cbs::SON_CROA3, cbs::SON_CROASSE1, cbs::SON_CROASSE2, cbs::SON_AILES, cbs::SON_PLUMES, cbs::SON_ATTERRIT, cbs::SON_POP_APPARAIT, cbs::SON_POP_DISPARAIT, cbs::SON_GAZOUILLIS, cbs::SON_CROC};
-    static const uint32_t N[SN_NB] = {cbs::SON_CROA1_LEN, cbs::SON_CROA2_LEN, cbs::SON_CROA3_LEN, cbs::SON_CROASSE1_LEN, cbs::SON_CROASSE2_LEN, cbs::SON_AILES_LEN, cbs::SON_PLUMES_LEN, cbs::SON_ATTERRIT_LEN, cbs::SON_POP_APPARAIT_LEN, cbs::SON_POP_DISPARAIT_LEN, cbs::SON_GAZOUILLIS_LEN, cbs::SON_CROC_LEN};
+    static const uint8_t* const D[SN_NB] = {cbs::SON_CROA1, cbs::SON_CROA2, cbs::SON_CROA3, cbs::SON_CROASSE1, cbs::SON_CROASSE2, cbs::SON_AILES, cbs::SON_PLUMES, cbs::SON_ATTERRIT, cbs::SON_POP_APPARAIT, cbs::SON_POP_DISPARAIT, cbs::SON_GAZOUILLIS, cbs::SON_CROC, (const uint8_t*)nullptr, (const uint8_t*)nullptr};
+    static const uint32_t N[SN_NB] = {cbs::SON_CROA1_LEN, cbs::SON_CROA2_LEN, cbs::SON_CROA3_LEN, cbs::SON_CROASSE1_LEN, cbs::SON_CROASSE2_LEN, cbs::SON_AILES_LEN, cbs::SON_PLUMES_LEN, cbs::SON_ATTERRIT_LEN, cbs::SON_POP_APPARAIT_LEN, cbs::SON_POP_DISPARAIT_LEN, cbs::SON_GAZOUILLIS_LEN, cbs::SON_CROC_LEN, 0, 0};
     d = D[id]; n = N[id]; rate = cbs::RATE;
   }
 #endif
@@ -358,7 +358,7 @@ static void son(int id, int vol = 200) {
   M5.Speaker.setChannelVolume(canal, vol);
   M5.Speaker.playRaw(d, n, rate, false, 1, canal, true);
 }
-static void sonCri() { static const int ids[5] = {SN_CROA1, SN_CROA2, SN_CROA3, SN_CROASSE1, SN_CROASSE2}; son(ids[random(5)], 190); }
+static void sonCri() { static const int ids[7] = {SN_CROA1, SN_CROA2, SN_CROA3, SN_CROASSE1, SN_CROASSE2, SN_ALARME, SN_TETON}; int n = sonsReels ? 7 : 5; son(ids[random(n)], 190); }
 
 // ---------- effets ----------
 static void plumes(float x, float y, int n) {
