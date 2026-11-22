@@ -47,7 +47,7 @@ static const int NFX = 6;       // éclats lumineux
 static const int NENT = NCB + NOB + 8;
 static const int H_SCENE = 206; // la barre de nourriture occupe le bas
 static const float SOL_Y = 201.0f;
-static const float PERCH[NPE][2] = {{100, 141}, {140, 135.8f}, {180, 130.3f}, {222, 125.6f}, {88, 62.5f}, {24, 94.5f}};
+static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {224, 125.6f}, {88, 62.5f}, {24, 94.5f}};
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
 enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE };
@@ -299,8 +299,9 @@ static void ciel(M5Canvas& g) {
   }
 }
 
+static uint16_t coulMembre = 0;      // couleur des branches (0 = le noir de l'arbre de premier plan) ; les arbres lointains sont plus clairs, noyés dans la brume
 static void membre(M5Canvas& g, const float (*p)[2], int n, float w0, float w1, bool bouts) {   // branche : spline lissée, largeur qui s'affine
-  uint16_t nr = C(5, 2, 4);
+  uint16_t nr = coulMembre ? coulMembre : C(5, 2, 4);
   const int N = 6;
   float prx = 0, pry = 0, prw = 0; bool a = false;
   int tot = (n - 1) * N;
@@ -362,6 +363,47 @@ static void arbre(M5Canvas& g) {
   ell(g, 60, 178, 3, 6, C(110, 10, 18));     // le trou du tronc : on voit le ciel rouge
 }
 
+// ---------- arbres lointains : cinq silhouettes différentes (fourche, penché, touffu, conifère mort, saule tombant), chacune plus ou moins dans la brume ----------
+static void arbreLoin(M5Canvas& g, int v, float bx, float by, float h, float brume) {      // (bx, by) = pied, h = hauteur, en pixels écran
+  float r, gg, b; cielRGB((by - h * 0.5f - zty) / zs, r, gg, b);
+  VueId vid_;
+  coulMembre = CF(lerpf(5.0f, r, brume), lerpf(2.0f, gg, brume), lerpf(4.0f, b, brume));
+  const uint16_t nr = coulMembre;
+  float P[8][2]; int n = 0;
+  auto pt = [&](float x, float y) { P[n][0] = bx + x * h; P[n][1] = by - y * h; n++; };
+  auto br = [&](float w0, float w1) { if (n >= 2) membre(g, P, n, mxf(1.0f, w0 * h), mxf(0.6f, w1 * h), true); n = 0; };
+  switch (v % 5) {
+    case 0:      // grande fourche
+      pt(0, 0); pt(0.01f, 0.25f); pt(-0.02f, 0.5f); pt(0.0f, 0.68f); br(0.06f, 0.025f);
+      pt(-0.01f, 0.42f); pt(-0.14f, 0.58f); pt(-0.27f, 0.7f); pt(-0.34f, 0.84f); br(0.035f, 0.012f);
+      pt(0, 0.6f); pt(0.1f, 0.76f); pt(0.18f, 0.9f); pt(0.2f, 1.03f); br(0.03f, 0.01f);
+      pt(0, 0.68f); pt(-0.05f, 0.86f); pt(-0.04f, 1.0f); br(0.025f, 0.01f);
+      pt(0.02f, 0.3f); pt(0.16f, 0.4f); pt(0.27f, 0.5f); br(0.02f, 0.008f); break;
+    case 1:      // penché, branches clairsemées
+      pt(0, 0); pt(0.05f, 0.25f); pt(0.15f, 0.5f); pt(0.3f, 0.68f); pt(0.42f, 0.78f); br(0.055f, 0.02f);
+      pt(0.08f, 0.36f); pt(-0.08f, 0.5f); pt(-0.24f, 0.54f); br(0.03f, 0.01f);
+      pt(0.22f, 0.6f); pt(0.3f, 0.85f); pt(0.28f, 1.0f); br(0.03f, 0.01f);
+      pt(0.34f, 0.72f); pt(0.5f, 0.74f); pt(0.62f, 0.66f); br(0.025f, 0.01f);
+      pt(0.1f, 0.3f); pt(0.22f, 0.28f); pt(0.3f, 0.2f); br(0.02f, 0.008f); break;
+    case 2: {    // touffu : une boule de brindilles sur un tronc court
+      pt(0, 0); pt(0.01f, 0.25f); pt(0, 0.42f); br(0.08f, 0.045f);
+      static const float T[7][2] = {{-0.34f, 0.62f}, {-0.22f, 0.82f}, {-0.08f, 0.94f}, {0.08f, 0.96f}, {0.22f, 0.84f}, {0.34f, 0.66f}, {0.42f, 0.5f}};
+      for (int i = 0; i < 7; i++) { pt(0, 0.42f); pt(T[i][0] * 0.5f + 0.03f * ((i & 1) ? 1 : -1), 0.42f + (T[i][1] - 0.42f) * 0.55f); pt(T[i][0], T[i][1]); br(0.03f, 0.008f); }
+    } break;
+    case 3:      // conifère mort : tronc droit et étages de branches
+      pt(0, 0); pt(0, 0.5f); pt(0, 1.0f); br(0.05f, 0.012f);
+      for (int i = 0; i < 5; i++) { float y = 0.22f + 0.15f * i, w = 0.30f - 0.05f * i;
+        pt(0, y); pt(-w * 0.6f, y - 0.04f); pt(-w, y - 0.13f); br(0.02f, 0.006f); pt(0, y); pt(w * 0.6f, y - 0.04f); pt(w, y - 0.13f); br(0.02f, 0.006f); }
+      break;
+    default:     // saule tombant
+      pt(0, 0); pt(-0.02f, 0.3f); pt(0.02f, 0.55f); br(0.07f, 0.03f);
+      pt(0.02f, 0.55f); pt(0.16f, 0.7f); pt(0.3f, 0.66f); pt(0.36f, 0.4f); br(0.03f, 0.008f);
+      pt(0.02f, 0.55f); pt(-0.14f, 0.72f); pt(-0.28f, 0.64f); pt(-0.34f, 0.38f); br(0.03f, 0.008f);
+      pt(0.02f, 0.55f); pt(0.04f, 0.8f); pt(0.14f, 0.88f); pt(0.2f, 0.7f); br(0.025f, 0.008f); break;
+  }
+  tri(g, bx - 0.12f * h, by + 2, bx, by - 0.06f * h, bx + 0.12f * h, by + 2, nr);      // pied du tronc
+  coulMembre = 0;
+}
 static const uint8_t LANCE[6] = {T_KUNAI, T_SHURIKEN, T_BAGUE, T_PARCHEMIN, T_BRILLANT, T_OEUF};      // objets que l'on peut lancer
 static void iconeMode(M5Canvas& g, int m, int cx, int cy, uint16_t col) {
   switch (m) {
@@ -436,8 +478,7 @@ static void boutonVue(M5Canvas& g) {
 }
 static void cielLarge(M5Canvas& g);
 static void construireFond() {
-  { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond);
-    float gy = solHaut(160.0f) * zs + zty; zs = 0.28f; ztx = 262.0f; zty = gy + 2.0f - 254.0f * zs; arbre(fond); }
+  { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond); }      // les arbres lointains sont dessinés dans cielLarge, derrière les collines
   menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
 }
 
@@ -473,6 +514,7 @@ struct Corbeau {
   int8_t pj;                                          // objet lancé poursuivi
   float tq, plume, wd, ha0;                           // posture perchée : chute de la queue, longueur de la plume dominante, aile qui pend, angle de repos de la tête
   uint8_t objet;
+  float kx, ky;                                       // vitesse de choc (contacts entre corbeaux, objets lancés) : s'ajoute au mouvement, puis s'amortit
   Aile pose, poseC;
 };
 struct Obj { bool actif; uint8_t type; float x, y, vy, t; bool repos; int8_t reserve; };
@@ -505,7 +547,7 @@ struct Main_ { bool actif, gauche; float x, y, ext, tx, ty, tPose, vit, tRec; fl
 struct Trace { float x[48], y[48]; int n; float len; uint32_t t0; };      // tracé du doigt (reconnaissance de formes)
 static Main_ H;
 static Trace TR; static uint32_t tLigne = 0; static float aLigne = 0;
-struct Proj { bool actif; uint8_t type; float x, y, vx, vy, rot, vr, t, ox; };      // objet lancé (mode Lancer)
+struct Proj { bool actif; uint8_t type; float x, y, vx, vy, rot, vr, t, ox; int8_t dern; };      // dern : dernier corbeau heurté (pour ne pas le frapper à chaque image)      // objet lancé (mode Lancer)
 static const int NPROJ = 3; static Proj proj[NPROJ];
 struct Viser { bool on; float x0, y0, x, y; }; static Viser VS;
 struct Fronde { bool on; int8_t c; float ax, ay; }; static Fronde FR;
@@ -522,7 +564,7 @@ static void ptVis(int k, float& x, float& y) {      // points d'appui des corbea
     case 0: x = VX - 10.0f + V.sw * 0.9f; y = y0 - 47.0f; break;
     case 1: x = VX + 10.0f + V.sw * 0.9f; y = y0 - 47.0f; break;
     case 2: x = VX + V.sw; y = y0 - 65.5f; break;
-    case 4: x = H.x + (H.gauche ? 4.0f : -4.0f); y = H.y - 2.5f; break;      // la main tendue du mode Main
+    case 4: x = H.x + (H.gauche ? 5.2f : -5.2f); y = H.y - 3.3f; break;      // la main tendue du mode Main
     default: { float phi = lerpf(0.14f, 1.75f, pas(V.arm)), sx = VX + 10.5f + V.sw * 0.9f, sy = y0 - 45.5f; x = sx + sinf(phi) * 25.0f; y = sy + cosf(phi) * 25.0f - 3.2f; } break;
   }
 }
@@ -863,7 +905,7 @@ static void capsule(M5Canvas& g, float ax, float ay, float bx, float by, float r
 static void dessinerMain(M5Canvas& g) {
   if (!H.actif && H.ext < 0.02f) return;
   const uint16_t PEAU = C(238, 196, 166), OMBRE = C(196, 132, 116), CONTOUR = C(40, 12, 16), ONGLE = C(250, 214, 196), RIM = C(120, 24, 30), PLI = C(60, 10, 16), SLV = C(30, 10, 16);
-  const float S = 1.15f; bool gch = H.gauche; const float ang = -0.32f + (gch ? H.tilt : -H.tilt);
+  const float S = 1.5f; bool gch = H.gauche; const float ang = -0.32f + (gch ? H.tilt : -H.tilt);
   float e = pas(H.ext), ex = H.exs, ey = 262.0f;
   float hx = lerpf(ex, H.x, e), hy = lerpf(ey, H.y + 0.9f * H.resp * (H.ctrl ? 0.3f : 1.0f), e), ux = gch ? cosf(ang) : -cosf(ang), uy = sinf(ang);
   auto L = [&](float u, float v, float& X, float& Y) { X = hx + (u * ux - v * uy) * S; Y = hy + (u * uy + v * ux) * S; };
@@ -1180,7 +1222,19 @@ static void retourLibre(Corbeau& c) {      // le corbeau en vol cherche un perch
   if (i >= 0) { c.perch = i; c.but = B_PERCHOIR; c.tx = PERCH[i][0]; c.ty = perchY(i); c.aWp = false; }
   else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? bordG() - 16.0f : bordD() + 16.0f; c.ty = rnd(8, 90); c.aWp = false; c.fuite = true; }
 }
+static void naissance(float x, float y, bool rare);
+static void minisEnvol(float x, float y, int n);
+static void oeufAttrape(Corbeau& c) {      // l'œuf lancé est attrapé en vol : il ne casse pas, il éclot en nouveau corbeau (ou en petits corbeaux s'il n'y a plus de place)
+  Proj& p = proj[c.pj]; ralenti(0.35f); p.actif = false; c.flash = 1.0f; c.bec = 1; c.surs = 0.3f;
+  son(SN_CROC, 230); sonCri(); plumes(c.x, c.y, 10); eclat(c.x, c.y, 0.3f, 1.5f); vib(50);
+  nbOeufs++; prefs.putUInt("cboeufs", nbOeufs); oeufsSale = true;
+  int i = perchLibre();
+  if (cr[PC].etat == E_OFF && i >= 0) naissance(PERCH[i][0], perchY(i), rnd01() < 0.2f);
+  else { minisEnvol(c.x, c.y - 4.0f, 7); son(SN_POP_DISP, 190); }
+  c.pj = -1; retourLibre(c);
+}
 static void attraper(Corbeau& c) {      // il attrape l'objet lancé, puis le rapporte sur une branche ou le dépose par terre
+  if (proj[c.pj].type == T_OEUF) { oeufAttrape(c); return; }
   Proj& p = proj[c.pj]; ralenti(0.2f); c.objet = p.type + 1; p.actif = false; c.flash = 0.7f; c.bec = 1; son(SN_CROC, 210); plumes(c.x, c.y, 3);
   int i = perchLibre();
   if (rnd01() < 0.5f && i >= 0) { c.perch = i; c.but = B_PERCHOIR; c.tx = PERCH[i][0]; c.ty = perchY(i); }
@@ -1246,7 +1300,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       float sp = fin ? lim(dist * 2.4f + 16.0f, 16.0f, c.vitesse) : c.vitesse;
       if (c.but == B_SORTIR) sp = c.vitesse * 1.05f;
       if (orb) sp = 125.0f;
-      if (c.but == B_ATTRAPE) sp = 190.0f;
+      if (c.but == B_ATTRAPE) sp = (c.pj >= 0 && proj[c.pj].type == T_OEUF) ? 275.0f : 190.0f;      // pour un œuf, ils foncent plus vite : on peut l'attraper de justesse
       if (c.but == B_POURSUITE) sp = 150.0f;
       float k = mnf(1.0f, dt * (c.but == B_ATTRAPE ? 7.0f : (c.but == B_POURSUITE ? 5.0f : 3.0f)));
       c.vx += (dx / dist * sp - c.vx) * k; c.vy += (dy / dist * sp - c.vy) * k;
@@ -1271,7 +1325,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         float cp = coup(c.phase); c.poseC = mixA(A_HAUT, A_BAS, cp); c.bob = -2.4f * c.s * (cp - 0.4f);
       }
       if (c.but == B_SORTIR) { if (c.x < bordG() + 2.0f || c.x > bordD() - 2.0f) { c.etat = E_DEHORS; c.t = 0; c.visible = false; c.tfin = c.fuite ? rnd(2.0f, 4.5f) : (c.rapporte ? rnd(3.5f, 6.0f) : rnd(6, 16)); c.fuite = false; c.wl = c.wlC = 0; } }
-      else if (c.but == B_ATTRAPE && c.pj >= 0 && proj[c.pj].actif && hypotf(proj[c.pj].x - c.x, proj[c.pj].y - c.y) < 11.0f) attraper(c);
+      else if (c.but == B_ATTRAPE && c.pj >= 0 && proj[c.pj].actif && hypotf(proj[c.pj].x - c.x, proj[c.pj].y - c.y) < (proj[c.pj].type == T_OEUF ? 14.0f : 11.0f)) attraper(c);
       else if (fin && (dist < 2.5f || (dist < 7.0f && sqrtf(c.vx * c.vx + c.vy * c.vy) < 20.0f))) atterrir(c);
     } break;
     case E_ATTERRIT: {
@@ -1667,8 +1721,8 @@ static void lancer(float x, float y, float vx, float vy) {      // on lance un o
   int idx = -1; for (int i = 0; i < NPROJ; i++) if (!proj[i].actif) { idx = i; break; } if (idx < 0) idx = 0;
   float sp = hypotf(vx, vy); if (sp < 130.0f) { vx *= 130.0f / (sp + 0.01f); vy *= 130.0f / (sp + 0.01f); } if (sp > 520.0f) { vx *= 520.0f / sp; vy *= 520.0f / sp; }
   Proj& p = proj[idx]; p.actif = true; p.type = LANCE[choixL]; p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.rot = 0; p.t = 0; p.ox = x;
-  p.vr = (p.type == T_SHURIKEN ? 24.0f : 10.0f) * (random(2) ? 1.0f : -1.0f);
-  son(SN_PLUMES, 150); if (p.type != T_OEUF) poursuivre(idx);
+  p.vr = (p.type == T_SHURIKEN ? 24.0f : 10.0f) * (random(2) ? 1.0f : -1.0f); p.dern = -1;
+  son(SN_PLUMES, 150); poursuivre(idx);      // même pour un œuf : les corbeaux essaient de l'attraper avant qu'il explose
 }
 static void balayage(float x0, float y0, float x1, float y1) {      // un geste de balayage : les corbeaux près du trajet s'envolent
   float dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy + 0.01f; int n = 0;
@@ -1681,7 +1735,7 @@ static void balayage(float x0, float y0, float x1, float y1) {      // un geste 
 
 // ---------- œufs magiques ----------
 static void naissance(float x, float y, bool rare) {      // un petit corbeau duveteux sort de l'œuf ; il grandira un peu avec le temps
-  Corbeau& c = cr[PC]; initCorbeau(c, 0.46f);
+  Corbeau& c = cr[PC]; initCorbeau(c, 0.62f);
   c.rare = rare; c.duvet = 1.0f; agePous = 0; c.d = random(2) ? 1 : -1; c.dv = (float)c.d;
   c.perch = -1; c.fx = x; c.fy = y; c.fp = (ytop(x + 4) - ytop(x - 4)) / 8.0f; c.pied = true; c.etat = E_PERCHE; c.visible = true; c.tfin = rnd(8, 14); c.t = 0;
   c.flash = 0.8f; c.bec = 1; son(SN_GAZ, 230);
@@ -1729,7 +1783,7 @@ static void majOeuf(float dt) {
     }
   }
   if (OE.actif) { OE.t += dt; if (OE.etat == 0 && OE.t > 90.0f) craquer(); if (OE.etat == 1) { OE.tc += dt; if (OE.tc > 1.0f) eclore(); } }
-  if (cr[PC].etat != E_OFF) { agePous += dt; cr[PC].s = 0.46f + 0.30f * lim(agePous / 240.0f, 0.0f, 1.0f); cr[PC].duvet = 1.0f - lim(agePous / 300.0f, 0.0f, 1.0f); }
+  if (cr[PC].etat != E_OFF) { agePous += dt; cr[PC].s = 0.62f + 0.36f * lim(agePous / 240.0f, 0.0f, 1.0f); cr[PC].duvet = 1.0f - lim(agePous / 300.0f, 0.0f, 1.0f); }
 }
 
 // ---------- vie sociale : s'appeler, alerte, chamaille, vol en groupe ----------
@@ -1847,7 +1901,7 @@ static void deplacerMain(float x, float y) { H.tx = x; H.ty = y; H.gauche = (x <
 static void envoyerMain() {      // un corbeau vient se poser sur la main
   int b = plusProche(H.x, H.y, true); if (b < 0) return;
   Corbeau& c = cr[b]; c.item = -1; c.rapporte = false; c.perch = 14;
-  float px = H.x + (H.gauche ? 4.0f : -4.0f), py = H.y - 2.5f;
+  float px = H.x + (H.gauche ? 5.2f : -5.2f), py = H.y - 3.3f;
   if (c.etat == E_DEHORS) entrer(c, px, py, B_VISITEUR);
   else if (c.etat == E_PERCHE || c.etat == E_SOL) decoller(c, px, py, B_VISITEUR);
   else { c.but = B_VISITEUR; c.aWp = false; }
@@ -1943,7 +1997,54 @@ static void majMainPose(float dt) {
   if (H.actif) { H.tRec -= dt; if (H.tRec <= 0) { H.tRec = 1.5f; if (!ptOccupe(4)) envoyerMain(); } }
 }
 
+// ---------- physique simple : chocs entre corbeaux, objets lancés, corbeau projeté par la fronde ----------
+static float tChocCb = 0.0f;
+static void impulsion(Corbeau& c, float jx, float jy) {      // coup reçu : en vol balistique la vitesse change, sinon la vitesse de choc s'ajoute puis s'amortit
+  if (c.etat == E_TIR) { c.vx += jx; c.vy += jy; } else { c.kx = lim(c.kx + jx, -260.0f, 260.0f); c.ky = lim(c.ky + jy, -260.0f, 260.0f); }
+}
+static void choc(float x, float y, Corbeau* a, Corbeau* b, float force) {      // plumes, éclat, cri : le choc se voit et s'entend (pas plus de deux par seconde)
+  if (tChocCb > 0) return; tChocCb = 0.45f;
+  plumes(x, y, force > 120.0f ? 5 : 3); eclat(x, y, 0.12f, 0.6f); son(SN_PLUMES, 130);
+  if (a) { a->flash = 0.6f; a->bec = 1; } if (b) { b->flash = 0.6f; b->bec = 1; }
+  if (random(100) < 65) sonCri(); vib(30);
+}
+static void contacts(float dt) {
+  tChocCb -= dt;
+  for (int k = 0; k < NCB; k++) {      // inertie et amortissement de la vitesse de choc
+    Corbeau& c = cr[k]; if (c.kx == 0.0f && c.ky == 0.0f) continue;
+    if (c.etat == E_VOL || c.etat == E_DECOLLE) { c.x += c.kx * dt; c.y += c.ky * dt; }
+    float a = expf(-dt * 3.2f); c.kx *= a; c.ky *= a; if (fabsf(c.kx) + fabsf(c.ky) < 3.0f) c.kx = c.ky = 0.0f;
+  }
+  for (int i = 0; i < NCB; i++) for (int j = i + 1; j < NCB; j++) {
+    Corbeau& a = cr[i]; Corbeau& b = cr[j];
+    if (!a.visible || !b.visible) continue;
+    bool aa = (a.etat == E_VOL || a.etat == E_TIR), bb = (b.etat == E_VOL || b.etat == E_TIR);
+    float dx = b.x - a.x, dy = b.y - a.y, d = hypotf(dx, dy), r = 7.5f * (a.s + b.s);
+    if (d < 0.01f || d >= r + 8.0f) continue;
+    float nx = dx / d, ny = dy / d;
+    if (aa && bb) {      // deux corbeaux en vol : ils se heurtent, rebondissent (masse ~ taille au carré), perdent quelques plumes
+      if (a.but == B_ORBITE && b.but == B_ORBITE) continue;
+      if (d >= r) continue;
+      float ov = r - d; a.x -= nx * ov * 0.5f; a.y -= ny * ov * 0.5f; b.x += nx * ov * 0.5f; b.y += ny * ov * 0.5f;
+      float rv = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;      // > 0 : ils se rapprochent
+      if (rv > 20.0f) {
+        float ma = a.s * a.s, mb = b.s * b.s, jj = 1.6f * rv / (1.0f / ma + 1.0f / mb);
+        impulsion(a, -jj / ma * nx, -jj / ma * ny); impulsion(b, jj / mb * nx, jj / mb * ny);
+        if (rv > 40.0f) choc((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, &a, &b, rv);
+      }
+    } else if ((a.etat == E_TIR && (b.etat == E_PERCHE || b.etat == E_SOL)) || (b.etat == E_TIR && (a.etat == E_PERCHE || a.etat == E_SOL))) {      // le corbeau tiré à la fronde percute un corbeau posé
+      Corbeau& t = (a.etat == E_TIR) ? a : b; Corbeau& p = (a.etat == E_TIR) ? b : a;
+      float v = hypotf(t.vx, t.vy); if (d >= r || v < 110.0f) continue;
+      choc(p.x, p.y, &t, &p, v); p.surs = 0.35f;
+      if (p.etat == E_PERCHE && p.perch < 10 && p.objet == 0 && random(100) < 70) chasser(p);
+      t.vx *= -0.35f; t.vy = -fabsf(t.vy) * 0.4f - 40.0f;
+    } else if ((a.etat == E_ATTERRIT && b.etat == E_PERCHE) || (b.etat == E_ATTERRIT && a.etat == E_PERCHE)) {      // un corbeau se pose tout près : l'autre sursaute doucement
+      Corbeau& p = (a.etat == E_PERCHE) ? a : b; if (p.surs <= 0.0f && d < r) { p.surs = 0.30f; plumes(p.x, p.y - 2.0f, 1); }
+    }
+  }
+}
 static void majGlobal(float dt) {
+  contacts(dt);
   gAction -= dt; gPoof -= dt; gObjet -= dt; gAttrib -= dt; gCalme -= dt;
   gFeuille -= dt; if (gFeuille <= 0) { gFeuille = rnd(2.0f, 4.5f); feuille(); }
   majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt);
@@ -1955,6 +2056,15 @@ static void majGlobal(float dt) {
     if (H.actif && p.type != T_OEUF && hypotf(p.x - (H.x + (H.gauche ? 4.0f : -4.0f)), p.y - (H.y - 5.0f)) < 16.0f) {      // l'objet lancé atterrit dans la paume
       int jm = -1; for (int q = 0; q < 3; q++) if (!H.om[q].actif) { jm = q; break; }
       if (jm >= 0) { H.om[jm].actif = true; H.om[jm].type = p.type; H.om[jm].u = rnd(-5.0f, 5.0f); H.om[jm].t = 0; p.actif = false; son(SN_CROC, 160); eclat(p.x, p.y, 0.15f, 0.7f); continue; }
+    }
+    for (int k = 0; k < NCB; k++) {      // un objet lancé qui heurte un corbeau (qui n'essaie pas de l'attraper) : il rebondit, le corbeau est bousculé
+      Corbeau& c = cr[k]; if (!c.visible || p.dern == k || p.t < 0.06f) continue;
+      if (!(c.etat == E_VOL || c.etat == E_PERCHE || c.etat == E_SOL) || c.perch >= 10 || (c.but == B_ATTRAPE && c.pj == i)) continue;
+      if (hypotf(p.x - c.x, p.y - c.y) > 7.0f * c.s + 3.0f) continue;
+      p.dern = (int8_t)k; float v = hypotf(p.vx, p.vy);
+      impulsion(c, p.vx * 0.3f, p.vy * 0.3f); choc(c.x, c.y, nullptr, &c, v); c.surs = 0.3f;
+      if (c.etat == E_PERCHE && v > 160.0f && c.objet == 0 && random(100) < 55) chasser(c);
+      p.vx *= -0.45f; p.vy = -fabsf(p.vy) * 0.3f - 30.0f; p.vr = -p.vr; break;
     }
     float sol = solHaut(p.x) - 3.2f;
     if (p.y >= sol && p.vy > 0 && p.type == T_OEUF) { oeufExplose(p.x, sol); p.actif = false; }
@@ -2194,6 +2304,12 @@ static void cielLarge(M5Canvas& g) {      // ciel, lune, étoiles, collines et s
     float r, gg, b; cielRGB((gyy - zty) / zs, r, gg, b); bool cl = (seed >> 3) & 1;
     g.drawPixel(gx, gyy, CF(r * (cl ? 1.12f : 0.88f) + (cl ? 7 : 0), gg * (cl ? 1.12f : 0.88f), b * (cl ? 1.12f : 0.88f)));
   }
+  { static const float LT[10][4] = {{282, 78, 0, 0.30f}, {334, 56, 3, 0.42f}, {238, 46, 2, 0.50f}, {8, 62, 4, 0.45f}, {-62, 72, 1, 0.50f}, {392, 66, 1, 0.52f}, {-30, 44, 3, 0.55f}, {372, 58, 4, 0.50f}, {430, 52, 2, 0.58f}, {-98, 56, 0, 0.58f}};
+    for (int i = 0; i < 10; i++) {      // arbres lointains, tous différents de l'arbre du premier plan ; les derniers ne se voient que dans la vue large
+      float sx = LT[i][0] * zs + ztx, sy = 197.0f * zs + zty; if (sx < -30 || sx > 350) continue;
+      arbreLoin(g, (int)LT[i][2], sx, sy, LT[i][1] * zs * 1.3f, LT[i][3]);
+    }
+  }
   for (int x = 0; x < 320; x++) {
     float yl1 = gy - 24.0f + 6.0f * sinf(x / 40.0f + 1.0f) + 4.0f * sinf(x / 17.0f); g.drawFastVLine(x, (int)yl1, 240 - (int)yl1, C(66, 9, 15));
     float yl2 = gy - 12.0f + 5.0f * sinf(x / 55.0f + 2.0f) + 3.0f * sinf(x / 23.0f); g.drawFastVLine(x, (int)yl2, 240 - (int)yl2, C(46, 6, 11));
@@ -2204,9 +2320,7 @@ static void construireFondLarge() {
   VueId vid_;
   zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs);
   cielLarge(fondL);
-  arbre(fondL);                                                       // l'arbre en entier
-  zs = 0.34f; ztx = 232.0f; zty = 173.0f - 254.0f * zs; arbre(fondL);    // deux petits arbres lointains
-  zs = 0.25f; ztx = -8.0f; zty = 173.0f - 254.0f * zs; arbre(fondL);
+  arbre(fondL);                                                       // l'arbre en entier (les arbres lointains, tous différents, sont dans cielLarge)
   syncUI();
 }
 static bool creerLarge() {
@@ -2244,7 +2358,7 @@ static void ouvrir() {
   fondOk = true; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondLOk = false; fondAct = &fond;
   construireFond();
   memset(cr, 0, sizeof(cr)); memset(ob, 0, sizeof(ob)); memset(pl, 0, sizeof(pl)); memset(fx, 0, sizeof(fx)); memset(anc, 0, sizeof(anc)); memset(dernierSon, 0, sizeof(dernierSon));
-  static const float tailles[NCB] = {1.02f, 0.90f, 0.85f, 0.96f, 0.88f, 0.93f, 0.46f};
+  static const float tailles[NCB] = {1.42f, 1.26f, 1.19f, 1.34f, 1.23f, 1.30f, 0.62f};      // adulte posé ≈ 1/6 de la hauteur de l'arbre (~31 unités pour ~185) ; le petit est plus petit
   for (int k = 0; k < NCB; k++) initCorbeau(cr[k], tailles[k]);
   cr[0].d = -1; cr[1].d = 1; cr[2].d = 1; placer(cr[0], 3); placer(cr[1], 1); placer(cr[2], 4);
   for (int k = 0; k < 3; k++) cr[k].tfin = rnd(3, 8);
