@@ -6,6 +6,7 @@
 // monde.h (vie sociale, nourriture) garde ses interactions : ce fichier lui fournit les rangs, les liens (mémorisés) et la force de chacun, et les relit à chaque tranche.
 static void chasser(Corbeau& c);
 static void orbiteLocale(Corbeau& c, float cx, float cy, float sens, float duree);
+static void appliquerNb();
 namespace fam {
 
 static const int NM = NCB;                    // membres de la colonie : six adultes et le jeune
@@ -38,7 +39,34 @@ struct Rg { uint8_t on, aide, prot, vit; };      // réglages « Famille » (cl�
 static Rg RG = {1, 1, 1, 1};
 static bool saleP = false, restau = false;
 static int8_t pNext = -1, pondeur = -1, hostY = -1, hostCible = 0;      // parent désigné pour le prochain petit ; celui qui a pondu l'œuf de la branche ; corbeau qui menace le petit ; 0 : il menace le petit, 1 : son parent
-static const float Y_JEUNE = 110.0f, Y_GRAND = 300.0f;      // âge (secondes) où le poussin devient jeune, puis grand
+static const float Y_JEUNE = 110.0f, Y_GRAND = 300.0f;
+// ---- BLOC AF (3.1.19) : effectif réel, cycle de vie, nid construit, vrai couple (la logique est dans la section « BLOC AF » plus bas) ----
+// Effectif = N (réglage Corbeaux) : un petit ne naît que d'un œuf attrapé (puis couvé) ou d'une ponte du couple, jamais en cachette ; devenu adulte il rejoint la colonie (N + 1, mémorisé).
+struct Afr { uint8_t naiss, nuit, couple, nidv; };      // réglages « Vie, nid et couple » (clés cbafnai, cbafnui, cbafcpl, cbafnid) : naissance 0 œuf attrapé (défaut) 1 libre comme avant ; nuit 0 au nid 1 sur l'arbre ; couple 0 non 1 oui ; construction du nid 0 lente 1 normale 2 rapide
+static Afr AFR = {0, 0, 1, 1};
+struct Adu { uint8_t ver, k; uint16_t age; };      // le dernier petit devenu adulte : son emplacement dans la colonie et son âge en secondes de vie (clé cbafne)
+static Adu ADU;
+static float ageAdu = 0.0f, tSauvAdu = 0.0f; static bool saleAdu = false;
+static const float Y_MOYEN = 200.0f, Y_VIEUX = 1500.0f;      // âges de vie (vitesse normale, secondes) : poussin 0, jeune 110, moyen 200, adulte 300, vieux 1500
+static int8_t cvK = -1; static bool cvOn = false; static float tCv = 0.0f, tCvAbs = 0.0f;      // l'œuf attrapé : le corbeau qui le couve, couvaison en cours, temps couvé, temps sans couveur
+static void sauverAdu(bool force) {
+  if (!saleAdu) return; if (!force && tSauvAdu < 90.0f) return;
+  ADU.age = (uint16_t)mnf(ageAdu, 65000.0f); prefs.putBytes("cbafne", &ADU, sizeof(ADU)); saleAdu = false; tSauvAdu = 0.0f;
+}
+static float nidMul() { static const float M[3] = {1.8f, 1.0f, 0.55f}; return M[AFR.nidv > 2 ? 1 : AFR.nidv]; }      // rythme de construction du nid
+static int noeufs() { return AFR.naiss == 0 ? 1 : 3; }      // œufs d'une ponte : un seul (un petit visible, jamais caché), trois comme avant en mode libre
+static bool afOn() { return pret && RG.on && AFR.naiss == 0; }      // effectif réel : plus de naissance sans œuf attrapé
+static const char* nomVie(int v) { static const char* const N[5] = {"Poussin", "Jeune", "Moyen", "Adulte", "Vieux"}; return N[v < 0 ? 0 : (v > 4 ? 4 : v)]; }
+static int vieDe(float age) { return age < Y_JEUNE ? 0 : (age < Y_MOYEN ? 1 : (age < Y_GRAND ? 2 : (age < Y_VIEUX ? 3 : 4))); }
+static bool vieux(int k) { return pret && ADU.ver == 1 && k == (int)ADU.k && ageAdu >= Y_VIEUX; }
+static void tailleVie(float age, float& s, float& duvet) {      // taille et duvet selon l'âge : poussin très duveteux, jeune, moyen presque emplumé, adulte
+  if (age < Y_JEUNE) { float u = age / Y_JEUNE; s = lerpf(0.62f, 0.74f, u); duvet = lerpf(1.0f, 0.8f, u); }
+  else if (age < Y_MOYEN) { float u = (age - Y_JEUNE) / (Y_MOYEN - Y_JEUNE); s = lerpf(0.74f, 0.94f, u); duvet = lerpf(0.8f, 0.42f, u); }
+  else if (age < Y_GRAND) { float u = (age - Y_MOYEN) / (Y_GRAND - Y_MOYEN); s = lerpf(0.94f, 1.16f, u); duvet = lerpf(0.42f, 0.08f, u); }
+  else { s = 1.22f; duvet = 0.0f; }
+}
+static int foyerNuit(int k);
+static void nuitCouple();      // âge (secondes) où le poussin devient jeune, puis grand
 static float faimP = 0.4f, tSoin = 8.0f, tAide = 20.0f, tMenP = 0.0f, tBat = 15.0f, tHost = 90.0f, tSauvP = 0.0f, tCriY = 0.0f, tChaY = 0.0f, tCriP = 4.0f, tEssai = 40.0f, tSurv = 5.0f, tProche = 20.0f;
 static bool rage[NM];
 static float tmis[NM];
@@ -76,7 +104,7 @@ static void echanger(int k, int perch) { for (int j = 0; j < NM; j++) if (j != k
 static void calculerFoyers() {
   static const int8_t HR[6] = {2, 3, 4, 1, 0, 5};      // du dominant au dominé : milieu de la branche, puis le perchoir haut, puis les bouts
   for (int k = 0; k < NM; k++) foyer[k] = (S.rang[k] < 6) ? HR[S.rang[k]] : (int8_t)-1;
-  if (S.fph >= F_NID) { echanger(0, 4); echanger(1, 2); }      // le couple : le mâle veille au-dessus du nid, la femelle sur la grosse branche
+  if (S.fph >= F_NID) { if (AFR.couple) { echanger(0, 1); echanger(1, 2); } else { echanger(0, 4); echanger(1, 2); } }      // le couple : côte à côte sur la grosse branche, près du nid (réglage Couple) ; sinon le mâle veille au-dessus du nid
 }
 static void generer() {
   memset(&S, 0, sizeof(S)); S.ver = 1;
@@ -102,7 +130,7 @@ static void appliquer(Corbeau& c, int k) {      // les traits de la colonie devi
   c.pCal = S.cal[k] / 255.0f; c.pBav = S.soc[k] / 255.0f; c.pJou = S.cur[k] / 255.0f; c.pCra = 1.0f - S.aud[k] / 255.0f;
 }
 static void sauver(bool force) {
-  sauverY(force);
+  sauverY(force); sauverAdu(force);
   if (!pret || !sale) return;
   if (!force && tSauv < 90.0f) return;
   S.age = (uint16_t)mnf(ageF, 60000.0f);
@@ -124,7 +152,7 @@ static bool calme() {
 
 // ---------- perchoirs attitrés : le plus fort a le meilleur, il déloge un dominé qui s'est mis sur sa place ----------
 static int perchPour(const Corbeau& c) {
-  int k = (int)(&c - cr), h = (pret && k >= 0 && k < NM) ? foyer[k] : -1;
+  int k = (int)(&c - cr), h = (pret && k >= 0 && k < NM) ? (repos > 0.0f ? foyerNuit(k) : foyer[k]) : -1;
   if (h >= 0) {
     if (!perchOccupe(h)) return h;
     int j = -1; for (int q = 0; q < NM; q++) if (cr[q].perch == h) j = q;
@@ -190,7 +218,7 @@ static void sortieGroupe() {
 static void debutRepos() {
   repos = rnd(24.0f, 32.0f); sent = -1; int best = -1;
   for (int k = 0; k < NAD; k++) { rallie[k] = false; if (cr[k].etat == E_OFF) continue; if (best < 0 || S.aud[k] > S.aud[best]) best = k; }
-  sent = (int8_t)best;
+  sent = (int8_t)best; nuitCouple();
 }
 static void finRepos(bool brusque) {
   for (int k = 0; k < NAD; k++) {
@@ -208,7 +236,7 @@ static void reposTick() {
     Corbeau& c = cr[k]; if (c.etat != E_PERCHE || !c.visible) continue;
     if (c.but == B_FAM) { if (k != sent && c.act != A_DORT && c.act <= A_REGARDE) { c.act = A_DORT; c.tAct = 0.0f; c.dAct = repos + 1.0f; } continue; }      // au nid : elle dort sur place
     if (c.perch < 0 || c.perch >= 10) continue;
-    int hm = foyer[k];
+    int hm = foyerNuit(k);
     if (hm >= 0 && c.perch != hm && !rallie[k] && c.act != A_DORT && c.objet == 0) { rallie[k] = true; c.perch = -1; versPerchoir(c); continue; }      // chacun rejoint sa place
     if (k == sent) { if (c.act == A_DORT) { c.act = A_REGARDE; c.dAct = 4.0f; c.tAct = 0.0f; } continue; }
     if (c.act != A_DORT && c.act <= A_REGARDE && (hm < 0 || c.perch == hm || rallie[k])) { c.act = A_DORT; c.tAct = 0.0f; c.dAct = repos + 1.0f; }
@@ -237,13 +265,16 @@ static const float NX = 88.0f, NY = 106.0f;      // le nid : sur une fourche au 
 static const float CUPX = NX + 3.0f, RIMX = NX + 14.0f;      // où la femelle couve ; où se pose un parent qui apporte quelque chose ou qui monte la garde
 static const int NB_NID = 16;                    // brindilles d'un nid fini
 static const float T_SOLO = 45.0f, T_COUVE = 150.0f, T_POUS = 200.0f, T_JEUN = 70.0f, T_VIDE = 120.0f;
-enum { M_RIEN = 0, M_VERS_BRIN, M_PIQUE, M_VERS_NID, M_DEPOSE, M_COUPLE, M_VERS_COUVE, M_NID, M_GARDE, M_Y_VERS, M_Y_DONNE, M_Y_GARDE, M_Y_VEILLE, M_Y_MENACE, M_Y_ESSAI };      // M_Y_* : missions du parent attitré, des aidants et du petit (bloc Y)
+enum { M_RIEN = 0, M_VERS_BRIN, M_PIQUE, M_VERS_NID, M_DEPOSE, M_COUPLE, M_VERS_COUVE, M_NID, M_GARDE, M_NUIT, M_RELAIS, M_OEUF, M_Y_VERS, M_Y_DONNE, M_Y_GARDE, M_Y_VEILLE, M_Y_MENACE, M_Y_ESSAI };      // M_Y_* : missions du parent attitré, des aidants et du petit (bloc Y)
 struct Mis { uint8_t ph, kind, porte; float t, def, tz, dur; };      // mission d'un parent (0 = le mâle, 1 = la femelle) ; kind : 1 brindille, 2 nourriture ; porte : ce qu'il tient au bec ; t avance image par image (pose) ; def : posture de défense (0 à 1)
 static Mis mis[NM];
-struct Par { bool on, go; uint8_t step; float t, sx; };
+struct Par { bool on, go; uint8_t step; float t, sx; bool calin; };      // calin : la parade de couple recommence en cours de cycle (sans changer l'étape de la famille)
 static Par par;
 struct Men { bool on; uint8_t kind; int8_t qui; float x, y, tOff; };      // menace sur le nid : 1 visiteur, 2 main, 3 corbeau étranger, 4 objet lancé
 static Men men;
+struct Rlv { uint8_t ph, qui; float t; };      // relais de couvaison à tour de rôle : 0 rien, 1 l'autre vient au bord du nid, 2 le couveur s'en va, 3 l'autre s'installe
+static Rlv RLV;
+static float tRlv = 60.0f, tCalin = 70.0f;
 static float faim[3], beg[3], couv = 0.0f, tNour = 20.0f, tChasse = 0.0f, tMen = 0.0f, tCri = 0.0f; static uint8_t sui = 0, ordre = 0;
 
 static bool nichee() { return S.fph >= F_PONTE && S.fph <= F_JEUNES; }
@@ -275,6 +306,8 @@ static void arrive(Corbeau& c, int idx) {      // fin de l'atterrissage d'un par
     case M_VERS_COUVE: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (croiss() >= 0.35f) ? -1 : 1; m.ph = M_NID; break;
     case M_COUPLE: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (cr[1 - p].x >= c.x) ? 1 : -1; break;
     case M_GARDE: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (men.x >= c.fx) ? 1 : -1; break;
+    case M_NUIT: case M_RELAIS: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (NX >= c.fx) ? 1 : -1; break;      // la nuit au nid, ou au bord du nid pour le relais de couvaison
+    case M_OEUF: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (OE.x >= c.fx) ? 1 : -1; break;      // il couve l'œuf attrapé
     case M_Y_VERS: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (cr[PC].x >= c.x) ? 1 : -1; m.ph = M_Y_DONNE; break;
     case M_Y_GARDE: case M_Y_VEILLE: case M_Y_MENACE: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (((m.ph == M_Y_MENACE && hostCible == 1 && PE.par < NAD) ? cr[PE.par].x : cr[PC].x) >= c.x) ? 1 : -1; break;
     case M_Y_ESSAI: c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(3.0f, 6.0f); posture(c); m.ph = M_RIEN; break;
@@ -297,16 +330,17 @@ static void debutParade() {
 static void finMission(int p) {
   Corbeau& c = cr[p]; mis[p].ph = M_RIEN; mis[p].porte = 0; mis[p].kind = 0;
   if (c.but != B_FAM) return;
-  if (p == 1 && nichee()) { versPoint(1, mereX(), mereY(), M_VERS_COUVE); return; }      // la femelle retourne sur le nid
+  if (p == 1 && nichee() && !auNid(0) && RLV.ph == 0) { versPoint(1, mereX(), mereY(), M_VERS_COUVE); return; }      // la femelle retourne sur le nid (sauf si le mâle couve à son tour)
   c.but = B_RIEN; c.tfin = rnd(2.0f, 5.0f); c.perch = -1; versPerchoir(c);
 }
 static void annulerParade() {
+  if (par.calin) { par.on = false; par.calin = false; if (mis[1].ph == M_COUPLE) finMission(1); if (mis[0].ph == M_COUPLE) finMission(0); return; }
   par.on = false; S.fph = F_SOLO; ageF = T_SOLO - 15.0f;
   if (mis[1].ph == M_COUPLE) finMission(1);
   if (cr[0].etat == E_PERCHE) cr[0].tfin = rnd(3.0f, 6.0f);
 }
 static void paradeTick(float h) {
-  if (!par.on) { S.fph = F_SOLO; return; }
+  if (!par.on) { if (!par.calin) S.fph = F_SOLO; return; }
   if (cr[0].etat == E_OFF || cr[1].etat == E_OFF || (par.step < 3 && !calme())) { annulerParade(); return; }
   mo::gSoc = mxf(mo::gSoc, 3.0f); gSocial = mxf(gSocial, 3.0f); gPoof = mxf(gPoof, 3.0f); gAction = mxf(gAction, 2.0f); gObjet = mxf(gObjet, 3.0f); mo::gTrip = mxf(mo::gTrip, 3.0f);
   par.t += h;
@@ -314,10 +348,15 @@ static void paradeTick(float h) {
     case 0:      // rapprochement : la femelle vient se poser tout contre le mâle
       if (!par.go) {
         if (parentLibre(0) && parentLibre(1)) {
-          float mx = cr[0].fx, tx = (mx + 19.0f <= 232.0f) ? mx + 19.0f : mx - 19.0f; par.sx = tx; par.go = true; par.t = 0.0f;
-          versPoint(1, tx, ytop(tx) + 0.4f, M_COUPLE);
+          if (par.calin) {      // parade en cours de cycle : ils se retrouvent tous deux sur la grosse branche, côte à côte
+            float x0 = rnd(112.0f, 190.0f); par.sx = x0 + 19.0f; par.go = true; par.t = 0.0f;
+            versPoint(0, x0, ytop(x0) + 0.4f, M_COUPLE); versPoint(1, x0 + 19.0f, ytop(x0 + 19.0f) + 0.4f, M_COUPLE);
+          } else {
+            float mx = cr[0].fx, tx = (mx + 19.0f <= 232.0f) ? mx + 19.0f : mx - 19.0f; par.sx = tx; par.go = true; par.t = 0.0f;
+            versPoint(1, tx, ytop(tx) + 0.4f, M_COUPLE);
+          }
         } else if (par.t > 8.0f) annulerParade();
-      } else if (mis[1].ph == M_COUPLE && cr[1].etat == E_PERCHE && cr[1].but == B_FAM) { par.step = 1; par.t = 0.0f; }
+      } else if (mis[1].ph == M_COUPLE && cr[1].etat == E_PERCHE && cr[1].but == B_FAM && (!par.calin || (mis[0].ph == M_COUPLE && cr[0].etat == E_PERCHE && cr[0].but == B_FAM))) { par.step = 1; par.t = 0.0f; }
       else if (par.t > 14.0f) annulerParade();
       break;
     case 1:      // lissage mutuel : elle lisse le mâle, puis il la lisse
@@ -329,7 +368,7 @@ static void paradeTick(float h) {
         if (par.t > 3.3f && par.t - h <= 3.3f) { cr[1].bec = 1.0f; son(SN_GAZ, 120); }
         if (par.t > 6.0f) {      // vol de parade : tous deux décollent et tournent côte à côte
           float cx = rnd(120.0f, 200.0f), cy = rnd(52.0f, 80.0f), sens = random(2) ? 1.0f : -1.0f, dur = 7.0f;
-          mis[1].ph = M_RIEN; cr[1].but = B_RIEN; cr[0].tfin = 4.0f; cr[1].tfin = 4.0f;
+          mis[1].ph = M_RIEN; cr[1].but = B_RIEN; mis[0].ph = M_RIEN; cr[0].but = B_RIEN; cr[0].tfin = 4.0f; cr[1].tfin = 4.0f;
           orbiteLocale(cr[0], cx, cy, sens, dur); orbiteLocale(cr[1], cx, cy, sens, dur);
           cr[1].ray = cr[0].ray; cr[1].ang = cr[0].ang - 0.55f * sens; cr[1].om = cr[0].om;
           sonCri(); son(SN_AILES, 200); par.step = 3; par.t = 0.0f;
@@ -338,7 +377,8 @@ static void paradeTick(float h) {
       break;
     default:      // retour aux perchoirs, puis le couple est formé : le nid commence
       if (par.t > 11.0f || (par.t > 4.0f && cr[0].etat == E_PERCHE && cr[1].etat == E_PERCHE)) {
-        par.on = false; S.fph = F_NID; ageF = 0.0f; tBrin = rnd(5.0f, 8.0f); changer(0, 1, 100); calculerFoyers(); sale = true; sauver(true);
+        if (par.calin) { par.on = false; par.calin = false; changer(0, 1, 6); sale = true; }      // simple parade de couple : le cycle continue là où il en était
+        else { par.on = false; S.fph = F_NID; ageF = 0.0f; tBrin = rnd(5.0f, 8.0f) * nidMul(); changer(0, 1, 100); calculerFoyers(); sale = true; sauver(true); }
       }
       break;
   }
@@ -375,7 +415,7 @@ static void protegerNid() {      // le mâle s'interpose ailes ouvertes ou chass
   } else if (mis[0].ph == M_GARDE) finMission(0);
 }
 static void nourrir(int p) {      // ce qu'un parent a rapporté : un morceau pour la femelle qui couve, ou pour les poussins
-  if (S.fph == F_COUVE || S.fph == F_PONTE) { if (p == 0) { cr[1].bec = 1.0f; cr[1].flash = 0.3f; son(SN_GAZ, 110); } return; }
+  if (S.fph == F_COUVE || S.fph == F_PONTE) { if (p == 0) { cr[1].bec = 1.0f; cr[1].flash = 0.3f; son(SN_GAZ, 110); } else if (auNid(0)) { cr[0].bec = 1.0f; cr[0].flash = 0.3f; son(SN_GAZ, 110); } return; }      // le mâle nourrit la femelle qui couve, et la femelle nourrit le mâle quand il couve à son tour
   for (int j = 0; j < 2 && S.nPou > 0; j++) { int i = sui % S.nPou; faim[i] = 0.0f; beg[i] = 1.0f; sui++; }
   son(SN_GAZ, 140);
 }
@@ -388,31 +428,104 @@ static void eclosion() {      // les œufs s'ouvrent : des poussins duveteux au 
 static void envol() {      // un jeune quitte le nid : le premier rejoint le groupe quand la place est libre, les autres s'en vont
   if (S.nPou == 0) return;
   S.nPou--; S.jeune++; sale = true;
-  if ((cr[PC].etat == E_OFF || grand()) && random(100) < 70) { pNext = 1; naissance(NX + 2.0f, NY - 5.0f, false); agePous = 140.0f; if (PE.stade == 1) { PE.stade = 2; PE.age = 140; saleP = true; } }
+  const bool nait = (AFR.naiss == 0) ? placeLibre() : ((cr[PC].etat == E_OFF || grand()) && random(100) < 70);      // effectif réel : le petit du nid devient un corbeau visible quand l'emplacement du petit est libre
+  if (nait) { pNext = 1; naissance(NX + 2.0f, NY - 5.0f, false); agePous = 140.0f; if (PE.stade == 1) { PE.stade = 2; PE.age = 140; saleP = true; } }
   else minisEnvol(NX, NY - 12.0f, 1);
   son(SN_AILES, 170); sonCri(); plumes(NX, NY - 10.0f, 6);
+}
+// ======================= BLOC AF, partie 1 (3.1.19) : effectif réel, nuit au nid, couple =======================
+static bool placeLibre() { return RG.on && cr[PC].etat == E_OFF; }      // l'emplacement du petit est libre : un petit peut naître
+static bool reproOk() {      // une nouvelle ponte : seulement quand l'enfant précédent est devenu adulte (et si l'emplacement du petit est libre)
+  if (AFR.naiss != 0) return true;
+  return RG.on && cr[PC].etat == E_OFF && (PE.stade == 0 || PE.stade >= 3);
+}
+static bool nidPret() { return pret && RG.on && S.fph >= F_NID && S.brins >= 8 && cr[0].etat != E_OFF && cr[1].etat != E_OFF; }
+static bool nuitNid() { return AFR.nuit == 0 && nidPret() && nAct >= 2; }
+static int foyerNuit(int k) {      // place de nuit : le couple au nid ; les autres d'abord sur les deux branches secondaires (haute, gauche), puis sur la grosse branche, toujours les mêmes d'une nuit à l'autre (selon le rang)
+  if (k < 0 || k >= NM) return -1;
+  if (!nuitNid() || k < 2 || k >= NAD) return foyer[k];
+  int r = 0; for (int j = 2; j < NAD; j++) if (j != k && cr[j].etat != E_OFF && S.rang[j] < S.rang[k]) r++;
+  static const int8_t MB[4] = {2, 3, 1, 0};
+  if (r == 0) return 4;
+  if (r == 1) return 5;
+  return MB[(r - 2) & 3];
+}
+static void nuitCouple() {      // la nuit tombe : la femelle s'installe dans la coupe du nid, le mâle monte la garde sur le bord (si le nid est assez fait) ; ils y restent jusqu'au réveil
+  if (!nuitNid() || men.on || par.on) return;
+  if (mis[1].ph == M_RIEN && parentLibre(1)) versPoint(1, CUPX, NY - 4.5f, M_NUIT);
+  if (mis[0].ph == M_RIEN && parentLibre(0)) versPoint(0, RIMX, NY - 7.5f, M_NUIT);
+}
+static bool coupleLibre() { return mis[0].ph == M_RIEN && mis[1].ph == M_RIEN && parentLibre(0) && parentLibre(1) && calme() && !men.on && !par.on && repos <= 0.0f && RLV.ph == 0; }
+static void relaisTick(float h) {      // couver à tour de rôle : l'autre vient au bord du nid, le couveur lui cède la place et part manger, puis ils échangent de nouveau
+  if (!AFR.couple || S.fph != F_COUVE) {
+    if (RLV.ph || auNid(0)) { RLV.ph = 0; if (mis[0].ph == M_NID || mis[0].ph == M_RELAIS) finMission(0); if (mis[1].ph == M_RELAIS) finMission(1); }
+    return;
+  }
+  const int a = RLV.qui, b = 1 - a;
+  switch (RLV.ph) {
+    case 0: {
+      int q = auNid(0) ? 0 : 1, o = 1 - q; const bool fin = ageF > T_COUVE - 40.0f;
+      tRlv -= h;
+      if (tRlv > 0.0f && !(q == 0 && fin)) break;
+      if (q == 1 && (fin || ageF < 25.0f)) { tRlv = 6.0f; break; }
+      if (auNid(q) && mis[o].ph == M_RIEN && parentLibre(o) && calme() && !men.on && !par.on && repos <= 0.0f) { RLV.qui = (uint8_t)q; versPoint(o, RIMX, NY - 7.5f, M_RELAIS); RLV.ph = 1; RLV.t = 0.0f; }
+      else tRlv = rnd(5.0f, 9.0f);
+    } break;
+    case 1:      // l'autre vient au bord du nid : un petit cri, un morceau de bec à bec, le couveur se lève
+      RLV.t += h;
+      if (mis[b].ph == M_RELAIS && cr[b].etat == E_PERCHE && cr[b].but == B_FAM && mis[b].t > 1.0f && auNid(a)) {
+        cr[b].bec = 0.6f; cr[a].bec = 0.8f; son(SN_GAZ, 110);
+        mis[a].ph = M_RIEN; mis[a].porte = 0; cr[a].but = B_RIEN; cr[a].tfin = rnd(2.0f, 4.0f); cr[a].perch = -1; versPerchoir(cr[a]);
+        RLV.ph = 2; RLV.t = 0.0f;
+      } else if (RLV.t > 14.0f || !auNid(a)) { if (mis[b].ph == M_RELAIS) finMission(b); RLV.ph = 0; tRlv = rnd(20.0f, 30.0f); }
+      break;
+    case 2:      // l'autre s'installe dans la coupe
+      RLV.t += h;
+      if (RLV.t > 0.9f) { versPoint(b, mereX(), mereY(), M_VERS_COUVE); RLV.ph = 3; RLV.t = 0.0f; }
+      break;
+    default:
+      RLV.t += h;
+      if (auNid(b)) { RLV.ph = 0; tRlv = rnd(40.0f, 65.0f); }
+      else if (RLV.t > 14.0f) { RLV.ph = 0; tRlv = 15.0f; }
+      break;
+  }
+}
+static void calinTick(float h) {      // de temps en temps le couple se retrouve : lissage mutuel, partage d'un morceau, vol de parade côte à côte
+  if (!AFR.couple || par.on) return;
+  if (S.fph != F_NID && S.fph != F_VIDE) return;
+  tCalin -= h; if (tCalin > 0.0f) return;
+  tCalin = rnd(75.0f, 130.0f);
+  if (coupleLibre() && !precieux()) { memset(&par, 0, sizeof(par)); par.on = true; par.calin = true; }
+}
+static void afPilote(float h) {
+  for (int p = 0; p < 2; p++) if (mis[p].ph == M_NUIT && repos <= 0.0f && mis[p].t > 1.5f) finMission(p);      // le jour se lève : ils quittent le nid
+  relaisTick(h);
+  calinTick(h);
 }
 static void pilote(float h) {      // une tranche de 0,25 s : les missions des deux parents selon l'étape du cycle
   for (int p = 0; p < 2; p++) { Mis& m = mis[p]; if (m.ph != M_RIEN && (cr[p].etat == E_OFF || cr[p].but != B_FAM)) { m.ph = M_RIEN; m.porte = 0; m.kind = 0; } }
   detecterMenace(h);
-  if (S.fph == F_PARADE) { paradeTick(h); return; }
+  if (S.fph == F_PARADE || (par.on && par.calin)) { paradeTick(h); return; }
   ageF += h;
+  afPilote(h);
   for (int p = 0; p < 2; p++) {      // dépôt de ce que le parent a rapporté : une brindille s'ajoute au nid, de la nourriture va au bec de la femelle ou des poussins
     Mis& m = mis[p]; if (m.ph != M_DEPOSE || cr[p].etat != E_PERCHE) continue;
     if (m.porte == 1 && m.t > 0.6f) { m.porte = 0; if (S.brins < NB_NID) S.brins++; sale = true; son(SN_CROC, 70); }
     if (m.porte == 2 && m.t > 0.7f) { m.porte = 0; nourrir(p); }
-    if (m.t > 1.4f) { finMission(p); tBrin = rnd(3.0f, 7.0f); }
+    if (m.t > 1.4f) { finMission(p); tBrin = rnd(3.0f, 7.0f) * nidMul(); }
   }
   if (nichee()) {
     protegerNid();
-    if (mis[1].ph == M_RIEN && cr[1].etat != E_OFF && parentLibre(1) && calme() && !men.on) versPoint(1, mereX(), mereY(), M_VERS_COUVE);      // la femelle rejoint le nid
+    if (mis[1].ph == M_RIEN && cr[1].etat != E_OFF && parentLibre(1) && calme() && !men.on && RLV.ph == 0 && !auNid(0) && !(S.fph >= F_COUVE && cvOn)) versPoint(1, mereX(), mereY(), M_VERS_COUVE);      // la femelle rejoint le nid
     else if (auNid(1) && fabsf(cr[1].fx - mereX()) > 2.5f && calme() && !men.on) versPoint(1, mereX(), mereY(), M_VERS_COUVE);      // elle change de place
     if (S.fph >= F_COUVE && calme() && !men.on) {      // le mâle (puis la femelle, quand les petits ont grandi) va chercher à manger
       tNour -= h;
       if (tNour <= 0.0f) {
         int p = 0;
         if (S.fph >= F_POUSSINS && croiss() >= 0.3f && ordre) p = 1;
-        bool ok = (mis[0].ph == M_RIEN || mis[0].ph == M_GARDE) && (mis[1].ph == M_RIEN || mis[1].ph == M_NID) && (p == 1 ? auNid(1) : parentLibre(0));
+        bool ok;
+        if (auNid(0)) { p = 1; ok = (mis[1].ph == M_RIEN && parentLibre(1) && RLV.ph == 0); }      // le mâle couve à son tour : la femelle va chercher à manger
+        else ok = (mis[0].ph == M_RIEN || mis[0].ph == M_GARDE) && (mis[1].ph == M_RIEN || mis[1].ph == M_NID) && (p == 1 ? auNid(1) : parentLibre(0));
         if (ok) {
           float gx = rnd(110.0f, 300.0f); versPoint(p, gx, solHaut(gx), M_VERS_BRIN); mis[p].kind = 2; mis[p].porte = 0; ordre ^= 1;
           tNour = (S.fph == F_COUVE) ? rnd(26.0f, 38.0f) : rnd(10.0f, 16.0f);
@@ -426,28 +539,31 @@ static void pilote(float h) {      // une tranche de 0,25 s : les missions des d
       break;
     case F_NID:
       tBrin -= h;
-      if (tBrin <= 0.0f && S.brins < NB_NID && calme() && mis[0].ph == M_RIEN && mis[1].ph == M_RIEN) {
-        int p = random(2); if (!parentLibre(p)) p = 1 - p;
-        if (parentLibre(p)) { float gx = rnd(110.0f, 300.0f); versPoint(p, gx, solHaut(gx), M_VERS_BRIN); mis[p].kind = 1; mis[p].porte = 0; tBrin = 1e6f; } else tBrin = 1.0f;
+      if (tBrin <= 0.0f && calme()) {      // les deux parents peuvent aller chercher des brindilles en même temps (par terre, au loin), une par voyage
+        int en = 0; for (int q = 0; q < 2; q++) if (mis[q].kind == 1 && (mis[q].ph == M_VERS_BRIN || mis[q].ph == M_PIQUE || mis[q].ph == M_VERS_NID || mis[q].ph == M_DEPOSE)) en++;
+        if (S.brins + en < NB_NID && en < 2) {
+          int p = random(2); if (!parentLibre(p) || mis[p].ph != M_RIEN) p = 1 - p;
+          if (parentLibre(p) && mis[p].ph == M_RIEN) { float gx = rnd(110.0f, 300.0f); versPoint(p, gx, solHaut(gx), M_VERS_BRIN); mis[p].kind = 1; mis[p].porte = 0; tBrin = rnd(2.5f, 5.0f) * nidMul(); } else tBrin = 1.0f;
+        } else tBrin = 1.0f;
       }
-      if (S.brins >= NB_NID && mis[0].ph == M_RIEN && mis[1].ph == M_RIEN) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; S.nPou = 0; sale = true; sauver(true); }
+      if (S.brins >= NB_NID && mis[0].ph == M_RIEN && mis[1].ph == M_RIEN && reproOk()) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; S.nPou = 0; sale = true; sauver(true); }
       break;
     case F_PONTE: case F_COUVE:
       if (S.fph == F_PONTE && auNid(1)) {
-        tEuf -= h; if (tEuf <= 0.0f && layT <= 0.0f && S.nEuf < 3) { layT = 1.5f; tEuf = rnd(16.0f, 24.0f); }
+        tEuf -= h; if (tEuf <= 0.0f && layT <= 0.0f && S.nEuf < noeufs()) { layT = 1.5f; tEuf = rnd(16.0f, 24.0f); }
       }
-      if (S.fph == F_PONTE && S.nEuf >= 3) { S.fph = F_COUVE; ageF = 0.0f; tNour = rnd(14.0f, 22.0f); sale = true; sauver(true); }
+      if (S.fph == F_PONTE && S.nEuf >= noeufs()) { S.fph = F_COUVE; ageF = 0.0f; tNour = rnd(14.0f, 22.0f); sale = true; sauver(true); }
       if (S.fph == F_COUVE && ageF > T_COUVE && auNid(1)) eclosion();
       break;
     case F_POUSSINS:
       if (ageF > T_POUS) { S.fph = F_JEUNES; ageF = 0.0f; sale = true; sauver(true); }
       break;
     case F_JEUNES:
-      if (S.nPou > 0 && ageF > T_JEUN * 0.55f + 9.0f * (S.jeune % 3)) envol();      // l'un après l'autre
+      if (S.nPou > 0 && ageF > T_JEUN * 0.55f + 9.0f * (S.jeune % 3)) { if (AFR.naiss != 0 || placeLibre() || ageF > T_JEUN + 400.0f) envol(); }      // l'un après l'autre ; il attend que l'emplacement du petit soit libre
       if (S.nPou == 0) { S.fph = F_VIDE; ageF = 0.0f; S.gen++; sale = true; sauver(true); finMission(1); }
       break;
     case F_VIDE:
-      if (RG.on && ageF > T_VIDE) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; sale = true; sauver(true); }
+      if (RG.on && ageF > T_VIDE && reproOk()) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; sale = true; sauver(true); }
       break;
     default: break;
   }
@@ -500,7 +616,7 @@ static void nid(M5Canvas& g) {
   for (int i = 0; i < n; i += 2) brin(g, i);
   if (n >= 8) ell(g, NX, NY - 8.2f, 11.0f, 2.3f, C(9, 3, 4));      // l'intérieur de la coupe
   for (int e = 0; e < S.nEuf && e < 4; e++) {      // les œufs, pâles et tachetés
-    float x = NX + (e - 1) * 5.6f, y = NY - 6.8f;
+    float x = NX + (e - (S.nEuf - 1) * 0.5f) * 5.6f, y = NY - 6.8f;
     ell(g, x, y, 2.8f, 3.5f, C(112, 116, 104)); ell(g, x - 0.8f, y - 1.1f, 1.1f, 1.4f, C(168, 170, 150)); disque(g, x + 1.0f, y + 1.2f, 0.5f, C(56, 52, 44));
   }
   if (S.nPou > 0 && (S.fph == F_POUSSINS || S.fph == F_JEUNES)) {
@@ -521,9 +637,23 @@ static void boutBec(const Corbeau& c, float& X, float& Y, float& dx, float& dy) 
   X = c.x + c.dv * c.s * (u * ct + v * st); Y = c.y + c.bob + c.s * (-u * st + v * ct);
   dx = c.dv * (cb * ct + sb * st); dy = -cb * st + sb * ct;
 }
+static void vieuxPlumes(M5Canvas& g, const Corbeau& c) {      // un vieux corbeau : plumes grises et blanches à la tête et sur le dos
+  const float ct = cosf(c.pitch), st = sinf(c.pitch), s = c.s, cx = c.x, cy = c.y + c.bob;
+  const uint16_t g1 = C(168, 166, 176), g2 = C(104, 102, 112);
+  const float hu = 8.2f + 4.8f * cosf(c.ha), hv = -2.0f + 4.8f * sinf(c.ha);
+  for (int i = 0; i < 4; i++) {
+    float a = -2.4f + 0.55f * i, u1 = hu + cosf(a) * 2.6f, v1 = hv + sinf(a) * 2.6f, u2 = hu + cosf(a) * 5.0f, v2 = hv + sinf(a) * 5.0f;
+    ligne(g, cx + c.dv * s * (u1 * ct + v1 * st), cy + s * (-u1 * st + v1 * ct), cx + c.dv * s * (u2 * ct + v2 * st), cy + s * (-u2 * st + v2 * ct), g1);
+  }
+  for (int i = 0; i < 5; i++) {
+    float u1 = -3.0f + 2.6f * i, v1 = -4.2f, u2 = u1 - 3.2f, v2 = -7.4f - 0.5f * (float)(i & 1);
+    ligne(g, cx + c.dv * s * (u1 * ct + v1 * st), cy + s * (-u1 * st + v1 * ct), cx + c.dv * s * (u2 * ct + v2 * st), cy + s * (-u2 * st + v2 * ct), (i & 1) ? g2 : g1);
+  }
+}
 static void sur(M5Canvas& g, int k) {      // ce que le corbeau k porte au bec : une brindille, un morceau de nourriture, un morceau offert
   if (!pret || k < 0 || k >= NM || !cr[k].visible) return;
   const Corbeau& c = cr[k]; float X, Y, dx, dy; boutBec(c, X, Y, dx, dy); const float s = c.s;
+  if (vieux(k)) vieuxPlumes(g, c);
   if (mis[k].porte == 1) {
     float cs = cosf(0.35f), sn = sinf(0.35f), px = -dy, py = dx, tx = dx * cs + px * sn, ty = dy * cs + py * sn, cx = X - dx * 3.0f * s, cy = Y - dy * 3.0f * s;
     ligne(g, cx - tx * 6.0f * s, cy - ty * 6.0f * s, cx + tx * 9.0f * s, cy + ty * 9.0f * s, C(96, 44, 22)); ligne(g, cx - tx * 6.0f * s, cy - ty * 6.0f * s + 0.8f, cx + tx * 9.0f * s, cy + ty * 9.0f * s + 0.8f, C(60, 26, 14));
@@ -563,7 +693,7 @@ static void pose(Corbeau& c, int idx, float dt) {      // attitudes des parents 
   m.def += (tg - m.def) * mnf(1.0f, dt * 6.0f);
   if (m.ph == M_DEPOSE && c.etat == E_PERCHE) {      // il penche la tête dans le nid et y glisse la brindille, ou la nourriture
     float dip = sinf(3.1416f * lim(m.t / 1.4f, 0.0f, 1.0f)); c.haC = lerpf(c.ha0, 0.75f, dip); c.hbC = c.haC + 0.5f; c.pitchC = c.pr - 0.2f * dip;
-  } else if (m.ph == M_NID && c.etat == E_PERCHE) {      // elle couve : corps bas dans la coupe, de temps en temps elle retourne les œufs du bec
+  } else if ((m.ph == M_NID || m.ph == M_OEUF || (m.ph == M_NUIT && idx == 1)) && c.etat == E_PERCHE) {      // elle couve (ou il couve l'œuf attrapé, ou elle dort dans la coupe) : corps bas dans la coupe, de temps en temps elle retourne les œufs du bec
     c.pitchC = c.pr * (croiss() >= 0.35f ? 0.88f : 0.62f); c.bob += (croiss() >= 0.35f ? 0.6f : 1.6f) * c.s;
     if (!dort) {
       float ph = fmodf(tAnim * 0.083f + idx * 0.37f, 1.0f);
@@ -571,6 +701,7 @@ static void pose(Corbeau& c, int idx, float dt) {      // attitudes des parents 
       if (layT > 0.0f) { float e = sinf(3.1416f * lim((1.5f - layT) / 1.5f, 0.0f, 1.0f)); c.ruf = 0.6f * e; c.pitchC -= 0.12f * e; c.bec = mxf(c.bec, 0.4f * e); }
     }
   }
+  if (vieux(idx) && c.etat == E_PERCHE && !dort) { c.pitchC += 0.08f; c.bob += 0.35f * c.s; }      // un vieux corbeau : le dos voûté
   if (idx == PC && soinOn()) {      // le petit : réclame (tête levée, bec ouvert) quand il a faim, se fait tout petit quand on menace
     float bg = lim((faimP - 0.5f) * 2.2f, 0.0f, 1.0f);
     if (ym.on) { c.pitchC = c.pr * 0.82f; c.bob += 0.8f * c.s; }
@@ -585,10 +716,10 @@ static void pose(Corbeau& c, int idx, float dt) {      // attitudes des parents 
   }
 }
 static bool enService(const Corbeau& c) {      // un parent qui a des œufs ou des petits ne rejoint ni la nuée du visiteur ni l'appel
-  int k = (int)(&c - cr); return pret && k >= 0 && ((k < 2 && nichee()) || ((k == PE.par || k == PC) && soinOn()));
+  int k = (int)(&c - cr); return pret && k >= 0 && ((k < 2 && nichee()) || ((k == PE.par || k == PC) && soinOn()) || (cvOn && k == (int)cvK));
 }
 static void majFam(float dt) {      // à chaque image : poussins qui réclament, couverts la nuit, ponte
-  if (layT > 0.0f) { layT -= dt; if (layT <= 0.0f && S.nEuf < 3) { S.nEuf++; sale = true; son(SN_POP_APP, 80); plumes(NX, NY - 6.0f, 2); } }      // l'œuf apparaît dans le nid
+  if (layT > 0.0f) { layT -= dt; if (layT <= 0.0f && S.nEuf < noeufs()) { S.nEuf++; sale = true; son(SN_POP_APP, 80); plumes(NX, NY - 6.0f, 2); } }      // l'œuf apparaît dans le nid
   const bool petits = (S.nPou > 0 && (S.fph == F_POUSSINS || S.fph == F_JEUNES));
   float tc = 0.0f;
   if (petits && auNid(1) && cr[1].act == A_DORT) tc = 1.0f;      // la nuit, elle les couvre
@@ -644,7 +775,7 @@ static void debutPetit(bool rare) {      // appelé par naissance() : le petit a
   int p = pNext; pNext = -1;
   if (!RG.on) { PE.stade = 0; return; }
   if (p < 0 || p >= NAD || cr[p].etat == E_OFF) p = meilleurParent();
-  PE.ver = 1; PE.stade = 1; PE.par = (p >= 0) ? (uint8_t)p : 255; PE.rare = rare ? 1 : 0; PE.nour = 0; PE.age = 0; saleP = true;
+  PE.ver = 1; PE.stade = 1; PE.par = (p >= 0) ? (uint8_t)p : 255; PE.rare = rare ? 1 : 0; PE.nour = 0; PE.age = 0; PE.res = 0; saleP = true;
   faimP = 0.35f; tSoin = 8.0f; ym.on = false; hostY = -1;
   poserPetit(xPetitLibre());
   if (p >= 0) changer(p, PC, 40);
@@ -652,14 +783,17 @@ static void debutPetit(bool rare) {      // appelé par naissance() : le petit a
 }
 static void restaurerY() {      // à l'ouverture du mode : le petit (ou le jeune devenu grand, s'il y a de la place) revient, avec son âge et son parent
   if (!pret || !RG.on || PE.stade == 0 || cr[PC].etat != E_OFF) return;
-  if (PE.stade == 3 && nAct >= NAD) return;
+  if (PE.stade == 3) {      // le petit adulte est déjà dans la colonie (promu, N + 1 mémorisé) : il n'est jamais recréé en plus
+    if (AFR.naiss == 0) { if (PE.res != 1) { memset(&PE, 0, sizeof(PE)); saleP = true; sauverY(true); } return; }
+    if (nAct >= NAD) return;
+  }
   restau = true; naissance(120.0f, 140.0f, PE.rare != 0); restau = false;
   agePous = (PE.stade == 3) ? (Y_GRAND + 5.0f) : (float)PE.age;
   poserPetit(xPetitLibre()); faimP = 0.45f; tSoin = 10.0f;
   if (PE.par < NAD && cr[PE.par].etat == E_OFF) PE.par = 255;
 }
 static bool immobile(const Corbeau& c) { return (int)(&c - cr) == PC && soinOn() && c.etat == E_PERCHE; }      // le petit ne s'éloigne pas de la branche de ses parents
-static void rattrapageY(uint32_t secs) { if (soinOn() && secs > 40UL) faimP = mxf(faimP, 0.7f); }      // au retour de l'utilisateur : le petit réclame
+static void rattrapageY(uint32_t secs) { if (soinOn() && secs > 40UL) faimP = mxf(faimP, 0.7f); if (ADU.ver == 1) { ageAdu = mnf(ageAdu + (float)secs * 0.3f, 65000.0f); saleAdu = true; } }      // au retour de l'utilisateur : le petit réclame
 static int prix(int t) { return t == T_VIANDE ? 5 : (t == T_PAIN ? 4 : (t == T_NOIX ? 3 : (t == T_BAIES ? 2 : 1))); }
 static bool defier(int P, int iO) {      // il y a peu de nourriture : le parent défie celui qui tient le morceau (la bagarre est celle du bloc J : ailes ouvertes, cris, choc, le plus fort l'emporte)
   Obj& o = ob[iO]; int W = o.reserve; Corbeau& c = cr[P]; mo::Rt& r = mo::rt[P];
@@ -709,11 +843,71 @@ static void essai(int P) {      // le jeune apprend à voler : un saut ailes bat
   if (P >= 0 && P < NAD && cr[P].etat == E_PERCHE) { cr[P].d = (x >= cr[P].x) ? 1 : -1; cr[P].bec = 1.0f; cr[P].look = -0.1f; cr[P].tLook = 1.5f; }
   son(SN_AILES, 120);
 }
+// ======================= BLOC AF, partie 2 (3.1.19) : œuf attrapé et couvé, petit devenu adulte =======================
+static bool libreOeuf(int k) { return k >= 0 && k < NAD && parentLibre(k) && mis[k].ph == M_RIEN && !(k < 2 && (precieux() || par.on || RLV.ph)) && !(k == (int)PE.par && soinOn()); }
+static int choisirCouveur() {      // le corbeau qui a pondu l'œuf (s'il est libre), sinon le plus proche
+  if (pondeur >= 0 && libreOeuf(pondeur)) return pondeur;
+  int b = -1; float bd = 1e9f;
+  for (int k = 0; k < NAD; k++) { if (!libreOeuf(k)) continue; float d = fabsf(cr[k].x - OE.x); if (d < bd) { bd = d; b = k; } }
+  return b;
+}
+static bool oeufCouve() { return cvOn; }
+static void annulerCouve() {
+  if (cvK >= 0 && mis[cvK].ph == M_OEUF) finMission(cvK);
+  cvOn = false; cvK = -1; tCv = 0.0f; tCvAbs = 0.0f; if (OE.actif && OE.etat == 2) OE.etat = 0;
+}
+static bool attraperOeuf() {      // un toucher sur l'œuf posé : il est attrapé et couvé par le pondeur (ou le plus proche) ; refusé tant qu'il n'y a pas de place pour un petit de plus
+  if (!afOn() || !OE.actif || OE.etat != 0) return false;
+  if (!placeLibre()) { son(SN_POP_APP, 90); return true; }
+  int k = choisirCouveur(); if (k < 0) { son(SN_POP_APP, 90); return true; }
+  cvK = (int8_t)k; cvOn = true; tCv = 0.0f; tCvAbs = 0.0f; OE.etat = 2; OE.t = 0.0f;
+  versPoint(k, OE.x, ytop(OE.x) + 0.4f, M_OEUF); cr[k].bec = 1.0f; son(SN_CROC, 200);
+  return true;
+}
+static float dureeCouve() { static const float VF[3] = {1.5f, 1.0f, 0.55f}; return 24.0f * VF[RG.vit > 2 ? 1 : RG.vit]; }      // couvaison de l'œuf attrapé (selon la vitesse de vie)
+static void couveTick(float h) {      // l'œuf attrapé est couvé ; si le couveur est dérangé, un autre prend le relais ou l'œuf attend
+  if (!cvOn) return;
+  if (!OE.actif || OE.etat == 0) { annulerCouve(); return; }
+  if (OE.etat == 1) return;      // il craque : eclore() (corbeau.h) s'en charge
+  const int k = cvK; const bool assis = k >= 0 && cr[k].etat == E_PERCHE && cr[k].but == B_FAM && mis[k].ph == M_OEUF && mis[k].t > 1.0f;
+  if (assis) {
+    tCvAbs = 0.0f; tCv += h;
+    if (tCv > dureeCouve()) { OE.etat = 1; OE.tc = 0.0f; son(SN_CROC, 230); cr[k].bec = 1.0f; }
+    return;
+  }
+  const bool enRoute = k >= 0 && cr[k].etat != E_OFF && cr[k].but == B_FAM && mis[k].ph == M_OEUF;
+  if (enRoute) { tCvAbs = 0.0f; return; }
+  tCvAbs += h;
+  if (tCvAbs > 1.5f) {
+    if (k >= 0 && mis[k].ph == M_OEUF) mis[k].ph = M_RIEN;
+    int n = choisirCouveur();
+    if (n >= 0) { cvK = (int8_t)n; versPoint(n, OE.x, ytop(OE.x) + 0.4f, M_OEUF); tCvAbs = 0.0f; }
+    else if (tCvAbs > 40.0f) annulerCouve();
+  }
+}
+static void apresEclosion() {      // appelé par eclore() : le couveur quitte l'œuf, le petit est né
+  if (!cvOn) return;
+  int k = cvK; cvOn = false; cvK = -1; tCv = 0.0f; tCvAbs = 0.0f;
+  if (k >= 0 && mis[k].ph == M_OEUF) finMission(k);
+}
+static void promouvoir() {      // le petit est adulte : il prend sa place dans la colonie (N + 1, mémorisé) ; si la colonie est pleine il reste sur l'emplacement du petit
+  if (AFR.naiss != 0 || !RG.on || nAct >= NAD || nAct < 1 || cr[PC].etat == E_OFF) return;
+  const int k = nAct; Corbeau& c = cr[PC];
+  cr[k] = c; Corbeau& n = cr[k];
+  mo::rt[k] = mo::rt[PC]; mo::sBase[k] = c.s; mo::rt[k].sB = c.s;
+  mis[k] = mis[PC]; memset(&mis[PC], 0, sizeof(Mis)); tmis[k] = 0.0f; tmis[PC] = 0.0f;
+  n.duvet = 0.0f;
+  c.etat = E_OFF; c.visible = false; c.perch = -1; c.but = B_RIEN; c.objet = 0; c.item = -1; c.pj = -1; c.duvet = 0.0f;
+  OP.nb = (uint8_t)(k + 1); nAct = OP.nb; prefs.putUChar("cbnb", OP.nb);
+  appliquer(n, k); PE.res = 1; saleP = true;
+  ADU.ver = 1; ADU.k = (uint8_t)k; ageAdu = Y_GRAND; saleAdu = true; sauverAdu(true);
+  if (n.etat == E_PERCHE && n.but == B_RIEN) { n.perch = -1; n.tfin = rnd(1.0f, 2.5f); versPerchoir(n); }      // il rejoint son perchoir
+}
 static void devenuGrand() {      // il est grand : il quitte le giron et rejoint la colonie (l'état est mémorisé)
   PE.stade = 3; saleP = true; Corbeau& c = cr[PC]; int P = PE.par;
   c.bec = 1.0f; c.flash = 0.6f; son(SN_AILES, 170); son(SN_GAZ, 120); plumes(c.x, c.y - 4.0f, 8); eclat(c.x, c.y - 6.0f, 0.3f, 1.2f);
   if (P >= 0 && P < NAD) { if (cr[P].etat == E_PERCHE) { cr[P].bec = 1.0f; cr[P].d = (c.x >= cr[P].x) ? 1 : -1; sonCri(); } changer(P, PC, 10); }
-  rageSet(P, false); sauverY(true);
+  rageSet(P, false); promouvoir(); sauverY(true);
 }
 static void finHost(int k) {      // le menaçant s'en va (ou a été chassé) : le lien avec le parent se refroidit
   if (PE.par < NAD && k >= 0 && k < NAD) changer(PE.par, k, -7);
@@ -817,9 +1011,14 @@ static void soinTick(float h) {      // une tranche de 0,25 s : faim du petit, r
 }
 static void texteLien(int k, char* b, int n, const char (*noms)[9]) {      // pour la fiche d'un corbeau (double toucher) : son lien avec le petit (parent, aidant, hostile, petit)
   if (n < 4) return; b[0] = 0;
-  if (!pret || !RG.on || PE.stade == 0 || k < 0 || k >= NCB || cr[PC].etat == E_OFF) return;
+  if (!pret || !RG.on || k < 0 || k >= NCB) return;
   const int P = (PE.par < NAD) ? (int)PE.par : -1;
-  if (k == PC) { const char* st = (PE.stade == 1) ? "Poussin" : (PE.stade == 2 ? "Jeune" : "Grand, élevé"); if (P >= 0) snprintf(b, n, "%s %s %s", st, PE.stade == 3 ? "par" : "de", noms[P]); else snprintf(b, n, "%s", st); }
+  if (ADU.ver == 1 && k == (int)ADU.k && cr[k].etat != E_OFF) {      // le dernier petit devenu adulte : son âge de vie
+    if (PE.res == 1 && P >= 0) snprintf(b, n, "%s, élevé par %s", nomVie(vieDe(ageAdu)), noms[P]); else snprintf(b, n, "%s", nomVie(vieDe(ageAdu)));
+    return;
+  }
+  if (PE.stade == 0 || cr[PC].etat == E_OFF) return;
+  if (k == PC) { const char* st = nomVie(vieDe(agePous)); if (P >= 0) snprintf(b, n, "%s %s %s", st, PE.stade == 3 ? "par" : "de", noms[P]); else snprintf(b, n, "%s", st); }
   else if (k == P) snprintf(b, n, "%s %s", PE.stade < 3 ? "Parent de" : "A élevé", noms[PC]);
   else if (k < NAD && PE.stade < 3) { int a = attitudeY(k); snprintf(b, n, "%s %s", a == 0 ? "Aide" : (a == 2 ? "Menace" : "Ignore"), noms[PC]); }
 }
@@ -852,6 +1051,8 @@ static void tick(float h) {
   // sorties en groupe
   pilote(h);
   soinTick(h);
+  couveTick(h);
+  if (ADU.ver == 1 && ADU.k < NAD && cr[ADU.k].etat != E_OFF) { static const float VF[3] = {0.6f, 1.0f, 1.8f}; ageAdu = mnf(ageAdu + h * VF[RG.vit > 2 ? 1 : RG.vit], 65000.0f); saleAdu = true; tSauvAdu += h; }      // l'âge du dernier petit devenu adulte (jusqu'à vieux)
   if (repos <= 0.0f && !par.on) {
     gGrp -= h * actFreq;
     if (gGrp <= 0.0f) { gGrp = rnd(45.0f, 90.0f); if (calme() && !mo::camOn()) sortieGroupe(); }
@@ -877,12 +1078,17 @@ static void init() {
   gGrp = rnd(35.0f, 60.0f); gRepos = rnd(70.0f, 110.0f); repos = 0.0f; sent = -1;
   RG.on = prefs.getUChar("cbfam", 1) ? 1 : 0; RG.aide = prefs.getUChar("cbfaid", 1); if (RG.aide > 2) RG.aide = 1; RG.prot = prefs.getUChar("cbfpro", 1); if (RG.prot > 2) RG.prot = 1; RG.vit = prefs.getUChar("cbfvit", 1); if (RG.vit > 2) RG.vit = 1;
   memset(&PE, 0, sizeof(PE)); if (prefs.getBytesLength("cbpet") == sizeof(Pet)) { prefs.getBytes("cbpet", &PE, sizeof(PE)); if (PE.ver != 1 || PE.stade > 3) memset(&PE, 0, sizeof(PE)); }
+  AFR.naiss = prefs.getUChar("cbafnai", 0); if (AFR.naiss > 1) AFR.naiss = 0; AFR.nuit = prefs.getUChar("cbafnui", 0); if (AFR.nuit > 1) AFR.nuit = 0;
+  AFR.couple = prefs.getUChar("cbafcpl", 1) ? 1 : 0; AFR.nidv = prefs.getUChar("cbafnid", 1); if (AFR.nidv > 2) AFR.nidv = 1;
+  memset(&ADU, 0, sizeof(ADU)); ageAdu = 0.0f; saleAdu = false; tSauvAdu = 0.0f;
+  if (prefs.getBytesLength("cbafne") == sizeof(Adu)) { prefs.getBytes("cbafne", &ADU, sizeof(ADU)); if (ADU.ver != 1 || ADU.k >= NAD) memset(&ADU, 0, sizeof(ADU)); else ageAdu = (float)ADU.age; }
+  memset(&RLV, 0, sizeof(RLV)); tRlv = rnd(40.0f, 70.0f); tCalin = rnd(60.0f, 100.0f); cvOn = false; cvK = -1; tCv = tCvAbs = 0.0f;
   saleP = false; restau = false; pNext = pondeur = hostY = -1; hostCible = 0; memset(&ym, 0, sizeof(ym)); memset(rage, 0, sizeof(rage)); memset(tmis, 0, sizeof(tmis));
   faimP = 0.4f; tSoin = 8.0f; tAide = 20.0f; tMenP = 0.0f; tBat = 15.0f; tHost = rnd(60.0f, 110.0f); tSauvP = 0.0f; tCriY = tChaY = 0.0f; tCriP = 4.0f; tEssai = rnd(25.0f, 45.0f); tSurv = 5.0f; tProche = 15.0f;
   if (sale) sauver(true);
 }
 static void maj(float dt) {
-  if (!pret || (nAct < 2 && !soinOn())) return;      // seul, un corbeau n'a ni couple ni famille : comportements solitaires (sauf le soin du petit : adoption seule)
+  if (!pret || (nAct < 2 && !soinOn() && !cvOn)) return;      // seul, un corbeau n'a ni couple ni famille : comportements solitaires (sauf le soin du petit : adoption seule)
   tDepl -= dt; tSauv += dt; tMob -= dt;
   majFam(dt);
   for (int i = 0; i < 2; i++) if (pend[i].k >= 0) { pend[i].t -= dt; if (pend[i].t <= 0.0f) { suivreChef(pend[i]); pend[i].k = -1; } }
@@ -897,4 +1103,6 @@ static void maj(float dt) {
 static int perchPour(const Corbeau& c) { return fam::perchPour(c); }
 static bool petitGrand() { return fam::grand(); }
 static void designerParent(int k) { fam::pNext = (int8_t)k; }
+static bool oeufAF() { return fam::afOn(); }
+static bool placeNaiss() { return fam::placeLibre(); }
 static float rangPoids(int k) { return (fam::pret && k >= 0 && k < NCB) ? 12.0f * fam::S.rang[k] - ((fam::soinOn() && k == fam::PE.par && fam::faimP > 0.3f) ? 90.0f : 0.0f) : 0.0f; }      // le parent attitré d'un petit qui a faim est servi le premier

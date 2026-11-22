@@ -1578,14 +1578,16 @@ static void retourLibre(Corbeau& c) {      // le corbeau en vol cherche un perch
 static void naissance(float x, float y, bool rare);
 static void minisEnvol(float x, float y, int n);
 static bool petitGrand();      // famille.h : le petit est grand (ou la famille coupée) : un nouvel œuf peut le remplacer
-static void designerParent(int k);      // famille.h : le corbeau k sera le parent attitré du prochain petit
+static void designerParent(int k);
+static bool oeufAF();      // famille.h : effectif réel (un petit ne naît que d'un œuf attrapé)
+static bool placeNaiss();      // famille.h : le corbeau k sera le parent attitré du prochain petit
 static void oeufAttrape(Corbeau& c) {      // l'œuf lancé est attrapé en vol : il ne casse pas, il éclot en nouveau corbeau (ou en petits corbeaux s'il n'y a plus de place)
   Proj& p = proj[c.pj]; ralenti(0.35f); p.actif = false; c.flash = 1.0f; c.bec = 1; c.surs = 0.3f;
   son(SN_CROC, 230); sonCri(); plumes(c.x, c.y, 10); eclat(c.x, c.y, 0.3f, 1.5f); vib(50);
   nbOeufs++; prefs.putUInt("cboeufs", nbOeufs); oeufsSale = true;
   int i = perchLibre();
-  if ((cr[PC].etat == E_OFF || petitGrand()) && i >= 0) { designerParent((int)(&c - cr)); naissance(PERCH[i][0], perchY(i), rnd01() < 0.2f); }      // celui qui attrape l'œuf devient le parent attitré du petit
-  else { minisEnvol(c.x, c.y - 4.0f, 7); son(SN_POP_DISP, 190); }
+  if ((oeufAF() ? placeNaiss() : (cr[PC].etat == E_OFF || petitGrand())) && i >= 0) { designerParent((int)(&c - cr)); naissance(PERCH[i][0], perchY(i), rnd01() < 0.2f); }      // celui qui attrape l'œuf devient le parent attitré du petit
+  else { if (!oeufAF()) minisEnvol(c.x, c.y - 4.0f, 7); son(SN_POP_DISP, 190); }
   c.pj = -1; retourLibre(c);
 }
 static void attraper(Corbeau& c) {      // il attrape l'objet lancé, puis le rapporte sur une branche ou le dépose par terre
@@ -2129,19 +2131,20 @@ static void craquer() {      // un toucher : l'œuf tremble et se fissure
 static void eclore() {      // il s'ouvre : naissance, ou explosion de plumes avec une surprise
   float x = OE.x, y = OE.y - 5.0f; OE.actif = false; OE.etat = 0;
   nbOeufs++; prefs.putUInt("cboeufs", nbOeufs); oeufsSale = true; ralenti(0.3f);
-  int r = random(100);
+  int r = random(100); if (fam::oeufCouve()) r = (random(100) < 15) ? 90 : 10;      // un œuf couvé éclot toujours en petit corbeau
   eclat(x, y, 0.3f, 1.6f); plumes(x, y, r < 50 ? 8 : 24); vib(80);
-  if ((r < 50 || r >= 85) && (cr[PC].etat == E_OFF || fam::grand())) { fam::pNext = fam::pondeur; naissance(OE.x, OE.y, r >= 85); }      // celui qui a pondu (et surveillé) l'œuf devient le parent attitré      // petit corbeau (parfois un rare, à l'œil doré)
+  if ((r < 50 || r >= 85) && (fam::afOn() ? fam::placeLibre() : (cr[PC].etat == E_OFF || fam::grand()))) { fam::pNext = fam::oeufCouve() ? fam::cvK : fam::pondeur; naissance(OE.x, OE.y, r >= 85); }      // celui qui a pondu (et surveillé) l'œuf devient le parent attitré      // petit corbeau (parfois un rare, à l'œil doré)
   else {
-    son(SN_POP_DISP, 230); son(SN_PLUMES, 170); minisEnvol(x, y, 8);
+    son(SN_POP_DISP, 230); son(SN_PLUMES, 170); if (!fam::afOn()) minisEnvol(x, y, 8);
     static const uint8_t RARE[5] = {T_BRILLANT, T_BAGUE, T_SHURIKEN, T_PARCHEMIN, T_KUNAI};
     int j = -1; for (int q = 0; q < NOB; q++) if (!ob[q].actif) { j = q; break; }
     if (j >= 0) { Obj& o = ob[j]; o.actif = true; o.type = RARE[random(5)]; o.x = lim(x, 12, 308); o.y = y; o.vy = -90; o.t = 0; o.repos = false; o.reserve = -1; }      // objet rare qui retombe
   }
+  fam::apresEclosion();
 }
 static void oeufExplose(float x, float y) {      // un œuf lancé explose à l'impact en nuée de plumes et de petits corbeaux
   nbOeufs++; prefs.putUInt("cboeufs", nbOeufs); oeufsSale = true; ralenti(0.3f);
-  eclat(x, y - 4, 0.3f, 2.2f); plumes(x, y - 4, 26); minisEnvol(x, y - 6, 12); son(SN_POP_DISP, 230); son(SN_PLUMES, 180); sonCri(); vib(90);
+  eclat(x, y - 4, 0.3f, 2.2f); plumes(x, y - 4, 26); if (!fam::afOn()) minisEnvol(x, y - 6, 12); son(SN_POP_DISP, 230); son(SN_PLUMES, 180); sonCri(); vib(90);
   for (int k = 0; k < NCB; k++) { Corbeau& c = cr[k]; if (c.visible && hypotf(c.x - x, c.y - y) < 60) { c.flash = 1.0f; c.surs = 0.3f; } }
 }
 static void pondre() {      // un corbeau perché se secoue : il va pondre
@@ -2178,8 +2181,9 @@ static void majOeuf(float dt) {
       }
     }
   }
-  if (OE.actif) { OE.t += dt; if (OE.etat == 0 && OE.t > 45.0f) craquer(); if (OE.etat == 1) { OE.tc += dt; if (OE.tc > 1.0f) eclore(); } }
-  if (cr[PC].etat != E_OFF) { agePous += dt; cr[PC].s = (0.62f + 0.60f * lim(agePous / 300.0f, 0.0f, 1.0f)) * tailleF(); cr[PC].duvet = 1.0f - lim(agePous / 300.0f, 0.0f, 1.0f); }
+  if (OE.actif) { OE.t += dt; if (fam::afOn() && OE.etat == 0 && OE.t > 180.0f) { OE.actif = false; son(SN_POP_DISP, 120); plumes(OE.x, OE.y - 4, 4); }      // l'œuf pas attrapé refroidit au bout de trois minutes
+    else if (OE.etat == 0 && !fam::afOn() && OE.t > 45.0f) craquer(); if (OE.etat == 1) { OE.tc += dt; if (OE.tc > 1.0f) eclore(); } }
+  if (cr[PC].etat != E_OFF) { agePous += dt; float s_, d_; fam::tailleVie(agePous, s_, d_); cr[PC].s = s_ * tailleF(); cr[PC].duvet = d_; }      // poussin, jeune, moyen, adulte : taille et duvet selon l'âge
 }
 
 // ---------- vie sociale : s'appeler, alerte, chamaille, vol en groupe ----------
@@ -2744,7 +2748,7 @@ static void dessinerPanneau() {
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, nourriture" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, nourriture" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   if (panPage == 0) {
     // volume : - barre + et TEST SON
@@ -2773,6 +2777,13 @@ static void dessinerPanneau() {
     g.drawString("Caméra automatique (vue d'ensemble pendant les échanges)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, OP.cauto, LO);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Non : la vue choisie reste, sans gros plan ni visiteur spontanés.", 6, 77);
     g.drawString("Le bouton Vue ou la page Main et vue changent de vue.", 6, 93); g.drawString("En Suivi, touche un corbeau pour le suivre.", 6, 109);
+  } else if (panPage == 9) {      // vie, nid et couple (clés cbafnai, cbafnui, cbafcpl, cbafnid)
+    static const char* const LN[2] = {"Oeuf attrapé", "Libre (comme avant)"}; static const char* const LU[2] = {"Au nid", "Sur l'arbre"}; static const char* const LC[2] = {"Non", "Oui"}; static const char* const LB[3] = {"Lente", "Normale", "Rapide"};
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Naissance d'un petit (N corbeaux = N exactement)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, fam::AFR.naiss, LN);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Nuit : le couple dort au nid, les autres hors de la grosse branche", 6, 73); segBarre(g, 4, 87, 312, 24, 2, fam::AFR.nuit, LU);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Couple : parade, nourrir, couver à tour de rôle, rester ensemble", 6, 115); segBarre(g, 4, 129, 312, 24, 2, fam::AFR.couple, LC);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Construction du nid (brindilles apportées une à une)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, fam::AFR.nidv, LB);
   } else if (panPage == 6) {      // main et vue : main ouverte paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
     static const char* const LO[2] = {"Non", "Oui"}; static const char* const LPV[4] = {"Jamais", "Rare", "Normal", "Souvent"}; static const char* const LRC[3] = {"Normal", "Arbre", "Mare"}; static const char* const LLI[2] = {"Bâtiments", "Large"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2786,7 +2797,7 @@ static void dessinerPanneau() {
     g.drawString("Famille (parent attitré, couple, nid, petits)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, fam::RG.on ? 1 : 0, LF);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Les autres corbeaux aident à nourrir et à garder le petit", 6, 73); segBarre(g, 4, 87, 312, 24, 3, fam::RG.aide, LA);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Protection du petit (ailes ouvertes, alarme, poursuite)", 6, 115); segBarre(g, 4, 129, 312, 24, 3, fam::RG.prot, LP);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Croissance du petit (poussin, jeune, grand : 5 min)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, fam::RG.vit, LV);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vitesse de vie (poussin, jeune, moyen, adulte, vieux)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, fam::RG.vit, LV);
   } else if (panPage == 4) {      // fonctions du bloc W
     static const char* const LO[2] = {"Non", "Oui"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2819,7 +2830,7 @@ static void dessinerPanneau() {
   g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
   g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
-  g.drawString(panPage == 8 ? "< Réglages" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
+  g.drawString(panPage == 9 ? "< Réglages" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
@@ -2832,7 +2843,16 @@ static void fermerPanneau() {
 }
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
-  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 9); panSale = true; } return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 10); panSale = true; } return; }
+  if (panPage == 9) {      // vie, nid et couple (clés cbafnai, cbafnui, cbafcpl, cbafnid)
+    if (y >= 42 && y < 72) { fam::AFR.naiss = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbafnai", fam::AFR.naiss); }
+    else if (y >= 84 && y < 114) { fam::AFR.nuit = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbafnui", fam::AFR.nuit); }
+    else if (y >= 126 && y < 156) { fam::AFR.couple = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbafcpl", fam::AFR.couple); fam::calculerFoyers(); }
+    else if (y >= 168 && y < 198) { fam::AFR.nidv = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbafnid", fam::AFR.nidv); }
+    else return;
+    if (OP.vib) vibrer(40);
+    panSale = true; return;
+  }
   if (panPage == 8) {      // caméra automatique (clé cbcam)
     if (y >= 42 && y < 72) { OP.cauto = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbcam", OP.cauto); }
     else return;
@@ -3079,7 +3099,7 @@ static void dessinerFiche(M5Canvas& g) {
     if (j2 >= 0 && best >= 80) { lk = "couple avec"; } else if (j2 >= 0 && best >= 40) { lk = "ami de"; } else if (j2 >= 0 && best <= -40) { lk = "rival de"; }
     if (j2 >= 0 && (best >= 40 || best <= -40)) snprintf(l4, sizeof(l4), "Rang %d, %s %s", (int)fam::S.rang[k] + 1, lk, nomC[j2]); else snprintf(l4, sizeof(l4), "Rang %d, %s", (int)fam::S.rang[k] + 1, lk);
   } else { snprintf(l2, sizeof(l2), "Trait : ?"); snprintf(l4, sizeof(l4), "Colonie en formation"); }
-  char l5[28]; l5[0] = 0; fam::texteLien(k, l5, sizeof(l5), nomC);
+  char l5[40]; l5[0] = 0; fam::texteLien(k, l5, sizeof(l5), nomC);
   fbh = FBH + (l5[0] ? 12 : 0); fbb = fbh - 20;
   float px = TX(c.x), py = TY(c.y + c.bob);
   int x0 = (int)lim(px - FBW * 0.5f, 2.0f, 318.0f - FBW), y0 = (int)lim(py - 30.0f * c.s * zs - fbh - 2.0f, 28.0f, (float)(H_SCENE - fbh - 2));
@@ -3326,7 +3346,7 @@ static void appui(int x, int y) {
   if (sxp >= 140 && sxp < 176 && syp < 24) { D.bas = false; oeufMaintenant(); return; }      // bouton œuf
   if (sxp >= 176 && sxp < 236 && syp < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
   if (V.ph == V_PRESENT && x >= VX - 26 && x < VX + (V.arm > 0.3f ? 40 : 26) && y >= visPiedsY() - 76 && y < visPiedsY() + 2) { tpCible = 1; tpT0 = m; return; }
-  if (OE.actif && OE.etat == 0 && modeCb != 2 && modeCb != 4 && fabsf(x - OE.x) < 12 && fabsf(y - (OE.y - 5.0f)) < 13) { craquer(); D.bas = false; return; }
+  if (OE.actif && OE.etat == 0 && modeCb != 2 && modeCb != 4 && fabsf(x - OE.x) < 12 && fabsf(y - (OE.y - 5.0f)) < 13) { if (!fam::attraperOeuf()) craquer(); D.bas = false; return; }
   if (FI.k >= 0 && sxp >= fbx && sxp < fbx + FBW && syp >= fby && syp < fby + fbh) {      // toucher sur la fiche : les deux boutons, rien d'autre ne réagit
     const int k = FI.k;
     if (syp >= fby + fbb - 2 && sxp < fbx + 75) { cibleK = (int8_t)k; cibleT = m; FI.k = -1; Corbeau& cc = cr[k]; lacher(choix, lim(cc.x + cc.d * 14.0f * cc.s, 12.0f, 308.0f), cc.y - 10.0f); son(SN_POP_APP, 150); }      // il reçoit la nourriture choisie, à ses pieds
