@@ -52,7 +52,7 @@ static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {22
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
 enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE, B_MONDE };
-namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); }      // monde.h : paysage, camera, excursions
+namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); }      // monde.h : paysage, camera, excursions
 static void syncUI();
 enum { T_GRAINE = 0, T_VIANDE, T_NOIX, T_PAIN, T_BAIES, T_BRILLANT, T_BAGUE, T_KUNAI, T_SHURIKEN, T_PARCHEMIN, T_OEUF, T_NB };
 
@@ -1317,7 +1317,7 @@ static void lacher(int type, float x) {       // une nourriture tombe du ciel
     Corbeau& c = cr[k]; if (c.etat != E_PERCHE || !c.visible) continue;
     c.d = (o.x >= c.x) ? 1 : -1; c.look = lim(atan2f(solHaut(o.x) - c.y, fabsf(o.x - c.x) + 8.0f) * 0.7f, -0.3f, 0.8f); c.tLook = 1.6f; c.clin = 0; c.tClin = rnd(1.5f, 3.0f);
   }
-  attribuer(idx);                      // et l'un d'eux part sans attendre
+  attribuer(idx); mo::compet(idx);      // et l'un d'eux part sans attendre ; s'il n'y a qu'un gros morceau, un rival vient le disputer
 }
 
 static void attribuer(int iO) {       // un corbeau libre vient chercher la nourriture
@@ -1551,8 +1551,8 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         } else if (c.sub == 1) {
           c.peck += dt; float dip = fabsf(sinf(c.peck / 0.42f * 3.1416f));
           c.haC = lerpf(-0.3f, 0.55f, dip); c.hbC = lerpf(0.2f, 0.8f, dip); c.pitchC = c.pr * 0.45f - 0.30f * dip;
-          if (c.peck > 0.24f && o->actif && o->reserve == idx) {      // il prend la nourriture
-            son(SN_CROC, 200);
+          if (c.peck > 0.24f && o->actif && o->reserve == idx && mo::peutPrendre(c.item)) {      // il prend la nourriture
+            son(SN_CROC, 200); mo::mange(c, idx, o->type);
             if (o->type >= T_BRILLANT) { c.objet = o->type + 1; o->actif = false; c.item = -1; c.sub = 2; c.peck = 0; c.t = 0; c.flash = 0.5f; }
             else { o->actif = false; c.item = -1; c.sub = 3; c.peck = 0; }
           }

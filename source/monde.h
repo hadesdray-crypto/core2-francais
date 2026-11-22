@@ -23,7 +23,7 @@ static const float PX = -70.0f, PY = 205.0f, PRX = 34.0f, PRY = 5.5f;      // ma
 static const float CH0 = -176.0f, CH1 = -112.0f;           // champ : bords gauche et droit
 static const uint16_t CLE_TR = 0x1818;                        // couleur transparente (identique dans les deux ordres d'octets)
 
-enum { D_MAISON = 0, D_MARE, D_CHAMP, D_EPOUV, D_NB };
+enum { D_MAISON = 0, D_MARE, D_CHAMP, D_EPOUV, D_DISPUTE, D_NB };
 enum { CM_NON = 0, CM_LARGE, CM_SUIVI };
 
 static M5Canvas sCiel(&M5.Display), sFar(&M5.Display), sNear(&M5.Display), sArbre(&M5.Display);
@@ -296,7 +296,7 @@ static int choisirDest(int idx) {
   bool m = false; for (int s = 0; s < 4; s++) if (!spotsPris(D_MAISON, s)) m = true; if (!m) w[D_MAISON] = 0.0f;
   if (spotsPris(D_MARE, 0) && spotsPris(D_MARE, 1)) w[D_MARE] = 0.0f;
   if (spotsPris(D_EPOUV, 0) && spotsPris(D_EPOUV, 1)) w[D_EPOUV] = 0.0f;
-  float tot = w[0] + w[1] + w[2] + w[3]; if (tot <= 0.0f) return -1;
+  w[D_DISPUTE] = 0.0f; float tot = w[0] + w[1] + w[2] + w[3]; if (tot <= 0.0f) return -1;
   float r = rnd01() * tot; for (int i = 0; i < D_NB; i++) { if (r < w[i]) return i; r -= w[i]; } return D_CHAMP;
 }
 static bool excursion(Corbeau& c, int idx, int dest) {
@@ -342,11 +342,14 @@ static void arrivee(Corbeau& c) {      // fin de l'atterrissage sur un site de l
   } else {
     c.etat = E_SOL; r.dur = 0;
     c.d = (r.dest == D_MARE) ? ((r.spot == 0) ? -1 : 1) : ((random(2)) ? 1 : -1);
+    if (r.dest == D_DISPUTE) c.d = (ob[r.n % NOB].x >= c.x) ? 1 : -1;
   }
 }
+static void dispute(Corbeau& c, int idx, float dt);
 static void sol(Corbeau& c, int idx, float dt) {      // au sol : boire à la mare, picorer dans le champ (appelé à chaque image par majCorbeau)
   Rt& r = rt[idx]; r.t += dt;
   if (r.ph == 9) { if (r.t > 2.0f) retour(c, idx); return; }
+  if (r.dest == D_DISPUTE) { dispute(c, idx, dt); return; }
   if (r.dest == D_MARE) {
     if (r.ph == 0) { if (r.t > 1.1f) { r.ph = 1; r.t = 0; r.n = (uint8_t)(3 + random(3)); r.tw = 0; } return; }
     if (r.ph == 1) {      // boire : la tête plonge vers l'eau, remonte et avale la tête en arrière
@@ -477,6 +480,74 @@ static void majSoc(float dt) {
   }
 }
 
+// ---------- nourriture : effets sur chaque corbeau (énergie, humeur, force) et compétition pour un gros morceau ----------
+static float en[NAD], tHer[NAD], tJoie[NAD], sBase[NAD]; static int8_t forceK[NAD];
+static void miettes(Corbeau& c) {      // le pain se partage : deux miettes tombent près de lui
+  for (int j = 0; j < 2; j++) {
+    int i = -1; for (int q = 0; q < NOB; q++) if (!ob[q].actif) { i = q; break; } if (i < 0) return;
+    Obj& o = ob[i]; o.actif = true; o.type = T_GRAINE; o.x = lim(c.x + (j ? 14.0f : -14.0f) * c.s, 12.0f, 308.0f); o.y = solHaut(o.x) - 3.2f; o.vy = 0.0f; o.t = 0.0f; o.repos = true; o.reserve = -1;
+  }
+}
+static void mange(Corbeau& c, int idx, int type) {      // chaque nourriture a un effet réel et visible
+  if (idx < 0 || idx >= NAD) return;
+  switch (type) {
+    case T_GRAINE: en[idx] += 0.10f; break;
+    case T_VIANDE: en[idx] += 0.45f; tHer[idx] = 25.0f; if (forceK[idx] < 3) forceK[idx]++; c.flash = 0.6f; break;      // beaucoup d'énergie : plus gros, plus fort
+    case T_NOIX: en[idx] += 0.20f; son(SN_CROC, 235); c.surs = 0.22f; break;      // cassée au bec
+    case T_PAIN: en[idx] += 0.30f; miettes(c); break;
+    case T_BAIES: en[idx] += 0.12f; tJoie[idx] = 20.0f; c.hum = 1.0f; break;      // la joie : il chante et sautille
+    default: break;
+  }
+  if (en[idx] > 1.0f) en[idx] = 1.0f;
+}
+static bool peutPrendre(int iO) {      // un gros morceau n'est pas pris tant qu'un rival n'est pas venu le disputer
+  for (int k = 0; k < NAD; k++) if (rt[k].away && rt[k].dest == D_DISPUTE && rt[k].n == iO && rt[k].ph < 2 && cr[k].etat != E_DEHORS) return false;
+  return true;
+}
+static void compet(int iO) {      // appelé après qu'un corbeau est parti chercher la nourriture : un seul gros morceau, un rival vient le lui disputer
+  Obj& o = ob[iO]; if (!o.actif) return;
+  int W = o.reserve; if (W < 0 || W >= NAD) return;
+  bool gros = (o.type == T_VIANDE || o.type == T_NOIX || o.type == T_PAIN || o.type == T_BRILLANT);
+  int nOb = 0; for (int i = 0; i < NOB; i++) if (ob[i].actif) nOb++;
+  if (!gros || nOb > 1 || !pret || nbAilleurs() >= 3 || random(100) < 25) return;      // plusieurs morceaux : chacun le sien, sans dispute
+  int best = -1; float bd = 1e9f;
+  for (int k = 0; k < NAD; k++) { if (k == W || !libreSoc(k)) continue; float d = fabsf(cr[k].x - o.x) + rnd(0.0f, 40.0f) - 8.0f * (forceK[k] + (NAD - rang[k]) * 0.5f); if (d < bd) { bd = d; best = k; } }
+  if (best < 0) return;
+  Corbeau& c = cr[best]; Rt& r = rt[best];
+  int sideW = (cr[W].x < o.x) ? -1 : 1; float tx = lim(o.x - sideW * 24.0f * c.s, 12.0f, 308.0f), ty = solHaut(tx);
+  if (!r.away) { r.sB = c.s; r.hops = 0; }
+  r.away = true; r.dest = D_DISPUTE; r.spot = 0; r.ph = 0; r.t = 0.0f; r.tx = tx; r.n = (uint8_t)iO; r.dur = 0.0f; r.tw = 0.0f;
+  c.perch = -1; c.item = -1; c.rapporte = false; decoller(c, tx, ty, B_MONDE);
+}
+static void dispute(Corbeau& c, int idx, float dt) {      // au sol, face au détenteur du morceau : ailes ouvertes, cris, choc, puis le plus fort l'emporte
+  Rt& r = rt[idx]; int iO = r.n % NOB; Obj& o = ob[iO]; int W = o.reserve;
+  bool vivant = o.actif && W >= 0 && W < NAD && cr[W].but == B_NOUR && cr[W].etat == E_SOL && cr[W].item == iO;
+  if (r.ph < 2 && !vivant) { retour(c, idx); return; }
+  if (r.ph == 3) { retour(c, idx); return; }
+  c.d = (o.x >= c.x) ? 1 : -1;
+  if (r.ph == 0) {
+    c.wlC = 0.8f; c.poseC = mixA(A_PLANE, A_HAUT, 0.5f); c.pitchC = c.pr * 0.45f - 0.15f; c.bec = mxf(c.bec, 0.4f);
+    float dxm = o.x - c.x, ec = 24.0f * c.s;      // il s'approche jusqu'à portée de bec
+    if (fabsf(dxm) > ec) c.x += (dxm > 0 ? 1 : -1) * mnf(fabsf(dxm) - ec, 34.0f * dt) * mxf(0.0f, c.dv * (dxm > 0 ? 1.0f : -1.0f));
+    if (r.t > 1.2f) { r.ph = 1; r.t = 0.0f; }
+  } else if (r.ph == 1) {
+    choc((c.x + cr[W].x) * 0.5f, c.y - 2.0f, &c, &cr[W], 160.0f); plumes((c.x + cr[W].x) * 0.5f, c.y, 6); son(SN_CROASSE2, 210); sonCri();
+    c.surs = 0.35f; cr[W].surs = 0.35f; cr[W].flash = 0.6f; c.flash = 0.6f;
+    float sc = (float)(NAD - rang[idx]) + 2.0f * forceK[idx] + (1.0f - en[idx]) * 2.0f + rnd(0.0f, 3.0f);
+    float sw = (float)(NAD - rang[W]) + 2.0f * forceK[W] + (1.0f - en[W]) * 2.0f + rnd(0.0f, 3.0f);
+    r.tw = (sc > sw) ? 1.0f : 0.0f; r.ph = 2; r.t = 0.0f;
+  } else {
+    c.wlC = (r.tw > 0.5f) ? 0.5f : 0.0f; c.poseC = mixA(A_PLANE, A_HAUT, 0.4f);
+    if (r.t > 0.8f) {
+      if (r.tw > 0.5f && o.actif) {      // il lui prend le morceau : l'autre recule et s'en va
+        o.reserve = idx; c.item = iO; c.but = B_NOUR; c.sub = 0; c.peck = 0.0f; lienAj(idx, W, -1);
+        Corbeau& w = cr[W]; w.item = -1; w.but = B_RIEN; w.sub = 2; w.peck = 0.0f; w.t = 0.0f; w.surs = 0.3f;
+        r.away = false; c.s = r.sB; r.ph = 0;
+      } else { lienAj(idx, W, -1); retour(c, idx); }
+    }
+  }
+}
+
 // ---------- suivi d'un oiseau ----------
 static int choisirSuivi() {
   int l[NAD], n = 0;
@@ -582,6 +653,15 @@ static void maj(float dt) {
     }
   }
   majSoc(dt);
+  for (int k = 0; k < NAD; k++) {      // énergie qui baisse, gros après la viande, joie des baies, sieste quand il est rassasié
+    Corbeau& c = cr[k]; en[k] = mxf(0.0f, en[k] - 0.004f * dt); if (tHer[k] > 0.0f) tHer[k] -= dt; if (tJoie[k] > 0.0f) tJoie[k] -= dt;
+    if (!rt[k].away && c.etat != E_DEHORS && c.etat != E_OFF) { float tg = sBase[k] * (1.0f + 0.07f * lim(tHer[k] / 3.0f, 0.0f, 1.0f)); if (fabsf(c.s - tg) > 0.002f) c.s += (tg - c.s) * mnf(1.0f, dt * 2.0f); }
+    if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN) {
+      if (tJoie[k] > 0.0f && random(1000) < 6) { sonCri(); c.surs = 0.25f; c.bec = 1.0f; }
+      if (en[k] > 0.85f && c.act <= A_REGARDE && random(1000) < 5) { c.act = A_DORT; c.tAct = 0.0f; c.dAct = rnd(9.0f, 15.0f); en[k] = 0.7f; }
+    }
+    if (rt[k].away && rt[k].dest == D_DISPUTE && rt[k].ph == 0 && c.etat != E_SOL) { rt[k].tw += dt; if (rt[k].tw > 6.0f) rt[k].ph = 3; }
+  }
   gTrip -= dt;
   if (gTrip <= 0.0f) {      // de temps en temps, un corbeau de l'arbre part vivre sa vie ailleurs
     gTrip = rnd(16.0f, 32.0f) / actFreq;
@@ -594,6 +674,7 @@ static void maj(float dt) {
 }
 static void reinit() {
   memset(rt, 0, sizeof(rt)); memset(onde, 0, sizeof(onde)); memset(gout, 0, sizeof(gout)); memset(&S, 0, sizeof(S)); gSoc = rnd(5.0f, 9.0f);
+  for (int k = 0; k < NAD; k++) { en[k] = 0.4f; tHer[k] = tJoie[k] = 0.0f; forceK[k] = 0; sBase[k] = cr[k].s; }
   for (int k = 0; k < NAD; k++) rang[k] = (int8_t)k;
   for (int k = NAD - 1; k > 0; k--) { int j = random(k + 1); int8_t q = rang[k]; rang[k] = rang[j]; rang[j] = q; }
   for (int i = 0; i < NAD; i++) for (int j = i; j < NAD; j++) lien[i][j] = lien[j][i] = (i == j) ? 0 : (int8_t)(random(5) - 2);
