@@ -1,5 +1,5 @@
 {
-    "version": "2.9.0",
+    "version": "2.9.1",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -39,6 +39,8 @@
         "Retournement plus épais : quand un corbeau change de côté, il n'est plus jamais une lamelle fine. De face on voit son poitrail large, ses épaules rondes, son cou épais et ses deux yeux ; les ailes se raccourcissent mais restent épaisses à la base.",
         "Ambiance Horreur (active par défaut, réglable dans les réglages) : ciel presque noir à la lueur rouge très faible, lune sanguine voilée de nuages noirs, brume noire basse, bords de l'écran noirs, étoiles rares et ternes. Les yeux rouges sont presque la seule lumière : ils éclairent la tête et vacillent très légèrement. De temps en temps, un éclair rouge lointain ou un battement de lumière.",
         "Fréquence réglable : dans les réglages, une deuxième page « Fréquence » avec de grandes barres tactiles : Activité des corbeaux de 1 (calme) à 5 (agité) pour les vols en groupe, les alertes et les poursuites ; Visites d'un corbeau au gros plan (jamais, rare, normale, souvent) ; Visiteur mystérieux ; Oeufs pondus. Tous les choix sont gardés en mémoire.",
+        "Narrations dans le Dex : chaque fiche est racontée en français par une voix de synthèse (le vrai nom de l'œil, puis son histoire, environ 15 à 21 secondes), lue au bout d'un instant quand on ouvre la fiche. Un bouton ÉCOUTER / ARRÊTER permet de la relancer ou de la couper ; l'écran et le toucher restent libres pendant qu'elle parle.",
+        "Nouveau son quand un corbeau apparaît ou disparaît (et quand le visiteur arrive ou part) : un souffle qui balaie, un claquement sourd et un battement d'ailes, fabriqués par le programme (aucun extrait d'œuvre).",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",

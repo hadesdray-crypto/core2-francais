@@ -11,6 +11,10 @@ extern uint32_t finAffVolume;
 #define DX_SONS 1
 #endif
 #include "dex_textes.h"
+#if __has_include("narr_data.h")
+#include "narr_data.h"
+#define DX_NARR 1
+#endif
 
 namespace dx {
 
@@ -194,6 +198,45 @@ static void ecouter(int i) {
   (void)i;
 #endif
 }
+// ---------- narration vocale de la fiche : ADPCM 4 bits décodé par petits morceaux (l'écran et le toucher ne sont jamais bloqués) ----------
+#ifdef DX_NARR
+static const int16_t NSTEP[89] = {7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767};
+static const int8_t NIDX[16] = {-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8};
+static const int NRC = 1024, NRCH = 6;      // échantillons par morceau, canal du haut-parleur réservé à la narration
+static int16_t nrBuf[3][NRC]; static int nrSlot = 0, nrPred = 0, nrInd = 0, nrIdx = -1; static uint32_t nrPos = 0, nrDepart = 0; static bool nrOn = false, nrAffEtat = false;
+static bool narrDispo(int i) { return i >= 0 && i < NARR_NB; }
+static bool narrActive() { return nrOn || (M5.Speaker.isRunning() && M5.Speaker.isPlaying((uint8_t)NRCH) > 0); }
+static void narrArreter() { nrOn = false; nrDepart = 0; if (M5.Speaker.isRunning()) M5.Speaker.stop((uint8_t)NRCH); }
+static void narrPomper() {      // appelé à chaque image : remplit la file du haut-parleur (2 morceaux d'avance, 3 tampons tournants)
+  if (!nrOn) return;
+  if (!M5.Speaker.isRunning()) { nrOn = false; return; }
+  for (int g = 0; g < 2 && nrOn && M5.Speaker.isPlaying((uint8_t)NRCH) < 2; g++) {
+    const uint8_t* d = (const uint8_t*)NARR_P[nrIdx]; const uint32_t ns = NARR_NS[nrIdx];
+    int n = 0; int16_t* b = nrBuf[nrSlot];
+    while (n < NRC && nrPos < ns) {
+      uint8_t by = d[nrPos >> 1]; int nib = (nrPos & 1) ? (by >> 4) : (by & 15);
+      int step = NSTEP[nrInd], df = step >> 3; if (nib & 4) df += step; if (nib & 2) df += step >> 1; if (nib & 1) df += step >> 2;
+      nrPred += (nib & 8) ? -df : df; if (nrPred > 32767) nrPred = 32767; if (nrPred < -32768) nrPred = -32768;
+      nrInd += NIDX[nib]; if (nrInd < 0) nrInd = 0; if (nrInd > 88) nrInd = 88;
+      b[n++] = (int16_t)nrPred; nrPos++;
+    }
+    if (n == 0) { nrOn = false; break; }
+    M5.Speaker.playRaw(b, n, NARR_RATE, false, 1, NRCH, false); nrSlot = (nrSlot + 1) % 3;
+    if (nrPos >= ns) { nrOn = false; break; }
+  }
+}
+static void narrLancer(int i) {
+  if (!narrDispo(i) || R.volume == 0 || lectureEnCours) return;
+  narrArreter();
+  if (!M5.Speaker.isRunning()) { M5.Mic.end(); M5.Speaker.begin(); }
+  M5.Speaker.setVolume(R.volume); M5.Speaker.setChannelVolume(NRCH, 255);
+  nrIdx = i; nrPos = 0; nrPred = 0; nrInd = 0; nrSlot = 0; nrOn = true; narrPomper();
+}
+static void narrPlanifier() { narrArreter(); nrDepart = millis() + 700; if (!nrDepart) nrDepart = 1; }      // la voix démarre si l'on reste un instant sur la fiche
+#else
+static bool narrDispo(int) { return false; } static bool narrActive() { return false; } static void narrArreter() {} static void narrPomper() {} static void narrLancer(int) {} static void narrPlanifier() {}
+static uint32_t nrDepart = 0; static bool nrOn = false, nrAffEtat = false;
+#endif
 // ---------- petits éléments d'interface ----------
 // La police de l'écran n'a ni « Œ/œ », ni les voyelles à trait (ō ū…), ni la puce « • » (elles s'affichaient en carrés) : on les remplace avant de dessiner.
 // Seuls des caractères latins accentués (é è ê à â ç î ô û ù É À Ç « » °) restent : la police les dessine bien.
@@ -336,6 +379,7 @@ static void fiche(M5Canvas& g, int idx, int ox, int tb, int scrl, Mise& m) {
   oeil(g, ox + 58, 50, 52, 24, motif, cr, cg, cbv, n, BGc());
   if (idx < NE && DEF[idx].approx) texte(g, ox + 112, 66, "~", C(150, 120, 120), 3, true);
   texte(g, ox + 120, 27, idx < NE ? FAMILLE[DEF[idx].fam] : "TON ŒIL", RS);
+  if (narrDispo(idx)) { bool on = narrActive(); g.fillRoundRect(ox + 232, 24, 82, 22, 6, on ? C(90, 20, 24) : C(20, 90, 50)); g.drawRoundRect(ox + 232, 24, 82, 22, 6, C(255, 70, 80)); texte(g, ox + 273, 35, on ? "ARRÊTER" : "ÉCOUTER", C(255, 236, 230), 1); }
   bloc(g, ox + 120, 46, 192, idx < NE ? DEF[idx].qui : "Toi", 14, BL, 2);
   for (int k = 0; k < 4; k++) {      // les quatre sections
     bool on = (k == tb);
@@ -416,12 +460,16 @@ static void ecranCreer(M5Canvas& g) {
 static void majApercuOeil() { if (ecran == 2) { cb::oeilActif = (uint8_t)(sel + 1); cb::appliquerOeil(); } }
 static void quitterApercu() { cb::chargerOeil(); }      // on revient à l'œil réellement choisi
 static void ouvrir() { ouvert = true; scL = 0; scP = 0; defile = false; zone = 0; flingV = 0; ecran = 0; sel = 0; tab = 0; sale = true; volVu = false; animSens = 0; cbxOk = false; bas = false; mc->idx = mt->idx = -1; cb::chargerOeil(); batirListe(); }
-static void quitter() { if (!ouvert) return; ouvert = false; quitterApercu(); if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); } }
+static void quitter() { if (!ouvert) return; ouvert = false; narrArreter(); quitterApercu(); if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); } }
 static void pousser() { cv.pushSprite(0, 0); }
 static void dessiner() {
   if (!ouvert) ouvrir();
   uint32_t m = millis();
   if (m < finAffVolume) volVu = true; else if (volVu) { volVu = false; sale = true; }
+  if (ecran != 1 && (nrOn || nrDepart)) narrArreter();      // la voix ne continue jamais hors de la fiche
+  if (ecran == 1 && nrDepart && (int32_t)(m - nrDepart) >= 0 && animSens == 0) { nrDepart = 0; narrLancer(sel); }
+  narrPomper();
+  { bool st = narrActive(); if (st != nrAffEtat) { nrAffEtat = st; if (ecran == 1) sale = true; } }
   if (animSens != 0) {      // glissement d'une fiche à l'autre
     float e = (m - animT0) / 220.0f; if (e >= 1) { e = 1; }
     float p = cb::pas(e);
@@ -451,7 +499,7 @@ static void aller(int sens) {      // fiche suivante (+1) ou précédente (-1), 
   if (animSens != 0) return;
   int v = suivant(sel, sens); if (v == sel) return;
   if (ecran == 1) { assurer(); scAnim = scP; construire(*mt, v, tab); animDe = sel; animVers = v; animSens = sens; animT0 = millis(); }
-  sel = v; scP = 0; majApercuOeil(); sale = true; ecouter(v);      // le cri de la famille joue à chaque nouvelle fiche
+  sel = v; scP = 0; majApercuOeil(); sale = true; if (narrDispo(v)) { if (ecran == 1) narrPlanifier(); } else ecouter(v);      // la voix (ou, sans voix, le cri de la famille) à chaque nouvelle fiche
 }
 static void creerGlisser(int x, int y) {
   if (y >= 44 && y < 68 && x >= 8 && x < 176) { cb::oCu.teinte = (uint8_t)cb::lim((x - 12) * 255 / 159, 0, 255); sale = true; }
@@ -482,9 +530,10 @@ static void toucherEcran(int x, int y) {
   if (y >= 206) { toucherBouton(boutonSous(x)); return; }
   if (ecran == 0) {
     int yy = y - 25 + scL;
-    for (int k = 0; k < nR; k++) if (Rt[k] == 1 && yy >= Ry[k] && yy < Ry[k] + HE - 3 && y >= 24) { sel = Rv[k]; ecran = 1; scP = 0; sale = true; ecouter(sel); return; }
+    for (int k = 0; k < nR; k++) if (Rt[k] == 1 && yy >= Ry[k] && yy < Ry[k] + HE - 3 && y >= 24) { sel = Rv[k]; ecran = 1; scP = 0; sale = true; if (narrDispo(sel)) narrPlanifier(); else ecouter(sel); return; }
   } else if (ecran == 1) {
-    if (y >= 76 && y < 99) { for (int k = 0; k < 4; k++) if (x >= TABX[k] && x < TABX[k] + TABW[k] && k != tab) { tab = k; scP = 0; sale = true; } }
+    if (x >= 232 && x < 316 && y >= 24 && y < 48 && narrDispo(sel)) { if (narrActive()) narrArreter(); else narrLancer(sel); sale = true; }
+    else if (y >= 76 && y < 99) { for (int k = 0; k < 4; k++) if (x >= TABX[k] && x < TABX[k] + TABW[k] && k != tab) { tab = k; scP = 0; sale = true; } }
     else if (x < 114 && y >= 24 && y < 76) ecouter(sel);      // toucher l'œil : écouter le cri de la famille
   } else if (ecran == 3) {
     if (y >= 128 && y < 162) for (int i = 0; i < 4; i++) { int bx = 12 + i * 41; if (x >= bx && x < bx + 37) { cb::oCu.motif = (uint8_t)i; sale = true; } }
