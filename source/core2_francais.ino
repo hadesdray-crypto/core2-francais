@@ -15,6 +15,7 @@
 #include <esp_task_wdt.h>
 #include <esp_system.h>
 #include <esp_wifi.h>
+#include <mbedtls/sha256.h>      // contrôle de l'empreinte du programme téléchargé
 #include <AudioFileSource.h>
 #include <AudioFileSourceBuffer.h>
 #include <AudioGeneratorMP3.h>
@@ -24,9 +25,11 @@
 #include "presence.h"      // presence / absence des personnages et des univers (3.1.6)
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.13"
+#define VERSION_PROGRAMME "3.1.14"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
+#define SOURCE_MAJ_TEST "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/version.json"      // canal « test » (par défaut) : publié automatiquement après chaque compilation réussie de la branche corbeau
+#define TAILLE_BIN_MAX 6553600UL      // taille maximale d'un programme (partition d'application)
 
 // ---------- Modules ----------
 enum Module { M_METEO = 0, M_WIFI, M_SON, M_BATTERIE, M_HEURE, M_GRAVITE, M_MESSAGES, M_NB };
@@ -203,6 +206,9 @@ uint32_t derniereActivite = 0, dernierTap = 0;
 float pileLissee = 0, pctPile = -1;
 uint32_t finEcrase = 0, finVol = 0, prochainVol = 20000, finVibre = 0, finCaresse = 0;
 String versionDispo, urlBinDispo, infoMaj; volatile int matCommande = 0; volatile bool lectureEnCours = false;   // Matinale : 1 tout charger, 2 charger un jour, 3 jouer, 4 arrêter
+bool vientDeMaj = false, canalTest = true;      // canal de mise à jour : test (branche corbeau, par défaut) ou stable (branche main) ; clé mémoire canalmaj
+String shaDispo, notesMaj; uint32_t tailleDispo = 0; volatile uint8_t etatVerif = 0;      // empreinte SHA-256 et taille publiées, nouveautés, état de la vérification (0 rien, 1 en cours, 2 faite, 3 impossible)
+uint32_t debutAttenteMaj = 0;
 bool demandeMaj = false; volatile bool majVoulue = false; volatile uint32_t prochaineVerif = 0xFFFFFFFFUL; bool wifiCoupe = false; uint32_t finBesoinNet = 120000; uint32_t finGriffe = 0;
 int essaiReseau = 0;
 void activite() { derniereActivite = millis(); }
@@ -235,6 +241,7 @@ void gererDemarrageSecurise() {
     prefs.putInt("essais", ++essais);
   }
   dernierModule = -1;
+  { String mo = prefs.getString("majok", ""); if (mo.length()) { prefs.putString("majok", ""); if (mo == VERSION_PROGRAMME) { infoDemarrage = "Mis à jour en " + mo; vientDeMaj = true; } } }      // mise à jour automatique réussie
   // Retour arrière : 4 démarrages ratés de suite → on repart sur l'ancienne version.
   if (essais >= 4) {
     const esp_partition_t* run = esp_ota_get_running_partition();
@@ -439,28 +446,40 @@ bool plusRecente(const String& a, const String& b) {
   for (int i = 0; i < 3; i++) if (x[i] != y[i]) return x[i] > y[i];
   return false;
 }
-// Regarde sur Internet s'il existe une version plus récente du programme.
+// Regarde sur Internet s'il existe une version plus récente du programme (canal test = branche corbeau, canal stable = branche main).
+static bool empreinteValide(const String& s) { if (s.length() != 64) return false; for (unsigned i = 0; i < 64; i++) if (!isxdigit((unsigned char)s[i])) return false; return true; }
 bool verifierVersion() {
+  etatVerif = 1; infoMaj = "";
   WiFiClientSecure client; client.setInsecure(); client.setTimeout(8);
-  HTTPClient http; http.setTimeout(8000); bool ok = false;
-  if (http.begin(client, SOURCE_MAJ)) {
+  HTTPClient http; http.setTimeout(8000); http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS); bool ok = false;
+  const bool test = canalTest;
+  String adresse = String(test ? SOURCE_MAJ_TEST : SOURCE_MAJ) + "?t=" + String(millis());      // chaque demande est unique : jamais une vieille copie en cache
+  if (http.begin(client, adresse)) {
     if (http.GET() == 200) {
-      JsonDocument doc;
-      if (!deserializeJson(doc, http.getString())) {
-        String v = doc["version"] | "", b = doc["bin"] | "";
+      JsonDocument filtre; filtre["version"] = true; filtre["bin"] = true; filtre["sha256"] = true; filtre["size"] = true; filtre["notes"] = true;      // le reste (longue liste des changements) est ignoré : peu de mémoire
+      JsonDocument doc; bool lu;
+      if (http.getSize() > 0) lu = !deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filtre));
+      else lu = !deserializeJson(doc, http.getString(), DeserializationOption::Filter(filtre));
+      if (lu) {
+        String v = doc["version"] | "", b = doc["bin"] | "", sh = doc["sha256"] | ""; uint32_t tl = doc["size"] | 0; sh.toLowerCase();
+        String nt; { int n = 0; for (JsonVariantConst e : doc["notes"].as<JsonArrayConst>()) { if (n++ >= 3) break; String s = e.as<const char*>() ? e.as<const char*>() : ""; if (s.length() > 150) s = s.substring(0, 147) + "..."; if (nt.length()) nt += "\n"; nt += s; } }
         ok = v.length() > 0;
-        if (ok && plusRecente(v, VERSION_PROGRAMME) && b.startsWith(DEBUT_BIN)) { urlBinDispo = b; versionDispo = v; infoMaj = ""; }
-        else if (ok) { versionDispo = ""; urlBinDispo = ""; infoMaj = "Programme à jour (vérifié sur Internet)"; }
+        if (ok && plusRecente(v, VERSION_PROGRAMME) && b.startsWith(DEBUT_BIN)) {
+          if (test && !empreinteValide(sh)) { ok = false; versionDispo = ""; urlBinDispo = ""; infoMaj = "Version trouvée sans empreinte de sécurité : refusée."; }
+          else { urlBinDispo = b; shaDispo = empreinteValide(sh) ? sh : String(""); tailleDispo = tl; notesMaj = nt; versionDispo = v; infoMaj = ""; }
+        }
+        else if (ok) { versionDispo = ""; urlBinDispo = ""; shaDispo = ""; tailleDispo = 0; notesMaj = ""; infoMaj = String("Programme à jour (") + VERSION_PROGRAMME + ", canal " + (test ? "test" : "stable") + ")"; }
       }
     }
     http.end();
   }
-  if (!ok) infoMaj = "Vérification impossible pour l'instant";
+  if (!ok && !infoMaj.length()) infoMaj = "Vérification impossible pour l'instant";
+  etatVerif = ok ? 2 : 3;
   return ok;
 }
 void tacheMeteo(void*) {
   for (;;) {
-    if (W.wifiOk && millis() > prochaineVerif) { verifierVersion(); prochaineVerif = 0xFFFFFFFFUL; if (majVoulue) { majVoulue = false; if (versionDispo.length()) demandeMaj = true; else infoMaj = "Pas de nouvelle version : tu as la dernière."; } }   // seulement quand on le demande
+    if (W.wifiOk && millis() > prochaineVerif) { verifierVersion(); prochaineVerif = 0xFFFFFFFFUL; if (majVoulue) { majVoulue = false; if (versionDispo.length()) demandeMaj = true; else if (etatVerif == 2) infoMaj = "Pas de nouvelle version : tu as la dernière."; } }   // seulement quand on le demande
     if (R.actif[M_METEO] && W.wifiOk && (!W.meteoValide || millis() - W.derniereMeteo > (brancheUsb ? 30UL : 60UL) * 60UL * 1000UL)) {
       WiFiClientSecure client; client.setInsecure(); client.setTimeout(8);
       HTTPClient http; http.setTimeout(8000);
@@ -1447,11 +1466,11 @@ void dessinerInfos() {
   }
   cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_center);
   if (W.batterie < 15 && !brancheUsb) { cv.setTextColor(C(255, 110, 110)); cv.drawString("Pile faible : branche-moi", 160, 3); }
-  else if (versionDispo.length()) { cv.setTextColor(C(120, 255, 150)); cv.drawString("Mise à jour " + versionDispo + " : Réglages > Matériel", 160, 3); }
+  else if (versionDispo.length()) { cv.setTextColor(C(120, 255, 150)); cv.drawString("Mise à jour " + versionDispo + " : Réglages > Mise à jour", 160, 3); }
   else if (R.actif[M_HEURE] && W.heureValide) { struct tm th; if (getLocalTime(&th, 0)) { char hb[8]; snprintf(hb, sizeof(hb), "%02d:%02d", th.tm_hour, th.tm_min); cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(0, 230, 255)); cv.drawString(hb, 160, 2); cv.setFont(&fonts::lgfxJapanGothic_12); } }
   cv.setTextDatum(top_left);
   if (infoDemarrage.length() && millis() - debutDemarrage < 12000) {
-    cv.fillRoundRect(10, 92, 300, 38, 8, C(120, 40, 40)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(255, 255, 255)); cv.setTextDatum(middle_center);
+    cv.fillRoundRect(10, 92, 300, 38, 8, infoDemarrage.startsWith("Mis à jour") ? C(30, 110, 60) : C(120, 40, 40)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(255, 255, 255)); cv.setTextDatum(middle_center);
     cv.drawString(infoDemarrage.substring(0, 48), 160, 111); cv.setTextDatum(top_left);
   }
 }
@@ -1783,6 +1802,66 @@ void dessinerRecevoir() {      // page 34 : tout ce qu'il faut pour envoyer une 
   char b[20]; snprintf(b, sizeof(b), "reste %ld:%02ld", reste / 60, reste % 60); cv.setTextDatum(top_right); cv.setTextColor(C(190, 195, 230)); cv.drawString(b, 312, 184);
   cv.setTextDatum(top_left);
   boutonBas(4, 150, "Retour", C(52, 56, 96)); boutonBas(160, 156, "Reconnecter", C(50, 130, 80));
+  cv.pushSprite(0, 0);
+}
+// ---------- Page 35 : « Mise à jour automatique » (Réglages > Mise à jour) ----------
+void changerCanal(bool test) {      // test = branche corbeau (par défaut), stable = branche main ; mémorisé
+  canalTest = test; vientDeMaj = false; prefs.putBool("canalmaj", test);
+  versionDispo = ""; urlBinDispo = ""; shaDispo = ""; tailleDispo = 0; notesMaj = ""; infoMaj = ""; etatVerif = 0; majVoulue = false; prochaineVerif = 0;      // on revérifie sur le nouveau canal
+}
+void ouvrirMajAuto() {      // rallume le Wi-Fi (15 min), se reconnecte et vérifie tout de suite s'il existe une version plus récente
+  finMaj = millis() + 900000UL; if ((int32_t)(finMaj - finBesoinNet) > 0) finBesoinNet = finMaj;
+  WiFi.setSleep(false); if (WiFi.status() != WL_CONNECTED) changerDirect = true;
+  infoMaj = "";
+  etatVerif = 0; majVoulue = false; prochaineVerif = 0; page = 35;
+}
+void lancerMajAuto() {      // bouton « Mettre à jour » : tout se fait seul (Wi-Fi, vérification, téléchargement, installation, redémarrage)
+  if (!brancheUsb && W.batterie < 30) { infoMaj = "Pile trop faible (" + String(W.batterie) + " %) : branche le Core2 ou recharge-le (30 % minimum)."; etatVerif = 3; bip(300, 150); return; }
+  finMaj = millis() + 900000UL; if ((int32_t)(finMaj - finBesoinNet) > 0) finBesoinNet = finMaj;
+  WiFi.setSleep(false); if (WiFi.status() != WL_CONNECTED) changerDirect = true;
+  if (versionDispo.length() && urlBinDispo.length()) { demandeMaj = true; return; }
+  vientDeMaj = false; infoMaj = ""; etatVerif = 0; debutAttenteMaj = millis(); majVoulue = true; prochaineVerif = 0;      // vérifie, puis installe s'il y a mieux
+}
+static void paragrapheMaj(const String& s, int x, int& y, int maxc, int pas, int maxl) {      // texte coupé aux espaces
+  int deb = 0, l = 0;
+  while (deb < (int)s.length() && l < maxl) {
+    int fin = deb + maxc; if (fin >= (int)s.length()) fin = s.length();
+    else { int k = s.lastIndexOf(' ', fin); if (k > deb) fin = k; }
+    cv.drawString(s.substring(deb, fin), x, y); y += pas; l++; deb = fin; while (deb < (int)s.length() && (s[deb] == ' ' || s[deb] == '\n')) deb++;
+  }
+}
+void dessinerMajAuto() {
+  cadrePage("Mise à jour automatique");
+  const bool co = (WiFi.status() == WL_CONNECTED); const uint32_t m = millis();
+  static bool vouluAvant = false;
+  if (majVoulue && m - debutAttenteMaj > 60000) { majVoulue = false; etatVerif = 3; infoMaj = "Pas de réponse d'Internet : vérifie ta box ou le partage du téléphone."; }
+  if (vouluAvant && !majVoulue && !demandeMaj && !versionDispo.length() && (int32_t)(finMaj - m) > 15000 && !wifiToujours) finMaj = m + 15000;      // fini sans mise à jour : le Wi-Fi reprend son économie dans 15 s
+  vouluAvant = majVoulue;
+  cv.setTextDatum(middle_center); cv.setFont(&fonts::lgfxJapanGothic_12); cv.fillRoundRect(236, 3, 80, 17, 6, C(52, 56, 96)); cv.setTextColor(C(220, 225, 255)); cv.drawString("Envoi PC", 276, 12);
+  cv.setTextDatum(top_left); cv.setTextColor(C(150, 160, 210));
+  cv.drawString(String("Installée : ") + VERSION_PROGRAMME + "     Canal : " + (canalTest ? "test" : "stable"), 8, 27);
+  cv.setFont(&fonts::lgfxJapanGothic_16);
+  String l1; uint16_t c1;
+  if (vientDeMaj && !majVoulue && !versionDispo.length() && etatVerif != 3) { l1 = "Mis à jour en " VERSION_PROGRAMME; c1 = C(120, 255, 150); }
+  else if (majVoulue && !co) { l1 = "Connexion au Wi-Fi..."; c1 = C(255, 190, 110); }
+  else if (majVoulue) { l1 = "Recherche en cours..."; c1 = C(255, 220, 120); }
+  else if (versionDispo.length()) { l1 = "Disponible : " + versionDispo; c1 = C(120, 255, 150); }
+  else if (!co) { l1 = "Connexion au Wi-Fi..."; c1 = C(255, 190, 110); }
+  else if (etatVerif <= 1) { l1 = "Recherche d'une version..."; c1 = C(255, 220, 120); }
+  else if (etatVerif == 2) { l1 = "À jour : version " VERSION_PROGRAMME; c1 = C(120, 255, 150); }
+  else { l1 = "Rien n'a été installé"; c1 = C(255, 150, 120); }
+  cv.setTextColor(c1); cv.drawString(l1, 8, 43);
+  cv.setFont(&fonts::lgfxJapanGothic_12); int y = 65;
+  if (versionDispo.length() && notesMaj.length()) { cv.setTextColor(C(0, 230, 255)); cv.drawString("Nouveautés :", 8, y); y += 14; cv.setTextColor(C(220, 225, 245)); String n = notesMaj; n.replace("\n", "  |  "); paragrapheMaj(n, 8, y, 48, 13, 6); }
+  else if (infoMaj.length()) { cv.setTextColor(C(255, 190, 130)); paragrapheMaj(infoMaj, 8, y, 48, 13, 4); }
+  else if (co && etatVerif == 2 && !versionDispo.length()) { cv.setTextColor(C(190, 195, 230)); cv.drawString("Rien de nouveau sur ce canal.", 8, y); }
+  cv.setTextColor(C(150, 160, 210));
+  { char b[48]; snprintf(b, sizeof(b), "Pile %d %%%s", W.batterie, brancheUsb ? " (branché)" : ((W.batterie < 30) ? " : trop faible, 30 % minimum" : "")); cv.setTextColor((!brancheUsb && W.batterie < 30) ? C(255, 130, 110) : C(150, 160, 210)); cv.drawString(b, 8, 172); }
+  cv.setTextColor(C(150, 160, 210)); cv.drawString(co ? "Wi-Fi : " + WiFi.SSID() : String("Wi-Fi : pas encore connecté"), 8, 187);
+  cv.setFont(&fonts::lgfxJapanGothic_16);
+  boutonBas(4, 78, "Retour", C(52, 56, 96));
+  boutonBas(86, 112, canalTest ? "Canal : test" : "Canal : stable", canalTest ? C(110, 70, 130) : C(50, 100, 150));
+  boutonBas(202, 114, majVoulue ? "Recherche..." : "Mettre à jour", majVoulue ? C(90, 90, 100) : C(50, 150, 80));
   cv.pushSprite(0, 0);
 }
 struct Tuile { const char* nom; int page; uint16_t coul; };
@@ -2710,6 +2789,7 @@ void dessinerPage() {
     case 1: dessinerReglages(); break;
     case 5: dessinerMateriel(); break;
     case 34: dessinerRecevoir(); break;
+    case 35: dessinerMajAuto(); break;
     case 6: dessinerMenu(); break;
     case 7: dessinerRadarWifi(); break;
     case 8: dessinerAnalyseur(); break;
@@ -2852,7 +2932,7 @@ void gererBoutons() {
   if (veille) { reveillerEcran(); return; }
   if (page == 0) { actionBarre(b); return; }
   bip(700, 40);        // sur les autres pages : gauche = retour, milieu = accueil, droite = réglages
-  if (b == 0) page = (page == 34) ? 1 : (page >= 7) ? 6 : ((page == 3) ? 2 : ((page == 1 || page == 5 || page == 6) ? 0 : 1));
+  if (b == 0) page = (page == 34 || page == 35) ? 1 : (page >= 7) ? 6 : ((page == 3) ? 2 : ((page == 1 || page == 5 || page == 6) ? 0 : 1));
   else if (b == 1) page = 0;
   else page = 1;
 }
@@ -2877,6 +2957,17 @@ void gererTactile() {
     if (t.wasPressed() && t.y >= 204) { if (t.x < 156) page = 1; else ouvrirRecevoir(); bip(700, 40); }
     return;
   }
+  if (page == 35) {      // Mise à jour automatique : Envoi PC (en haut), Retour, Canal test/stable, Mettre à jour
+    if (t.wasPressed()) {
+      if (t.y < 24 && t.x >= 230) { ouvrirRecevoir(); bip(700, 40); }
+      else if (t.y >= 204) {
+        if (t.x < 84) { if (!wifiToujours) finMaj = millis(); majVoulue = false; page = 1; bip(700, 40); }
+        else if (t.x < 200) { changerCanal(!canalTest); bip(canalTest ? 880 : 440, 60); }
+        else if (!majVoulue) { bip(880, 60); lancerMajAuto(); }
+      }
+    }
+    return;
+  }
   if (page >= 6) { gererTactilePages(t); return; }
   if (page >= 2) { gererTactileWifi(t.wasPressed(), t.x, t.y); return; }
   if (page == 1) {
@@ -2885,7 +2976,7 @@ void gererTactile() {
       for (int i = 0; i < M_NB; i++) { int bx = 6 + (i % 2) * 158, by = 24 + (i / 2) * 30; if (x >= bx && x < bx + 152 && y >= by && y < by + 26) { R.actif[i] = !R.actif[i]; sauverReglages(); bip(R.actif[i] ? 880 : 440, 60); } }
       if (y < 22 && x >= 178 && x < 299) { reglerMatinale(!matVisible); bip(matVisible ? 880 : 440, 60); }
       else if (x >= 164 && x < 240 && y >= 114 && y < 140) { page = 5; bip(700, 60); }
-      else if (x >= 240 && y >= 114 && y < 140) { ouvrirRecevoir(); bip(880, 60); }
+      else if (x >= 240 && y >= 114 && y < 140) { ouvrirMajAuto(); bip(880, 60); }
       else if (x >= 218 && y >= 142 && y < 158) { page = 2; lancerScan(); bip(700, 60); }
       else if (x >= 218 && y >= 158 && y < 174) { wifiToujours = !wifiToujours; eco = !wifiToujours; prefs.putBool("wifitj", wifiToujours); prefs.putBool("eco", eco); changerDirect = true; bip(wifiToujours ? 880 : 440, 60); }
       else if (x >= 218 && y >= 190 && y < 204) { ecoForte = !ecoForte; prefs.putUChar("econiv", ecoForte ? 1 : 0); appliquerPalier(); bip(ecoForte ? 880 : 440, 60); }      // Économie de batterie : normale / forte
@@ -2948,27 +3039,99 @@ void arretPileVide() {
 }
 
 // Mise à jour par Internet : le Core2 va chercher lui-même la nouvelle version (Wi-Fi de la maison ou partage du téléphone).
-void majDepuisInternet() {
-  demandeMaj = false;
-  if (!urlBinDispo.length() || WiFi.status() != WL_CONNECTED) { infoMaj = "Mise à jour impossible : pas d'Internet"; return; }
-  if (veille) reveillerEcran();
-  sauverPerso();
-  M5.Display.fillScreen(TFT_BLACK); M5.Display.setFont(&fonts::lgfxJapanGothic_16); M5.Display.setTextColor(TFT_WHITE); M5.Display.setTextDatum(middle_center);
-  M5.Display.drawString("Mise à jour " + versionDispo + " en cours...", 160, 90); M5.Display.drawRect(18, 128, 284, 24, TFT_WHITE);
+// Sécurités : HTTPS, adresse du dépôt vérifiée, pile >= 30 % ou branché, taille plausible, en-tête de programme ESP32 contrôlé AVANT d'écrire,
+// empreinte SHA-256 publiée contrôlée AVANT d'activer le programme (obligatoire sur le canal test), rien n'est installé si un contrôle échoue.
+static void ecranMaj(const String& titre, const String& ligne, uint16_t coul, int pct) {
+  M5.Display.fillScreen(C(10, 12, 26)); M5.Display.setFont(&fonts::lgfxJapanGothic_16); M5.Display.setTextDatum(middle_center);
+  M5.Display.setTextColor(C(0, 230, 255)); M5.Display.drawString(titre, 160, 36);
+  M5.Display.setTextColor(coul); M5.Display.drawString(ligne, 160, 100);
+  if (pct >= 0) { M5.Display.drawRoundRect(18, 128, 284, 26, 6, TFT_WHITE); if (pct > 0) M5.Display.fillRoundRect(20, 130, 280 * pct / 100, 22, 4, C(60, 220, 110)); }
   M5.Display.setTextDatum(top_left);
+}
+static void erreurMaj(const String& msg) {      // écran d'échec lisible, puis retour à la page de mise à jour
+  infoMaj = msg; M5.Display.fillScreen(C(40, 12, 12)); M5.Display.setTextDatum(middle_center); M5.Display.setFont(&fonts::lgfxJapanGothic_16); M5.Display.setTextColor(C(255, 150, 130));
+  M5.Display.drawString("Mise à jour impossible", 160, 30); M5.Display.setFont(&fonts::lgfxJapanGothic_12); M5.Display.setTextColor(TFT_WHITE);
+  int y = 70, deb = 0; while (deb < (int)msg.length() && y < 180) { int fin = deb + 44; if (fin >= (int)msg.length()) fin = msg.length(); else { int k = msg.lastIndexOf(' ', fin); if (k > deb) fin = k; } M5.Display.drawString(msg.substring(deb, fin), 160, y); y += 16; deb = fin; while (deb < (int)msg.length() && msg[deb] == ' ') deb++; }
+  M5.Display.setTextColor(C(180, 255, 190)); M5.Display.drawString("Rien n'a été changé : l'ancienne version reste.", 160, 215); M5.Display.setTextDatum(top_left);
+  delay(4500); etatVerif = 3;
+}
+// Télécharge, contrôle et écrit le programme dans l'autre emplacement. Renvoie "" si tout est bon, sinon la raison de l'échec (rien n'est activé).
+static String telechargerMaj(const String& url, const String& shaAttendu, uint32_t tailleAttendue, const String& titre) {
+  WiFiClientSecure client; client.setInsecure(); client.setTimeout(15);
+  HTTPClient http; http.setTimeout(15000); http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+  if (!http.begin(client, url)) return "Connexion au serveur impossible.";
+  int code = http.GET();
+  if (code != 200) { http.end(); return "Le serveur a répondu " + String(code) + " : réessaie dans quelques minutes."; }
+  int32_t total = http.getSize();
+  if (total < 1000000 || (uint32_t)total > TAILLE_BIN_MAX) { http.end(); return "Taille du fichier invalide (" + String(total) + " octets)."; }
+  if (tailleAttendue && (uint32_t)total != tailleAttendue) { http.end(); return "La taille reçue ne correspond pas à celle annoncée."; }
+  uint8_t* buf = (uint8_t*)malloc(4096); if (!buf) { http.end(); return "Pas assez de mémoire pour télécharger."; }
+  WiFiClient* st = http.getStreamPtr();
+  ecranMaj(titre, "Téléchargement 0 %", TFT_WHITE, 0);
+  size_t lu = 0; uint32_t t0 = millis();
+  while (lu < 40 && millis() - t0 < 15000) { int n = st->available(); if (n > 0) lu += st->readBytes(buf + lu, (size_t)((int)(40 - lu) < n ? (int)(40 - lu) : n)); else delay(5); }
+  String err;
+  if (lu < 40) err = "Le fichier n'arrive pas (connexion trop lente).";
+  else if (buf[0] != 0xE9 || buf[12] != 0 || buf[13] != 0 || buf[1] < 1 || buf[1] > 16 || buf[32] != 0x32 || buf[33] != 0x54 || buf[34] != 0xCD || buf[35] != 0xAB) err = "Ce fichier n'est pas un programme du Core2 : refusé.";
+  else if (!Update.begin((size_t)total, U_FLASH)) err = String("Pas de place pour l'installer : ") + Update.errorString();
+  if (err.length()) { free(buf); http.end(); return err; }
+  mbedtls_sha256_context sha; mbedtls_sha256_init(&sha); mbedtls_sha256_starts(&sha, 0);
+  mbedtls_sha256_update(&sha, buf, 40);
+  if (Update.write(buf, 40) != 40) { err = String("Écriture impossible : ") + Update.errorString(); }
+  size_t fait = 40; int dernier = -1; uint32_t derniereOctet = millis();
+  while (!err.length() && fait < (size_t)total) {
+    int dispo = st->available();
+    if (dispo > 0) {
+      size_t reste = (size_t)total - fait; size_t n = (size_t)dispo; if (n > 4096) n = 4096; if (n > reste) n = reste;
+      n = st->readBytes(buf, n);
+      if (n == 0) { delay(2); continue; }
+      mbedtls_sha256_update(&sha, buf, n);
+      if (Update.write(buf, n) != n) { err = String("Écriture impossible : ") + Update.errorString(); break; }
+      fait += n; derniereOctet = millis();
+      int p = (int)(100LL * fait / total);
+      if (p != dernier) { dernier = p; M5.Display.fillRect(0, 84, 320, 32, C(10, 12, 26)); M5.Display.setFont(&fonts::lgfxJapanGothic_16); M5.Display.setTextDatum(middle_center); M5.Display.setTextColor(TFT_WHITE); M5.Display.drawString("Téléchargement " + String(p) + " %", 160, 100); M5.Display.fillRoundRect(20, 130, 280 * p / 100, 22, 4, C(60, 220, 110)); M5.Display.setTextDatum(top_left); }
+    } else {
+      if (!http.connected() && !st->available()) { err = "La connexion s'est coupée pendant le téléchargement."; break; }
+      if (millis() - derniereOctet > 20000) { err = "Le téléchargement est bloqué (plus rien depuis 20 s)."; break; }
+      delay(2);
+    }
+  }
+  unsigned char res[32]; mbedtls_sha256_finish(&sha, res); mbedtls_sha256_free(&sha);
+  free(buf); http.end();
+  if (!err.length()) {
+    ecranMaj(titre, "Vérification du fichier...", TFT_WHITE, 100);
+    if (shaAttendu.length()) {
+      char hex[65]; for (int i = 0; i < 32; i++) snprintf(hex + 2 * i, 3, "%02x", res[i]);
+      if (!shaAttendu.equalsIgnoreCase(String(hex))) err = "Le fichier reçu n'est pas celui qui a été publié (empreinte différente). Réessaie dans 5 minutes.";
+    }
+  }
+  if (err.length()) { Update.abort(); return err; }
+  ecranMaj(titre, "Installation...", TFT_WHITE, 100);
+  if (!Update.end(true)) { String e = String("Installation refusée : ") + Update.errorString(); Update.abort(); return e; }
+  return "";
+}
+void majDepuisInternet() {
+  demandeMaj = false; etatVerif = 3;
+  if (!urlBinDispo.length() || WiFi.status() != WL_CONNECTED) { infoMaj = "Mise à jour impossible : pas d'Internet"; return; }
+  if (!urlBinDispo.startsWith(DEBUT_BIN)) { infoMaj = "Adresse du programme refusée."; return; }
+  if (canalTest && !empreinteValide(shaDispo)) { infoMaj = "Pas d'empreinte de sécurité : mise à jour refusée."; return; }
+  if (!brancheUsb && W.batterie < 30) { infoMaj = "Pile trop faible (" + String(W.batterie) + " %) : branche le Core2 ou recharge-le (30 % minimum)."; return; }
+  if (veille) reveillerEcran();
+  const String cible = versionDispo, titre = "Mise à jour " + versionDispo;
+  sauverPerso();
+  ecranMaj(titre, "Connexion au serveur...", TFT_WHITE, 0);
+  WiFi.setSleep(false);
   esp_task_wdt_delete(NULL);
-  WiFiClientSecure client; client.setInsecure();
-  httpUpdate.rebootOnUpdate(false);
-  httpUpdate.onProgress([](int fait, int total) { static int dernier = -1; int p = total > 0 ? (int)(100LL * fait / total) : 0; if (p != dernier) { dernier = p; M5.Display.fillRect(20, 130, 280 * p / 100, 20, TFT_GREEN); } });
-  t_httpUpdate_return r = httpUpdate.update(client, urlBinDispo);
+  String err = telechargerMaj(urlBinDispo, shaDispo, tailleDispo, titre);
   esp_task_wdt_add(NULL);
-  if (r == HTTP_UPDATE_OK) {
-    prefs.putInt("essais", 0);
-    M5.Display.fillScreen(TFT_BLACK); M5.Display.setTextDatum(middle_center); M5.Display.drawString("Mise à jour installée. Redémarrage...", 160, 110);
+  if (!err.length()) {
+    prefs.putInt("essais", 0); prefs.putString("majok", cible);      // au prochain démarrage : « Mis à jour en X.Y.Z »
+    ecranMaj(titre, "Installée. Redémarrage...", C(120, 255, 150), 100);
     delay(1200); esp_restart();
   }
-  infoMaj = "Échec de la mise à jour : " + httpUpdate.getLastErrorString();
-  page = 5;
+  erreurMaj(err);
+  if (!wifiToujours) finMaj = millis();      // fin : le Wi-Fi reprend son réglage d'économie
+  if (page != 5) page = 35;
 }
 
 // ---------- Serveur web (réglages + mise à jour sans câble) ----------
@@ -3020,6 +3183,7 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("eco")) { eco = serveur.arg("eco") == "1"; wifiToujours = !eco; prefs.putBool("eco", eco); prefs.putBool("wifitj", wifiToujours); changerDirect = true; }
   if (serveur.hasArg("econf")) { ecoForte = serveur.arg("econf") == "1"; prefs.putUChar("econiv", ecoForte ? 1 : 0); appliquerPalier(); }
   if (serveur.hasArg("matinale")) reglerMatinale(serveur.arg("matinale") == "1");
+  if (serveur.hasArg("canal")) { String c = serveur.arg("canal"); if (c == "test" || c == "stable") changerCanal(c == "test"); }      // canal de mise à jour
   if (serveur.hasArg("dessus")) { vueDessusOn = serveur.arg("dessus") == "1"; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } }
   if (serveur.hasArg("presence")) { presenceOn = serveur.arg("presence") == "1"; prefs.putBool("pres", presenceOn); }      // presence / absence automatique
   if (serveur.hasArg("perso")) R.perso = constrain(serveur.arg("perso").toInt(), 0, NB_PERSOS - 1);
@@ -3114,7 +3278,7 @@ void demarrerServeur() {
   serveur.on("/api/test", HTTP_GET, []() {
     autoriserCors(); JsonDocument d;
     d["version"] = VERSION_PROGRAMME; d["wifiMaison"] = (WiFi.status() == WL_CONNECTED); d["reseau"] = WiFi.SSID(); d["reseau1"] = R.ssid; d["reseau2"] = R.ssid2;
-    d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["ip"] = WiFi.localIP().toString();
+    d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["canalMaj"] = canalTest ? "test" : "stable"; d["ip"] = WiFi.localIP().toString();
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
     d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
     d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
@@ -3132,7 +3296,7 @@ void demarrerServeur() {
 
 void demarrerReseau() {
   direct = prefs.getBool("direct", false); presenceOn = prefs.getBool("pres", true); wifiToujours = prefs.getBool("wifitj", false); eco = !wifiToujours;      // Wi-Fi à la demande (économie) par défaut
-  vueDessusOn = prefs.getBool("vdessus", false);
+  vueDessusOn = prefs.getBool("vdessus", false); canalTest = prefs.getBool("canalmaj", true);      // canal de mise à jour : test par défaut
   ecoForte = prefs.getUChar("econiv", 1) != 0; matVisible = prefs.getBool("matvis", false);
   WiFi.setHostname("core2-francais");
   WiFi.setAutoReconnect(true); WiFi.persistent(false);
@@ -3166,7 +3330,7 @@ void setup() {
 }
 
 static int ecoPalier() {      // 0 plein régime ; 1 : 30 s sans toucher (60 s en mode normal) ; 2 : 60 s (120 s) ; seulement sur pile
-  if (brancheUsb || veille || sniffActif || detection || page == 34 || page == 11 || page == 13 || lectureEnCours) return 0;
+  if (brancheUsb || veille || sniffActif || detection || page == 34 || page == 35 || page == 11 || page == 13 || lectureEnCours) return 0;
   uint32_t d = millis() - derniereVraie, a = ecoForte ? 30000u : 60000u, b = ecoForte ? 60000u : 120000u;
   return d > b ? 2 : (d > a ? 1 : 0);
 }
@@ -3238,7 +3402,7 @@ void loop() {
     if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;      // personne ne touche : 15 images/s, puis 8
     if (page == 0 || page == 32) periode = pr::periode(periode);      // presence : en absence 4 images/s (la scene d'entree ou de sortie garde la cadence normale)
     if (!veille && m - tDessin > periode) { tDessin = m; dessinerPage(); afficherVolume(); }
-    if (sniffActif || detection || page == 11 || page == 13 || (page == 34 && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
+    if (sniffActif || detection || page == 11 || page == 13 || ((page == 34 || page == 35) && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (ecoForte ? 150000 : 300000)) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
   if (page == 31 && !matVisible) page = 6;

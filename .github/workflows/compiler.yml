@@ -6,6 +6,9 @@ on:
     paths: ['source/**', '.github/workflows/compiler.yml']
 permissions:
   contents: write
+concurrency:      # une seule publication a la fois par branche : jamais deux compilations qui se marchent dessus
+  group: compiler-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   compiler:
     runs-on: ubuntu-latest
@@ -42,3 +45,33 @@ jobs:
           git add firmware/core2_francais.bin
           git commit -m "Programme compilé automatiquement [skip ci]" || echo "rien à ranger"
           git push origin HEAD:perso
+      - name: Publier le programme sur la branche corbeau (canal test du Core2)
+        if: github.ref == 'refs/heads/corbeau'
+        run: |
+          set -e
+          # version = celle du programme qui vient d'etre compile (jamais celle d'un commit plus recent)
+          VERSION=$(grep -m1 '#define VERSION_PROGRAMME' /tmp/core2_francais/core2_francais.ino | sed -E 's/.*"([^"]+)".*/\1/')
+          SUJET=$(git log -1 --format=%s "$GITHUB_SHA")
+          echo "Version compilee : $VERSION"
+          cp core2_francais.bin /tmp/publie.bin
+          cp .github/scripts/publier_corbeau.py /tmp/publier_corbeau.py
+          git config user.name "compilation-auto"; git config user.email "compilation-auto@users.noreply.github.com"
+          for essai in 1 2 3 4 5; do
+            git fetch origin corbeau
+            git reset --hard origin/corbeau      # d'autres moteurs poussent aussi : on repart toujours de la derniere version de la branche
+            set +e
+            python3 /tmp/publier_corbeau.py /tmp/publie.bin "$VERSION" version.json firmware/core2_francais.bin "$SUJET"
+            code=$?
+            set -e
+            if [ "$code" = "3" ]; then echo "Rien a publier : une version plus recente est deja en ligne."; exit 0; fi
+            if [ "$code" != "0" ]; then echo "Controle echoue : rien n'est publie."; exit 1; fi
+            git add firmware/core2_francais.bin version.json
+            if git diff --cached --quiet; then echo "Deja publie."; exit 0; fi
+            git commit -m "Programme $VERSION compile automatiquement (canal test) [skip ci]"
+            if git push origin HEAD:corbeau; then
+              cmp /tmp/publie.bin firmware/core2_francais.bin && echo "Verification : le .bin publie est identique au .bin compile ($(sha256sum firmware/core2_francais.bin | cut -d' ' -f1))"
+              exit 0
+            fi
+            echo "Push refuse (une autre mise a jour est passee avant) : nouvel essai $essai/5"; sleep $((essai * 4))
+          done
+          echo "Publication impossible apres 5 essais."; exit 1
