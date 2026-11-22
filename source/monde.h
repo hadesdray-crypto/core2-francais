@@ -17,10 +17,8 @@ namespace mo {
 
 // ---------- étendue du monde (l'arbre est entre x = 20 et 250, le sol vers y = 202) ----------
 static const float MX0 = -240.0f, MX1 = 560.0f;            // largeur des bandes
-static const float FY0 = 80.0f, FY1 = 208.0f;              // bande lointaine : arbres lointains et collines
-static const float NY0 = 80.0f, NY1 = 256.0f;              // bande proche : sol, maison, mare, champ, clôtures
-static const float AX0 = -20.0f, AY0 = 0.0f;               // bande de l'arbre (origine)
-static const int WL = (int)(800.0f * ZN + 0.5f), HF = (int)(128.0f * ZN + 0.5f), HN = (int)(176.0f * ZN + 0.5f), WA = (int)(271.0f * ZN + 0.5f), HA = (int)(257.0f * ZN + 0.5f);      // tailles en pixels à l'échelle ZN
+static const float NY0 = 0.0f, NY1 = 257.0f;                // UN SEUL PLAN PRINCIPAL (plus de plan lointain à parallaxe ni de plan de l'arbre séparés) : collines, arbres lointains, sol, mare, champ, tour, stèles, clôtures et arbre
+static const int WL = (int)(800.0f * ZN + 0.5f), HN = (int)(257.0f * ZN + 0.5f);      // tailles en pixels à l'échelle ZN
 static const float TRX = 430.0f, PQX = 322.0f;             // vieille tour de guet (milieu) et portique de pierre
 static float TRB() { return 203.0f + 1.2f * sinf(TRX / 37.0f) + 0.8f * sinf(TRX / 13.0f + 1.0f); }      // pied de la tour (un peu enfoncé dans le sol)
 static float PQB() { return 203.0f + 1.2f * sinf(PQX / 37.0f) + 0.8f * sinf(PQX / 13.0f + 1.0f); }
@@ -35,7 +33,7 @@ static const uint16_t CLE_TR = 0x1818;                        // couleur transpa
 enum { D_TOUR = 0, D_MARE, D_CHAMP, D_EPOUV, D_DISPUTE, D_STELE, D_PORT, D_BETE, D_NB };      // D_BETE : un corbeau part attraper une petite bete
 enum { CM_NON = 0, CM_LARGE, CM_SUIVI };
 
-static M5Canvas sCiel(&M5.Display), sFar(&M5.Display), sNear(&M5.Display), sArbre(&M5.Display);
+static M5Canvas sCiel(&M5.Display), sNear(&M5.Display);      // ciel fixe + le plan principal (un seul sprite de 411 Ko au lieu de trois bandes : 216 Ko de PSRAM en moins)
 static bool pret = false, tentee = false, vigFort = true;
 static uint8_t* vigK = nullptr;                            // table du vignettage (un octet par pixel de la scène)
 static float tMonde = 0.0f;
@@ -111,9 +109,8 @@ static void bakeCiel() {
 
 // ---------- bande lointaine : arbres lointains tous différents, deux plans de collines, épouvantail au loin ----------
 static void dessinerEpouvantail(M5Canvas& g, float x, float y, float k, uint16_t pc);
-static void bakeLoin() {
-  VueId v_; fixerVue(MX0, FY0);
-  M5Canvas& g = sFar; g.fillScreen(CLE_TR);
+static void bakeLoin(M5Canvas& g) {      // dessiné en premier dans le plan principal : le sol et le reste le recouvrent
+  VueId v_; fixerVue(MX0, NY0);
   static const float LT[][4] = {{282, 78, 0, 0.30f}, {334, 56, 3, 0.42f}, {238, 46, 2, 0.50f}, {8, 62, 4, 0.45f}, {-62, 72, 1, 0.50f}, {-30, 44, 3, 0.55f},
     {-98, 56, 0, 0.58f}, {-150, 70, 2, 0.50f}, {-205, 60, 4, 0.55f}, {372, 58, 4, 0.55f}, {500, 66, 1, 0.45f}, {548, 52, 3, 0.50f}};
   for (unsigned i = 0; i < sizeof(LT) / sizeof(LT[0]); i++) {
@@ -238,6 +235,7 @@ static void decorNormal(M5Canvas& g) {      // la vue normale : le bord droit de
 static void bakeProche() {
   VueId v_; fixerVue(MX0, NY0);
   M5Canvas& g = sNear; g.fillScreen(CLE_TR); int h = g.height();
+  bakeLoin(g);      // collines et arbres lointains, puis le sol par-dessus
   for (int x = 0; x < g.width(); x++) { float ys = solHaut((x - ztx) / zs) * zs + zty; g.drawFastVLine(x, (int)ys, h - (int)ys, C(5, 2, 4)); }
   const uint16_t noir = C(4, 1, 3);
   // champ : sillons qui convergent vers l'horizon (perspective)
@@ -256,10 +254,7 @@ static void bakeProche() {
   } else cloture(g, 360.0f, 392.0f, 13.0f, noir);
   dessinerEpouvantail(g, (CH0 + CH1) * 0.5f, solHaut((CH0 + CH1) * 0.5f), 1.0f, noir);
   brumeBasse(g, (RGM.tour ? 520 : 260) >> OP.dec);      // décor allégé : moitié moins de traits de brume ; minimal : le quart
-}
-static void bakeArbre() {
-  VueId v_; fixerVue(AX0, AY0);
-  sArbre.fillScreen(CLE_TR); arbre(sArbre);
+  arbre(g);      // l'arbre au premier plan, dans le même plan principal
 }
 static void bakeVig() {
   if (ambVig <= 0.0f) { if (vigK) { free(vigK); vigK = nullptr; } return; }
@@ -291,7 +286,7 @@ static void vigAppliquer(M5Canvas& d, int y0, int y1) {      // bords noirs de l
 }
 static bool creer(M5Canvas& s, int w, int h) { s.setColorDepth(cv.getColorDepth()); s.setPsram(true); if (!s.createSprite(w, h)) return false; s.setPivot(0.0f, 0.0f); return true; }
 static void libererSprites() {
-  if (sCiel.getBuffer()) sCiel.deleteSprite(); if (sFar.getBuffer()) sFar.deleteSprite(); if (sNear.getBuffer()) sNear.deleteSprite(); if (sArbre.getBuffer()) sArbre.deleteSprite();
+  if (sCiel.getBuffer()) sCiel.deleteSprite(); if (sNear.getBuffer()) sNear.deleteSprite();
   if (vigK) { free(vigK); vigK = nullptr; }
   pret = false;
 }
@@ -303,11 +298,11 @@ static void rebake() {      // appelé par construireFond : première fois = cr�
     if (tentee) return;
     tentee = true;
     if (ESP.getFreePsram() < 1300000UL) return;
-    if (!creer(sCiel, 320, H_SCENE) || !creer(sFar, WL, HF) || !creer(sNear, WL, HN) || !creer(sArbre, WA, HA)) { libererSprites(); return; }
-    sFar.drawPixel(0, 0, C(248, 0, 0)); vigFort = (((const uint8_t*)sFar.getBuffer())[0] == 0xF8);      // ordre des octets : détecté par un essai
+    if (!creer(sCiel, 320, H_SCENE) || !creer(sNear, WL, HN)) { libererSprites(); return; }
+    sNear.drawPixel(0, 0, C(248, 0, 0)); vigFort = (((const uint8_t*)sNear.getBuffer())[0] == 0xF8);      // ordre des octets : détecté par un essai
     pret = true;
   }
-  bakeCiel(); bakeLoin(); bakeProche(); bakeArbre(); bakeVig();
+  bakeCiel(); bakeProche(); bakeVig();
 }
 
 // ---------- effets vivants : fumée, fenêtre, eau, ondes, gouttes ----------
@@ -1123,18 +1118,13 @@ static void afficher(M5Canvas& d, M5Canvas& s, int w, int h, float ox, float oy,
   if (fabsf(f - 1.0f) < 0.004f) s.pushSprite(&d, (int)lroundf(ox), (int)lroundf(oy), CLE_TR);
   else s.pushRotateZoom(&d, ox, oy, 0.0f, f, f, CLE_TR);
 }
-static void composerPar(M5Canvas& d, int y0, int y1, float czS, float cxS, float cyS) {      // le paysage vu par la caméra (rangées y0 à y1 de d) : ciel fixe, plan lointain (parallaxe), plan proche, arbre ; la caméra est donnée par (czS, cxS, cyS)
+static void composerPar(M5Canvas& d, int y0, int y1, float czS, float cxS, float cyS) {      // le paysage vu par la caméra (rangées y0 à y1 de d) : ciel fixe puis UN SEUL plan principal ; la caméra est donnée par (czS, cxS, cyS)
   const float zsS = czS, ztxS = 160.0f - cxS * czS, ztyS = 128.0f - cyS * czS, f = czS / ZN;
   const bool bande = !(y0 <= 0 && y1 >= H_SCENE);
   if (bande) d.setClipRect(0, y0, 320, y1 - y0);
   memcpy((uint8_t*)d.getBuffer() + (size_t)y0 * 640, (const uint8_t*)sCiel.getBuffer() + (size_t)y0 * 640, (size_t)(y1 - y0) * 640);
-  { float zl = ZN + (czS - ZN) * 0.45f, cxl = 160.0f + (cxS - 160.0f) * 0.55f, cyl = 128.0f + (cyS - 128.0f) * 0.70f;
-    afficher(d, sFar, WL, HF, 160.0f + (MX0 - cxl) * zl, 128.0f + (FY0 - cyl) * zl, zl / ZN);
-    int yfb = (int)(128.0f + (FY1 - cyl) * zl) - 1;      // sous les collines lointaines : la lande, jusqu'au sol noir de la bande proche
-    if (yfb < H_SCENE) d.fillRect(0, yfb, 320, H_SCENE - yfb, CF(46 * ambCol, 6 * ambCol, 11 * ambCol)); }
   afficher(d, sNear, WL, HN, ztxS + MX0 * zsS, ztyS + NY0 * zsS, f);
   { int yb = (int)floorf(ztyS + NY1 * zsS) - 1; if (yb < H_SCENE) d.fillRect(0, yb, 320, H_SCENE - yb, C(5, 2, 4)); }
-  afficher(d, sArbre, WA, HA, ztxS + AX0 * zsS, ztyS + AY0 * zsS, f);
   if (bande) d.clearClipRect();
   vigAppliquer(d, y0, y1);      // le décor animé (lanterne, brume, halos, eau) est dessiné ensuite par dessinerEntites, par petits rectangles
   if (y0 <= 0) memcpy(d.getBuffer(), fond.getBuffer(), (size_t)24 * 320 * 2);
