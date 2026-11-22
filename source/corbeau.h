@@ -624,6 +624,52 @@ static void chargerOeil() {
 static void choisirOeil(int a) { oeilActif = (uint8_t)a; prefs.putUChar("cbeil2", oeilActif); appliquerOeil(); }
 static void sauverOeilCu() { prefs.putBytes("dexcr", &oCu, sizeof(OeilCu)); }
 
+// ---------- sons d'apparition et de disparition : synthèse par code (souffle filtré + claquement + battement d'ailes), 16 kHz ----------
+static uint8_t* sonApp = nullptr; static uint8_t* sonDisp = nullptr; static uint32_t nSonApp = 0, nSonDisp = 0;
+static float bruitSynth(uint32_t& s) { s = s * 1664525u + 1013904223u; return ((int32_t)(s >> 8) & 0xFFFF) / 32768.0f - 1.0f; }
+static uint8_t* fabriquerPop(bool apparait, uint32_t& n) {
+  n = apparait ? 8000 : 7200;      // 0,5 s et 0,45 s
+  uint8_t* o = (uint8_t*)(psramFound() ? ps_malloc(n) : malloc(n)); if (!o) { n = 0; return nullptr; }
+  float* x = (float*)malloc(n * sizeof(float)); if (!x) { free(o); n = 0; return nullptr; }
+  uint32_t seed = apparait ? 20240611u : 91827364u, seed2 = seed ^ 0x5bd1e995u;
+  float bp = 0, lp = 0, bas = 0, pic = 0.001f;
+  const float tc = apparait ? 0.34f : 0.03f, dur = n / 16000.0f;
+  for (uint32_t i = 0; i < n; i++) {
+    float t = i / 16000.0f, v = 0;
+    // 1) souffle : bruit passe-bande dont la fréquence balaie (monte en apparaissant, descend en disparaissant)
+    float amp, fc;
+    if (apparait) { float u = t / tc; if (u > 1) u = 1; amp = (t < tc) ? 0.9f * powf(u, 1.5f) : 0.9f * expf(-(t - tc) * 40.0f); fc = 450.0f + 2200.0f * powf(u, 1.3f); }
+    else { float u = (t - tc) / (dur - tc); if (u < 0) u = 0; amp = (t < tc) ? 0.0f : 0.9f * expf(-(t - tc) * 7.0f); fc = 2400.0f - 2050.0f * powf(u, 0.7f); }
+    float f = 2.0f * sinf(3.14159f * fc / 16000.0f), nz = bruitSynth(seed);
+    float hp = nz - lp - 0.45f * bp; bp += f * hp; lp += f * bp;
+    v += bp * amp * 2.2f;
+    // 2) claquement : petit « pop » sourd + craquement bref à l'instant tc
+    if (t >= tc) {
+      float d = t - tc;
+      v += 0.75f * sinf(6.2832f * 170.0f * d) * expf(-d * 38.0f);
+      v += 0.35f * sinf(6.2832f * 900.0f * d) * expf(-d * 170.0f);
+      v += 0.8f * bruitSynth(seed2) * expf(-d * 420.0f);
+    }
+    // 3) battements d'ailes : bruit grave haché à 16-18 Hz
+    float b = bruitSynth(seed2); bas += 0.12f * (b - bas);
+    float fl = apparait ? 16.0f : 18.0f, ph = 6.2832f * fl * t, hach = 0.5f + 0.5f * sinf(ph); hach = hach * hach;
+    float ea = apparait ? ((t > 0.04f) ? expf(-fabsf(t - 0.3f) * 6.0f) : 0.0f) : ((t > 0.05f) ? expf(-(t - 0.05f) * 6.0f) : 0.0f);
+    v += bas * hach * ea * 3.2f;
+    x[i] = v; float a = fabsf(v); if (a > pic) pic = a;
+  }
+  float g = 0.92f / pic;
+  for (uint32_t i = 0; i < n; i++) {
+    float v = tanhf(x[i] * g * 2.4f) / tanhf(2.4f); if (i > n - 400) v *= (float)(n - i) / 400.0f;      // compression douce (plus de niveau perçu) + fondu final
+    int k = (int)(128.0f + 127.0f * v); o[i] = (uint8_t)(k < 0 ? 0 : (k > 255 ? 255 : k));
+  }
+  free(x); return o;
+}
+static const uint8_t* sonPop(bool apparait, uint32_t& n) {
+  uint8_t*& b = apparait ? sonApp : sonDisp; uint32_t& nb = apparait ? nSonApp : nSonDisp;
+  if (!b) b = fabriquerPop(apparait, nb);
+  n = nb; return b;
+}
+
 static void son(int id, int vol = 200) {
   if (id < 0 || id >= SN_NB || R.volume == 0) return;
   const uint8_t* d = nullptr; uint32_t n = 0, rate = 16000;
@@ -641,6 +687,7 @@ static void son(int id, int vol = 200) {
     d = D[id]; n = N[id]; rate = cbs::RATE;
   }
 #endif
+  if (id == SN_POP_APP || id == SN_POP_DISP) { uint32_t nn = 0; const uint8_t* s = sonPop(id == SN_POP_APP, nn); if (s && nn) { d = s; n = nn; rate = 16000; } }      // nouveaux sons faits par le code
   if (!d || !n) return;
   uint32_t m = millis(); if (m - dernierSon[id] < 150) return; dernierSon[id] = m;
   if (!M5.Speaker.isRunning()) {

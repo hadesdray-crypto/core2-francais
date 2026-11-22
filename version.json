@@ -1,5 +1,5 @@
 {
-    "version": "2.8.0",
+    "version": "2.8.1",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -36,6 +36,8 @@
         "Retournement avec du volume : quand un corbeau change de côté, il tourne pour de vrai (le corps s'élargit, les deux ailes s'échangent, la queue s'ouvre, la tête passe de profil à face, les deux yeux apparaissent à mi-tour) au lieu de s'aplatir.",
         "Vol plus sombre : battements en trois temps (le poignet mène, les plumes de bout d'aile suivent un peu après, remontée plus lente ailes à demi repliées), léger roulis du corps avec la tête presque à l'horizontale, queue en éventail dans les virages, lignes de vitesse.",
         "Dex complet : 26 yeux avec leur vrai nom, rangés par familles dans une liste qui défile au doigt (Sharingan, Mangekyō, Mangekyō éternel, Rinnegan, Rinne Sharingan, Byakugan, autres yeux). Chaque fiche a quatre sections à toucher (Histoire, Porteurs, Pouvoirs, Le saviez-vous ?) et le texte défile au glisser, sans rien couper. Les dessins non vérifiés sont marqués d'un petit « ~ ». Le contenu inventé a disparu ; il reste l'écran « Créer ton œil » et le bouton qui change les yeux des corbeaux.",
+        "Narrations dans le Dex : chaque fiche est racontée en français par une voix de synthèse (le vrai nom de l'œil, puis son histoire, environ 15 à 21 secondes), lue au bout d'un instant quand on ouvre la fiche. Un bouton ÉCOUTER / ARRÊTER permet de la relancer ou de la couper ; l'écran et le toucher restent libres pendant qu'elle parle.",
+        "Nouveau son quand un corbeau apparaît ou disparaît (et quand le visiteur arrive ou part) : un souffle qui balaie, un claquement sourd et un battement d'ailes, fabriqués par le programme (aucun extrait d'œuvre).",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
