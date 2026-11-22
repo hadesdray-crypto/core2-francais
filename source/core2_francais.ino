@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.0.0"
+#define VERSION_PROGRAMME "3.0.1"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -561,6 +561,7 @@ bool modeApercu = false;
 float masse() { return 0.5f + FA.poids / 50.0f; }
 
 // ---------- Vue de la pièce, miroir, marche au sol ----------
+bool vueDessusOn = false;      // réglage « Vue de dessus (Core2 à plat) » : coupé par défaut, mémorisé sous la clé vdessus
 int vue = 0, rotEcran = 0;          // vue 0 = de face (debout), 1 = d'en haut (à plat) ; rotEcran 0, 90 ou -90 (en hauteur)
 bool changeVue = false;
 uint32_t miroirFin = 0; int miroirX = 160, miroirY = 100; bool contreVitre = false; float regardX = 0, regardY = 0;   // il vient contre la vitre et suit le doigt
@@ -675,6 +676,7 @@ void physique(float dt) {
       float a0 = 1.0f - expf(-dt / 0.4f); ox += (ax - ox) * a0; oy += (ay - oy) * a0; oz += (az - oz) * a0;
       int c = vue;                                  // la pièce reste d'un seul bloc ; presque à plat on la voit d'en haut, redressé on revient de face
       if (fabsf(oz) > 0.92f) c = 1; else if (fabsf(oz) < 0.6f) c = 0;
+      if (!vueDessusOn) c = 0;                      // vue de dessus coupée : toujours de face, plus aucune bascule automatique
       if (c != cand) { cand = c; tCand = m; }
       else if (m - tCand > 500 && c != vue) { vue = c; rotEcran = 0; changeVue = true; }
     }
@@ -1521,8 +1523,9 @@ void dessinerReglages() {
   cv.drawString("Version " VERSION_PROGRAMME "   Code maj : " + prefs.getString("code", "666666"), 8, 164);
   cv.drawString(W.wifiOk ? "Wi-Fi connecté : " + WiFi.SSID() : ((direct || modeAcces) ? "Direct : Core2-francais" : "Pas de Wi-Fi"), 8, 180);
   cv.drawString("Pile " + String(W.batterie) + " %  " + String((int)M5.Power.getBatteryVoltage()) + " mV  " + String((int)M5.Power.getBatteryCurrent()) + " mA", 8, 192);
-  cv.fillRoundRect(236, 146, 80, 26, 8, C(50, 100, 150)); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString("Wi-Fi...", 276, 159);
-  cv.fillRoundRect(236, 174, 80, 26, 8, eco ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString(eco ? "Éco : oui" : "Éco : non", 276, 187); cv.setTextDatum(top_left);
+  cv.fillRoundRect(236, 144, 80, 18, 7, C(50, 100, 150)); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString("Wi-Fi...", 276, 153);
+  cv.fillRoundRect(236, 165, 80, 18, 7, eco ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString(eco ? "Éco : oui" : "Éco : non", 276, 174);
+  cv.fillRoundRect(236, 186, 80, 17, 7, vueDessusOn ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString(vueDessusOn ? "Dessus : oui" : "Dessus : non", 276, 194); cv.setTextDatum(top_left);
   cv.setFont(&fonts::lgfxJapanGothic_16);
   cv.fillRoundRect(4, 204, 102, 32, 8, C(52, 56, 96)); cv.setTextDatum(middle_center); cv.setTextColor(C(240, 240, 255)); cv.drawString("Retour", 55, 220);
   cv.fillRoundRect(112, 204, 98, 32, 8, (direct || modeAcces) ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString((direct || modeAcces) ? "Direct : oui" : "Direct : non", 161, 220);
@@ -2781,8 +2784,9 @@ void gererTactile() {
       int x = t.x, y = t.y;
       for (int i = 0; i < M_NB; i++) { int bx = 6 + (i % 2) * 158, by = 24 + (i / 2) * 30; if (x >= bx && x < bx + 152 && y >= by && y < by + 26) { R.actif[i] = !R.actif[i]; sauverReglages(); bip(R.actif[i] ? 880 : 440, 60); } }
       if (x >= 164 && y >= 114 && y < 140) { page = 5; bip(700, 60); }
-      else if (x >= 236 && y >= 146 && y < 172) { page = 2; lancerScan(); bip(700, 60); }
-      else if (x >= 236 && y >= 174 && y < 202) { eco = !eco; prefs.putBool("eco", eco); changerDirect = true; bip(700, 60); }
+      else if (x >= 236 && y >= 142 && y < 164) { page = 2; lancerScan(); bip(700, 60); }
+      else if (x >= 236 && y >= 164 && y < 185) { eco = !eco; prefs.putBool("eco", eco); changerDirect = true; bip(700, 60); }
+      else if (x >= 236 && y >= 185 && y < 203) { vueDessusOn = !vueDessusOn; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } bip(vueDessusOn ? 880 : 440, 60); }      // interrupteur de la vue de dessus
       else if (y >= 204 && x < 108) { page = 0; }
       else if (y >= 204 && x < 212) { direct = !direct; prefs.putBool("direct", direct); changerDirect = true; bip(700, 60); }
       else if (y >= 204) { sauverPerso(); esp_restart(); }
@@ -2873,7 +2877,7 @@ String jsonEtat() {
   d["batterie"] = W.batterie; d["charge"] = W.charge; d["wifi"] = W.wifiOk; d["rssi"] = W.rssi;
   d["temperature"] = W.temperature; d["meteo"] = W.codeMeteo; d["gravite"] = W.gravite;
   d["message"] = W.message; d["lat"] = R.lat; d["lon"] = R.lon; d["luminosite"] = R.luminosite; d["volume"] = R.volume;
-  d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = eco;
+  d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = eco; d["dessus"] = vueDessusOn;
   d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo;
   JsonObject m = d["modules"].to<JsonObject>();
   for (int i = 0; i < M_NB; i++) m[CLES_MODULES[i]] = R.actif[i];
@@ -2911,6 +2915,7 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("nouveaucode") && serveur.arg("nouveaucode").length() >= 3) prefs.putString("code", serveur.arg("nouveaucode"));
   if (serveur.hasArg("direct")) { direct = serveur.arg("direct") == "1"; prefs.putBool("direct", direct); changerDirect = true; }
   if (serveur.hasArg("eco")) { eco = serveur.arg("eco") == "1"; prefs.putBool("eco", eco); changerDirect = true; }
+  if (serveur.hasArg("dessus")) { vueDessusOn = serveur.arg("dessus") == "1"; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } }
   if (serveur.hasArg("perso")) R.perso = constrain(serveur.arg("perso").toInt(), 0, NB_PERSOS - 1);
   { Fiche& f = FA; bool mf = false;
     if (serveur.hasArg("couleur")) { String c = serveur.arg("couleur"); c.replace("#", ""); if (c == "auto") f.couleurAuto = true; else if (c.length() == 6) { long v = strtol(c.c_str(), nullptr, 16); f.r = (v >> 16) & 255; f.g = (v >> 8) & 255; f.b = v & 255; f.couleurAuto = false; } mf = true; }
@@ -3019,7 +3024,7 @@ void demarrerServeur() {
 }
 
 void demarrerReseau() {
-  direct = prefs.getBool("direct", false); eco = prefs.getBool("eco", false);
+  direct = prefs.getBool("direct", false); eco = prefs.getBool("eco", false); vueDessusOn = prefs.getBool("vdessus", false);
   WiFi.setHostname("core2-francais");
   WiFi.setAutoReconnect(true); WiFi.persistent(false);
   if (!nbConnus()) modeAcces = true;
