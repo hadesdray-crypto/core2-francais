@@ -45,7 +45,7 @@ static const int NOB = 4;        // objets au sol / qui tombent
 static const int NPE = 6;        // perchoirs
 static const int NPART = 44;    // plumes
 static const int NFX = 6;       // éclats lumineux
-static const int NENT = NCB + NOB + 8;
+static const int NENT = NCB + NOB + 9;
 static const int H_SCENE = 206; // la barre de nourriture occupe le bas
 static const float SOL_Y = 201.0f;
 static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {224, 125.6f}, {88, 62.5f}, {24, 94.5f}};
@@ -78,17 +78,24 @@ static bool volVu = false, barreSale = false, sonsReels = false;
 static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 0 nourrir, 1 main, 2 lancer, 3 appel / effrayer, 4 fronde
 
 // ---------- réglages du mode (nouvelles clés mémoire : cbnb, cbvis, cbsec, cbvib, cbamb, cbfps, cboeufs) ----------
-struct Opt { uint8_t nb, vis, sec, vib, amb, fps; };
-static Opt OP = {5, 1, 1, 1, 0, 0};      // nombre de corbeaux (3 à 6), visiteur (0 jamais, 1 rare, 2 souvent), secousse, vibration, ambiance, images/s
+// nouvelles clés (2.9.0) : cbact (activité 1 à 5), cbgp (visites au gros plan 0 à 3), cboefq (fréquence des œufs 0 à 3), cbhor (ambiance Horreur)
+struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor; };
+static Opt OP = {5, 1, 1, 1, 0, 0, 3, 2, 2, 1};      // nombre de corbeaux (3 à 6), visiteur (0 jamais, 1 rare, 2 souvent), secousse, vibration, ambiance, images/s, activité (1 à 5), gros plan (0 jamais, 1 rare, 2 normale, 3 souvent), œufs (idem), horreur
 static bool panneau = false, panSale = true, ambChange = false, oeufsSale = false;
 static uint32_t nbOeufs = 0;               // œufs éclos
 static int nAct = 5;
-static float ambK = 1.0f, ambLune = 1.0f, ambBrume = 1.0f, ambRouge = 0.0f; static int ambEt = 34;
+static float ambK = 1.0f, ambLune = 1.0f, ambBrume = 1.0f, ambRouge = 0.0f, ambCol = 1.0f, ambVig = 0.0f, ambBrC[3] = {24.0f, 1.0f, 9.0f}; static int ambEt = 34;
+static bool horreur() { return OP.hor != 0; }
 static void appliquerAmb() {
   switch (OP.amb) {
     case 1: ambK = 1.0f; ambRouge = 26.0f; ambLune = 0.55f; ambBrume = 1.9f; ambEt = 8; break;      // brume rouge
     case 2: ambK = 0.42f; ambRouge = 0.0f; ambLune = 0.7f; ambBrume = 0.4f; ambEt = 70; break;      // nuit sombre
     default: ambK = 1.0f; ambRouge = 0.0f; ambLune = 1.0f; ambBrume = 1.0f; ambEt = 34; break;      // lune et étoiles
+  }
+  ambCol = 1.0f; ambVig = 0.0f; ambBrC[0] = 24.0f; ambBrC[1] = 1.0f; ambBrC[2] = 9.0f;
+  if (OP.hor) {      // Horreur : ciel presque noir à lueur rouge très faible, lune sanguine voilée, brume noire, bords noirs, étoiles rares
+    ambK *= 0.50f; ambRouge *= 0.2f; ambLune *= 0.60f; ambBrume = 1.0f; ambEt = (ambEt > 9) ? 9 : ambEt / 2 + 1; ambCol = 0.50f; ambVig = 1.0f;
+    ambBrC[0] = 4.0f; ambBrC[1] = 0.0f; ambBrC[2] = 2.0f;
   }
 }
 static void appliquerSec() { static const float S[3] = {3.4f, 2.2f, 1.5f}; seuilSecousse = S[OP.sec > 2 ? 1 : OP.sec]; }
@@ -96,6 +103,10 @@ static float delaiVisite(bool premiere) {
   switch (OP.vis) { case 0: return 1e9f; case 1: return premiere ? rnd(60.0f, 110.0f) : rnd(180.0f, 300.0f); default: return premiere ? rnd(25.0f, 45.0f) : rnd(50.0f, 95.0f); }
 }
 static inline void vib(int ms) { if (OP.vib) vibrer(ms); }
+// fréquence des événements : l'activité (1 calme à 5 agité) accélère ou ralentit les minuteurs ; gros plan et œufs ont leur propre réglage
+static float FA = 1.0f;
+static void appliquerAct() { static const float F[5] = {0.45f, 0.7f, 1.0f, 1.5f, 2.2f}; FA = F[(OP.act < 1 ? 1 : (OP.act > 5 ? 5 : OP.act)) - 1]; }
+static float multFreq(uint8_t n) { static const float M[4] = {1e6f, 2.4f, 1.0f, 0.45f}; return M[n > 3 ? 2 : n]; }      // jamais, rare, normale, souvent : multiplicateur du délai
 static void chargerOptions() {
   OP.nb = prefs.getUChar("cbnb", 5); if (OP.nb < 3) OP.nb = 3; if (OP.nb > 6) OP.nb = 6;
   OP.vis = prefs.getUChar("cbvis", 1); if (OP.vis > 2) OP.vis = 1;
@@ -103,8 +114,12 @@ static void chargerOptions() {
   OP.vib = prefs.getUChar("cbvib", 1) ? 1 : 0;
   OP.amb = prefs.getUChar("cbamb", 0); if (OP.amb > 2) OP.amb = 0;
   OP.fps = prefs.getUChar("cbfps", 0) ? 1 : 0;
+  OP.act = prefs.getUChar("cbact", 3); if (OP.act < 1 || OP.act > 5) OP.act = 3;
+  OP.gp = prefs.getUChar("cbgp", 2); if (OP.gp > 3) OP.gp = 2;
+  OP.oe = prefs.getUChar("cboefq", 2); if (OP.oe > 3) OP.oe = 2;
+  OP.hor = prefs.getUChar("cbhor", 1) ? 1 : 0;      // l'ambiance Horreur est active par défaut
   nbOeufs = prefs.getUInt("cboeufs", 0);
-  appliquerAmb(); appliquerSec(); debug = (OP.fps != 0);
+  appliquerAct(); appliquerAmb(); appliquerSec(); debug = (OP.fps != 0);
 }
 // œuf magique
 struct Oeuf { bool actif; float x, y, t, tc, tp; uint8_t etat; int8_t ponte; };      // etat : 0 posé, 1 qui craque
@@ -114,6 +129,8 @@ static uint32_t tTestSon = 0;      // fin du bip de test (volume au maximum)
 static float gFeuille = 2.0f, slowT = 0.0f;      // feuilles qui tombent ; ralenti sur les moments forts
 static inline void ralenti(float d) { if (d > slowT) slowT = d; }
 static float gSocial = 14.0f, tAlerte = 0.0f; static int dirAlerte = 1; static bool alerteFuite = false;
+static float lueurOeil = 1.0f, gEcl = 40.0f, eclT = 0.0f, eclX = 200.0f, gBatt = 55.0f, battT = 0.0f;      // horreur : lueur des yeux (instable), éclair rouge lointain, battement de lumière (rares)
+static uint32_t eclGraine = 1;
 struct Ap2 { int8_t a, b, n; float t; }; static Ap2 AP;      // s'appeler entre eux
 
 static int memTas = 0, memPsram = 0;
@@ -259,7 +276,7 @@ static void brume(M5Canvas& g, float cx, float cy, float w, float h, float a) {
       float ax = 1.0f - fabsf((x + 2 - cx) / w); ax = ax * ax; float al = lim(a * ambBrume, 0.0f, 0.9f) * ay * ax;
       if (al < 0.03f || x < 0 || x > 316) continue;
       float r, gg, b; fondRGB(x + 2.0f, (float)y, r, gg, b);
-      g.drawFastHLine(x, y, 4, CF(r * (1 - al) + 24 * al, gg * (1 - al) + 1 * al, b * (1 - al) + 9 * al));
+      g.drawFastHLine(x, y, 4, CF(r * (1 - al) + ambBrC[0] * al, gg * (1 - al) + ambBrC[1] * al, b * (1 - al) + ambBrC[2] * al));
     }
   }
 }
@@ -478,8 +495,26 @@ static void boutonVue(M5Canvas& g) {
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Vue", 254, 12); g.setTextDatum(top_left);
 }
 static void cielLarge(M5Canvas& g);
+static void vignette(M5Canvas& g) {      // horreur : bords noirs (dessiné une seule fois dans le fond, rien à recalculer à chaque image)
+  if (ambVig <= 0.0f || bpp != 2) return;
+  uint8_t* b = (uint8_t*)g.getBuffer(); if (!b) return;
+  g.drawPixel(0, 0, C(248, 0, 0)); const bool fort = (b[0] == 0xF8); g.drawPixel(0, 0, C(0, 0, 0));      // ordre des octets : détecté par un essai
+  for (int y = 0; y < H_SCENE; y++) {
+    float dy = (y - 100.0f) / 106.0f;
+    for (int x = 0; x < 320; x++) {
+      float dx = (x - 160.0f) / 165.0f, d2 = dx * dx + dy * dy;
+      if (d2 < 0.35f) continue;
+      float t = lim((d2 - 0.35f) / 1.15f, 0.0f, 1.0f), f = 1.0f - 0.93f * t * t * (3.0f - 2.0f * t);
+      int k = (int)(f * 256.0f); uint8_t* p = b + ((size_t)y * 320 + x) * 2;
+      uint16_t v = fort ? (uint16_t)((p[0] << 8) | p[1]) : (uint16_t)((p[1] << 8) | p[0]);
+      uint16_t r5 = (uint16_t)((((v >> 11) & 31) * k) >> 8), g6 = (uint16_t)((((v >> 5) & 63) * k) >> 8), b5 = (uint16_t)(((v & 31) * k) >> 8);
+      v = (uint16_t)((r5 << 11) | (g6 << 5) | b5);
+      if (fort) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)(v & 255); } else { p[1] = (uint8_t)(v >> 8); p[0] = (uint8_t)(v & 255); }
+    }
+  }
+}
 static void construireFond() {
-  { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond); }      // les arbres lointains sont dessinés dans cielLarge, derrière les collines
+  { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond); vignette(fond); }      // les arbres lointains sont dessinés dans cielLarge, derrière les collines
   menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
 }
 
@@ -624,6 +659,52 @@ static void chargerOeil() {
 static void choisirOeil(int a) { oeilActif = (uint8_t)a; prefs.putUChar("cbeil2", oeilActif); appliquerOeil(); }
 static void sauverOeilCu() { prefs.putBytes("dexcr", &oCu, sizeof(OeilCu)); }
 
+// ---------- sons d'apparition et de disparition : synthèse par code (souffle filtré + claquement + battement d'ailes), 16 kHz ----------
+static uint8_t* sonApp = nullptr; static uint8_t* sonDisp = nullptr; static uint32_t nSonApp = 0, nSonDisp = 0;
+static float bruitSynth(uint32_t& s) { s = s * 1664525u + 1013904223u; return ((int32_t)(s >> 8) & 0xFFFF) / 32768.0f - 1.0f; }
+static uint8_t* fabriquerPop(bool apparait, uint32_t& n) {
+  n = apparait ? 8000 : 7200;      // 0,5 s et 0,45 s
+  uint8_t* o = (uint8_t*)(psramFound() ? ps_malloc(n) : malloc(n)); if (!o) { n = 0; return nullptr; }
+  float* x = (float*)malloc(n * sizeof(float)); if (!x) { free(o); n = 0; return nullptr; }
+  uint32_t seed = apparait ? 20240611u : 91827364u, seed2 = seed ^ 0x5bd1e995u;
+  float bp = 0, lp = 0, bas = 0, pic = 0.001f;
+  const float tc = apparait ? 0.34f : 0.03f, dur = n / 16000.0f;
+  for (uint32_t i = 0; i < n; i++) {
+    float t = i / 16000.0f, v = 0;
+    // 1) souffle : bruit passe-bande dont la fréquence balaie (monte en apparaissant, descend en disparaissant)
+    float amp, fc;
+    if (apparait) { float u = t / tc; if (u > 1) u = 1; amp = (t < tc) ? 0.9f * powf(u, 1.5f) : 0.9f * expf(-(t - tc) * 40.0f); fc = 450.0f + 2200.0f * powf(u, 1.3f); }
+    else { float u = (t - tc) / (dur - tc); if (u < 0) u = 0; amp = (t < tc) ? 0.0f : 0.9f * expf(-(t - tc) * 7.0f); fc = 2400.0f - 2050.0f * powf(u, 0.7f); }
+    float f = 2.0f * sinf(3.14159f * fc / 16000.0f), nz = bruitSynth(seed);
+    float hp = nz - lp - 0.45f * bp; bp += f * hp; lp += f * bp;
+    v += bp * amp * 2.2f;
+    // 2) claquement : petit « pop » sourd + craquement bref à l'instant tc
+    if (t >= tc) {
+      float d = t - tc;
+      v += 0.75f * sinf(6.2832f * 170.0f * d) * expf(-d * 38.0f);
+      v += 0.35f * sinf(6.2832f * 900.0f * d) * expf(-d * 170.0f);
+      v += 0.8f * bruitSynth(seed2) * expf(-d * 420.0f);
+    }
+    // 3) battements d'ailes : bruit grave haché à 16-18 Hz
+    float b = bruitSynth(seed2); bas += 0.12f * (b - bas);
+    float fl = apparait ? 16.0f : 18.0f, ph = 6.2832f * fl * t, hach = 0.5f + 0.5f * sinf(ph); hach = hach * hach;
+    float ea = apparait ? ((t > 0.04f) ? expf(-fabsf(t - 0.3f) * 6.0f) : 0.0f) : ((t > 0.05f) ? expf(-(t - 0.05f) * 6.0f) : 0.0f);
+    v += bas * hach * ea * 3.2f;
+    x[i] = v; float a = fabsf(v); if (a > pic) pic = a;
+  }
+  float g = 0.92f / pic;
+  for (uint32_t i = 0; i < n; i++) {
+    float v = tanhf(x[i] * g * 2.4f) / tanhf(2.4f); if (i > n - 400) v *= (float)(n - i) / 400.0f;      // compression douce (plus de niveau perçu) + fondu final
+    int k = (int)(128.0f + 127.0f * v); o[i] = (uint8_t)(k < 0 ? 0 : (k > 255 ? 255 : k));
+  }
+  free(x); return o;
+}
+static const uint8_t* sonPop(bool apparait, uint32_t& n) {
+  uint8_t*& b = apparait ? sonApp : sonDisp; uint32_t& nb = apparait ? nSonApp : nSonDisp;
+  if (!b) b = fabriquerPop(apparait, nb);
+  n = nb; return b;
+}
+
 static void son(int id, int vol = 200) {
   if (id < 0 || id >= SN_NB || R.volume == 0) return;
   const uint8_t* d = nullptr; uint32_t n = 0, rate = 16000;
@@ -641,6 +722,7 @@ static void son(int id, int vol = 200) {
     d = D[id]; n = N[id]; rate = cbs::RATE;
   }
 #endif
+  if (id == SN_POP_APP || id == SN_POP_DISP) { uint32_t nn = 0; const uint8_t* s = sonPop(id == SN_POP_APP, nn); if (s && nn) { d = s; n = nn; rate = 16000; } }      // nouveaux sons faits par le code
   if (!d || !n) return;
   uint32_t m = millis(); if (m - dernierSon[id] < 150) return; dernierSon[id] = m;
   if (!M5.Speaker.isRunning()) {
@@ -804,17 +886,21 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     } }
   // corps : la respiration gonfle la poitrine, le secouement hérisse les plumes ; il s'élargit quand il pivote (de face, on voit sa largeur)
   float br = 1.0f + 0.05f * sinf(c.resp * 2.7f) + 0.09f * c.ruf * sinf(c.tAct * 46.0f);
-  const float wfb = sqrtf(dv * dv + 0.3025f * sn * sn), wfc = sqrtf(dv * dv + sn * sn);
+  const float wfb = sqrtf(dv * dv + 0.72f * sn * sn), wfc = sqrtf(dv * dv + sn * sn);      // retournement épais : de face le corps garde au moins 85 % de sa largeur de profil (jamais une lamelle)
   for (int i = 0; i < 14; i++) { float a = i * (6.2832f / 14.0f); R_.pw(cosf(a) * 11.8f * (1.0f + 0.02f * (br - 1.0f) * 5.0f), sinf(a) * 5.9f * br, wfb, q[i * 2], q[i * 2 + 1]); }
   poly(g, q, 14, NOIR);
   float ch[20];      // poitrine bombée : centre porté par la direction, rayon par la largeur
   { float ucc = 6.6f * R_.ct + 1.4f * R_.st, vcc = -6.6f * R_.st + 1.4f * R_.ct;
     for (int i = 0; i < 10; i++) {
-      float a = i * 0.6283f, ru = cosf(a) * 5.4f * (0.5f + 0.5f * br), rv = sinf(a) * 5.2f * br;
+      float a = i * 0.6283f, ru = cosf(a) * 5.4f * (0.5f + 0.5f * br) * (1.0f + 0.30f * sn), rv = sinf(a) * 5.2f * br * (1.0f + 0.12f * sn);
       float ruu = ru * R_.ct + rv * R_.st, rvv = -ru * R_.st + rv * R_.ct;
       ch[i * 2] = R_.cx + s * R_.sx * (ucc * dv + ruu * wfc); ch[i * 2 + 1] = R_.cy + s * R_.sy * (vcc + rvv);
     } }
   poly(g, ch, 10, NOIR);
+  if (sn > 0.10f) {      // de face : épaules rondes et poitrail large (volume du corps, pas une feuille)
+    for (int e = 0; e < 2; e++) { float es = e ? -1.0f : 1.0f, X1, Y1; R_.q(2.2f, -1.4f, es * 5.8f, X1, Y1); disque(g, X1, Y1, (2.6f + 3.2f * sn) * s, NOIR); }
+    float X2, Y2; R_.q(4.6f, 2.4f, 0.0f, X2, Y2); disque(g, X2, Y2, (2.4f + 4.0f * sn) * s, NOIR);
+  }
   if (c.duvet > 0.02f) {      // petit corbeau : plumes duveteuses autour du corps
     for (int i = 0; i < 10; i++) {
       float a = i * 0.628f + 0.2f, ex = 3.5f * c.duvet + 1.2f * sinf(i * 2.3f), x1, y1, x2, y2, x3, y3;
@@ -843,7 +929,8 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   auto PHw = [&](float p, float qq, float w, float& X, float& Y) { R_.q(hu + p * cb - qq * sb, hv + p * sb + qq * cb, w, X, Y); };
   float n1x, n1y, n2x, n2y, hhx, hhy; P(3.5f, -5.2f, n1x, n1y); P(7.5f, 3.8f, n2x, n2y); P(hu, hv, hhx, hhy);
   tri(g, n1x, n1y, n2x, n2y, hhx, hhy, NOIR);
-  disque(g, hhx, hhy, 5.0f * s, NOIR);
+  disque(g, hhx, hhy, 5.0f * (1.0f + 0.14f * sn) * s, NOIR);
+  if (sn > 0.10f) { float nx_, ny_; P(hu - 2.0f, hv + 3.4f, nx_, ny_); disque(g, nx_, ny_, (2.8f + 2.6f * sn) * s, NOIR); }      // cou épais vu de face
   { float a1x, a1y, a2x, a2y, a3x, a3y; PH(-3.8f, 1.5f, a1x, a1y); PH(0.8f, 4.0f, a2x, a2y); PH(-4.6f, 6.0f, a3x, a3y); tri(g, a1x, a1y, a2x, a2y, a3x, a3y, NOIR); }      // gorge hirsute
   { float o = c.bec, Ax, Ay, Bx, By, Mx, My, Tx, Ty, Lx, Ly, Ux, Uy;      // bec lourd, qui s'ouvre quand il croasse
     PH(2.4f, -2.8f, Ax, Ay); PH(2.6f, 3.3f, Bx, By); PH(2.8f, 0.2f, Mx, My); PH(13.5f, 1.0f - 3.4f * o, Tx, Ty); PH(11.8f, 2.2f + 3.6f * o, Lx, Ly); PH(7.6f, -3.0f, Ux, Uy);
@@ -856,13 +943,14 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     dessinerObjet(g, c.objet - 1, X + dv * 1.5f, Y + 2.0f, 3.6f * s + 0.8f, dv > 0 ? 0.4f : 2.7f, tw);
   }
   // liseré rouge sombre côté lune : du volume ; le ventre s'éclaire quand le corbeau se montre de face
-  { const uint16_t RIMC = C(104, 20, 26); float x1, y1, x2, y2;
+  { const uint16_t RIMC = OP.hor ? C(70, 12, 18) : C(104, 20, 26); float x1, y1, x2, y2;
     const float bd[3][4] = {{8, -5.4f, 0, -6.2f}, {0, -6.2f, -9, -5}, {-9, -5, -14, -3}};
     for (int i = 0; i < 3; i++) { P(bd[i][0], bd[i][1], x1, y1); P(bd[i][2], bd[i][3], x2, y2); ligne(g, x1, y1, x2, y2, RIMC); }
     const float hd[4][4] = {{-3.2f, -4.6f, 0, -5.2f}, {0, -5.2f, 3.4f, -4.4f}, {4.2f, -3.4f, 7.6f, -3.1f}, {7.6f, -3.1f, 13, 0.6f}};
     for (int i = 0; i < 4; i++) { PH(hd[i][0], hd[i][1], x1, y1); PH(hd[i][2], hd[i][3], x2, y2); ligne(g, x1, y1, x2, y2, RIMC); }
     if (sn > 0.25f) {
-      float kk = lim((sn - 0.25f) / 0.5f, 0.0f, 1.0f); uint16_t BC = CF(104.0f * (0.5f + 0.5f * kk), 20.0f * kk + 8.0f, 26.0f * kk + 6.0f);
+      float kk = lim((sn - 0.25f) / 0.5f, 0.0f, 1.0f);
+      for (int e = 0; e < 2; e++) { float es = e ? -1.0f : 1.0f, X1, Y1, rr = (2.6f + 3.2f * sn) * s; R_.q(2.2f, -1.4f, es * 5.8f, X1, Y1); ligne(g, X1 - es * rr * 0.9f, Y1 - rr * 0.35f, X1 - es * rr * 0.25f, Y1 - rr * 0.95f, RIMC); ligne(g, X1 - es * rr * 0.25f, Y1 - rr * 0.95f, X1 + es * rr * 0.5f, Y1 - rr * 0.9f, RIMC); }      // liseré sur le dessus des épaules uint16_t BC = CF(104.0f * (0.5f + 0.5f * kk), 20.0f * kk + 8.0f, 26.0f * kk + 6.0f);
       for (int i = 0; i < 9; i++) if (ch[i * 2] >= R_.cx - 0.5f && ch[i * 2 + 2] >= R_.cx - 0.5f) ligne(g, ch[i * 2], ch[i * 2 + 1], ch[i * 2 + 2], ch[i * 2 + 3], BC);
       float b0x, b0y, b1x, b1y, b2x, b2y; R_.pw(-7.0f, 5.7f, wfb, b0x, b0y); R_.pw(0.0f, 6.1f * br, wfb, b1x, b1y); R_.pw(7.0f, 5.0f, wfb, b2x, b2y);
       ligne(g, b0x, b0y, b1x, b1y, BC); ligne(g, b1x, b1y, b2x, b2y, BC);
@@ -875,6 +963,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       for (int e = 0; e < 2; e++) {
         float es = e ? -1.0f : 1.0f, vis = 0.85f * dv * es + 0.5f * sn; if (vis < -0.05f) continue;
         float kk = lim((vis + 0.05f) / 0.45f, 0.0f, 1.0f), rr = (0.55f + 0.45f * kk) * ek, ex, ey; PHw(1.6f, -1.0f, es * 3.2f, ex, ey);
+        if (OP.hor) { float lu = lueurOeil * (1.0f + 0.05f * sinf(c.resp * 5.3f)); disque(g, ex, ey, (3.9f * s + 1.6f) * rr * lu, C(34, 3, 7)); disque(g, ex, ey, (2.7f * s + 1.0f) * rr * lu, C(78, 6, 11)); }      // horreur : l'œil est presque la seule lumière, il éclaire la tête autour de lui
         disque(g, ex, ey, (1.7f * s + 0.6f) * rr, cA); disque(g, ex, ey, (1.1f * s + 0.2f) * rr, cC);
       }
     } else { float ex, ey; PHw(1.6f, -1.0f, pro * 3.2f, ex, ey); ligne(g, ex - 1.5f, ey, ex + 1.5f, ey, C(70, 8, 12)); }
@@ -1316,7 +1405,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       c.pitchC = c.pr + 0.015f * sinf(c.resp * 0.9f);               // léger balancement
       acteur(c, dt);
       if (c.objet && c.t > 9.0f) { c.objet = 0; eclat(c.x + c.dv * 18 * c.s, c.y - 2, 0.3f, 0.7f); }
-      if (c.perch < 10 && c.t >= c.tfin && gAction <= 0 && c.act <= A_REGARDE) {
+      if (c.perch < 10 && c.t * FA >= c.tfin && gAction <= 0 && c.act <= A_REGARDE) {
         int r = random(100);
         if (r < 40) { versPerchoir(c); gAction = rnd(1.5f, 3.0f); }
         else if (r < 62 && nbDehors() < 2) { sortir(c); gAction = rnd(1.5f, 3.0f); }
@@ -1839,7 +1928,7 @@ static void pondre() {      // un corbeau perché se secoue : il va pondre
 }
 static void majOeuf(float dt) {
   gOeuf -= dt;
-  if (gOeuf <= 0) { gOeuf = rnd(70.0f, 130.0f); if (V.ph == V_RIEN && !OE.actif && OE.ponte < 0 && !panneau) pondre(); }
+  if (gOeuf <= 0) { gOeuf = rnd(70.0f, 130.0f) * multFreq(OP.oe); if (OP.oe > 0 && V.ph == V_RIEN && !OE.actif && OE.ponte < 0 && !panneau) pondre(); }
   if (OE.ponte >= 0) {
     OE.tp -= dt;
     if (OE.tp <= 0) {
@@ -1900,10 +1989,14 @@ static void majSocial(float dt) {
       AP.n--; AP.t = rnd(0.7f, 1.2f);
     }
   }
-  gSocial -= dt;
+  gSocial -= dt * FA;      // activité : calme = rares événements surtout paisibles ; agité = alertes, poursuites et vols en groupe fréquents
   if (gSocial <= 0) {
     gSocial = rnd(12.0f, 26.0f);
-    if (V.ph == V_RIEN && !appelOn && !panneau) { int r = random(100); if (r < 24) appelMutuel(); else if (r < 44) alerte(); else if (r < 62) chamaille(); else if (r < 80) volGroupe(); }
+    if (V.ph == V_RIEN && !appelOn && !panneau) {
+      static const uint8_t PA[5] = {44, 32, 24, 20, 16}, PL[5] = {24, 22, 20, 20, 18}, PC_[5] = {6, 12, 18, 24, 28}, PV[5] = {4, 10, 18, 26, 32};
+      int a = (OP.act < 1 ? 1 : (OP.act > 5 ? 5 : OP.act)) - 1, r = random(100), s1 = PA[a], s2 = s1 + PL[a], s3 = s2 + PC_[a], s4 = s3 + PV[a];
+      if (r < s1) appelMutuel(); else if (r < s2) alerte(); else if (r < s3) chamaille(); else if (r < s4) volGroupe();
+    }
   }
 }
 
@@ -1923,7 +2016,7 @@ static void lancerVisite() {
 static void majGP(float dt) {
   gVisGP -= dt;
   if (!GP.ph) {
-    if (gVisGP <= 0) { float rep = (millis() - tToucher) / 1000.0f; bool ok = rep > 20.0f || random(100) < 20; gVisGP = (rep > 20.0f) ? rnd(40.0f, 90.0f) : rnd(110.0f, 190.0f); if (ok) lancerVisite(); }
+    if (gVisGP <= 0) { float rep = (millis() - tToucher) / 1000.0f; bool ok = rep > 20.0f || random(100) < 20; gVisGP = ((rep > 20.0f) ? rnd(40.0f, 90.0f) : rnd(110.0f, 190.0f)) * multFreq(OP.gp); if (ok && OP.gp > 0) lancerVisite(); }      // réglage « Visites au gros plan »
     return;
   }
   GP.t += dt; vcb.phase += 3.2f * dt; if (vcb.phase >= 1) vcb.phase -= 1;
@@ -2113,7 +2206,13 @@ static void contacts(float dt) {
 }
 static void majGlobal(float dt) {
   contacts(dt);
-  gAction -= dt; gPoof -= dt; gObjet -= dt; gAttrib -= dt; gCalme -= dt;
+  gAction -= dt * FA; gPoof -= dt * FA; gObjet -= dt * FA; gAttrib -= dt; gCalme -= dt;
+  if (OP.hor) {      // horreur : lueur des yeux instable (très discret), de rares battements de lumière et éclairs rouges lointains
+    float n = sinf(tAnim * 9.0f) * sinf(tAnim * 2.3f + 1.0f) + 0.5f * sinf(tAnim * 23.0f); lueurOeil = 1.0f + 0.07f * n;
+    if (battT > 0.0f) { battT -= dt; float u = 1.0f - lim(battT / 0.95f, 0.0f, 1.0f); lueurOeil += 0.9f * (powf(sinf(3.1416f * lim(u * 2.0f, 0.0f, 1.0f)), 2.0f) + 0.7f * powf(sinf(3.1416f * lim(u * 2.0f - 1.0f, 0.0f, 1.0f)), 2.0f)); }
+    else { gBatt -= dt; if (gBatt <= 0.0f) { gBatt = rnd(45.0f, 110.0f); battT = 0.95f; } }
+    if (eclT > 0.0f) eclT -= dt; else { gEcl -= dt; if (gEcl <= 0.0f && !panneau) { gEcl = rnd(40.0f, 120.0f); eclT = 0.42f; eclX = rnd(110.0f, 250.0f); eclGraine = (uint32_t)random(1000000) + 1; } }
+  } else { lueurOeil = 1.0f; eclT = 0.0f; }
   gFeuille -= dt; if (gFeuille <= 0) { gFeuille = rnd(2.0f, 4.5f); feuille(); }
   majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt);
   if (H.actif) H.ext += (1.0f - H.ext) * mnf(1.0f, dt * 5.0f); else if (H.ext > 0) { H.ext -= dt * 4.0f; if (H.ext < 0) H.ext = 0; }
@@ -2179,6 +2278,18 @@ static void majGlobal(float dt) {
 }
 
 // ---------- dessin de la scène ----------
+static void dessinerEclair(M5Canvas& g) {      // éclair rouge lointain, très bref (deux éclats)
+  const float u = eclT; bool vif = (u > 0.26f && u < 0.34f) || (u > 0.08f && u < 0.15f); bool pale = (u > 0.34f) || (u > 0.15f && u <= 0.26f);
+  if (!vif && !pale) return;
+  uint32_t sd = eclGraine; float x = eclX, y = -4.0f;
+  for (int i = 0; i < 7; i++) {
+    sd = sd * 1103515245UL + 12345UL; float nx = x + ((int)((sd >> 9) % 15) - 7) * 1.3f, ny = y + 11.0f + (float)((sd >> 14) % 6);
+    ligne(g, x - 1, y, nx - 1, ny, vif ? C(120, 14, 20) : C(60, 7, 12)); ligne(g, x + 1, y, nx + 1, ny, vif ? C(120, 14, 20) : C(60, 7, 12));
+    ligne(g, x, y, nx, ny, vif ? C(255, 150, 130) : C(170, 40, 40));
+    if (i == 3 && vif) { float bx = nx + 14.0f, by = ny + 12.0f; ligne(g, nx, ny, bx, by, C(210, 60, 50)); }
+    x = nx; y = ny;
+  }
+}
 static void dessinerEntites(M5Canvas& g, bool sech) {
   sec = sech;
   // objets
@@ -2230,6 +2341,7 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
     }
   }
   nouv[NCB + NOB + 2] = bbRect();
+  bbReset(); if (OP.hor && eclT > 0.0f) dessinerEclair(g); nouv[NCB + NOB + 8] = bbRect();
   sec = false;
 }
 
@@ -2276,40 +2388,71 @@ static void tuile(M5Canvas& g, int x, int y, int w, int h, const char* lab, cons
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_center); g.drawString(lab, x + w / 2, y + 2);
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); g.setTextDatum(middle_center); g.drawString(val, x + w / 2, y + h - 10); g.setTextDatum(top_left);
 }
+static uint8_t panPage = 0;      // 0 : réglages généraux ; 1 : fréquence des événements
+static void segBarre(M5Canvas& g, int x, int y, int w, int h, int n, int sel, const char* const* lab) {      // barre tactile à n segments : le segment choisi est allumé
+  g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center);
+  for (int i = 0; i < n; i++) {
+    int x0 = x + (w * i) / n, x1 = x + (w * (i + 1)) / n; bool on = (i == sel);
+    g.fillRoundRect(x0 + 1, y, x1 - x0 - 2, h, 6, on ? C(170, 34, 40) : C(44, 9, 18)); g.drawRoundRect(x0 + 1, y, x1 - x0 - 2, h, 6, on ? C(255, 150, 120) : C(120, 30, 40));
+    g.setTextColor(on ? C(255, 250, 240) : C(205, 145, 145)); g.drawString(lab[i], (x0 + x1) / 2, y + h / 2);
+  }
+  g.setTextDatum(top_left);
+}
 static void dessinerPanneau() {
   M5Canvas& g = cv;
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString("Réglages des corbeaux", 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage ? "Fréquence des événements" : "Réglages des corbeaux", 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
-  // volume : - barre + et TEST SON
-  g.fillRoundRect(4, 30, 312, 32, 8, C(44, 9, 18)); g.drawRoundRect(4, 30, 312, 32, 8, C(160, 40, 48));
-  g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225)); g.drawString("Vol.", 10, 46);
-  g.fillRoundRect(44, 33, 44, 26, 6, C(90, 18, 26)); g.drawRoundRect(44, 33, 44, 26, 6, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("-", 66, 46);
-  g.fillRoundRect(92, 41, 92, 10, 4, C(60, 12, 20)); g.fillRoundRect(92, 41, 1 + (int)(91.0f * R.volume / 255.0f), 10, 4, C(80, 230, 130));
-  g.fillRoundRect(190, 33, 44, 26, 6, C(90, 18, 26)); g.drawRoundRect(190, 33, 44, 26, 6, C(255, 120, 90)); g.drawString("+", 212, 46);
-  g.fillRoundRect(240, 33, 72, 26, 6, C(20, 90, 50)); g.drawRoundRect(240, 33, 72, 26, 6, C(120, 255, 160)); g.drawString("TEST SON", 276, 46);
-  const char* VIS[3] = {"Jamais", "Rare", "Souvent"}; const char* SEC[3] = {"Faible", "Normale", "Forte"}; const char* AMB[3] = {"Lune + étoiles", "Brume rouge", "Nuit sombre"};
-  char nb[8]; snprintf(nb, sizeof(nb), "%d", OP.nb);
-  tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
-  tuile(g, 4, 100, 153, 32, "Visiteur mystérieux", VIS[OP.vis]); tuile(g, 163, 100, 153, 32, "Secousse", SEC[OP.sec]);
-  tuile(g, 4, 135, 153, 32, "Vibration", OP.vib ? "Oui" : "Non"); tuile(g, 163, 135, 153, 32, "Ambiance", AMB[OP.amb]);
-  tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps ? "Oui" : "Non"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
-  g.fillRoundRect(4, 206, 312, 30, 8, C(110, 24, 30)); g.drawRoundRect(4, 206, 312, 30, 8, C(255, 120, 90));
-  g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225)); g.drawString("FERMER", 160, 221); g.setTextDatum(top_left);
+  if (panPage == 0) {
+    // volume : - barre + et TEST SON
+    g.fillRoundRect(4, 30, 312, 32, 8, C(44, 9, 18)); g.drawRoundRect(4, 30, 312, 32, 8, C(160, 40, 48));
+    g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225)); g.drawString("Vol.", 10, 46);
+    g.fillRoundRect(44, 33, 44, 26, 6, C(90, 18, 26)); g.drawRoundRect(44, 33, 44, 26, 6, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("-", 66, 46);
+    g.fillRoundRect(92, 41, 92, 10, 4, C(60, 12, 20)); g.fillRoundRect(92, 41, 1 + (int)(91.0f * R.volume / 255.0f), 10, 4, C(80, 230, 130));
+    g.fillRoundRect(190, 33, 44, 26, 6, C(90, 18, 26)); g.drawRoundRect(190, 33, 44, 26, 6, C(255, 120, 90)); g.drawString("+", 212, 46);
+    g.fillRoundRect(240, 33, 72, 26, 6, C(20, 90, 50)); g.drawRoundRect(240, 33, 72, 26, 6, C(120, 255, 160)); g.drawString("TEST SON", 276, 46);
+    const char* SEC[3] = {"Faible", "Normale", "Forte"}; const char* AMB[3] = {"Lune + étoiles", "Brume rouge", "Nuit sombre"};
+    char nb[8]; snprintf(nb, sizeof(nb), "%d", OP.nb);
+    tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
+    tuile(g, 4, 100, 153, 32, "Secousse", SEC[OP.sec]); tuile(g, 163, 100, 153, 32, "Vibration", OP.vib ? "Oui" : "Non");
+    tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Horreur", OP.hor ? "Oui" : "Non");
+    tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps ? "Oui" : "Non"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
+  } else {
+    static const char* const L5[5] = {"1", "2", "3", "4", "5"}; static const char* const L4[4] = {"Jamais", "Rare", "Normale", "Souvent"}; static const char* const L3[3] = {"Jamais", "Rare", "Souvent"};
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Activité des corbeaux  (1 calme, 5 agité)", 6, 31); segBarre(g, 4, 45, 312, 24, 5, OP.act - 1, L5);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Visites d'un corbeau au gros plan", 6, 73); segBarre(g, 4, 87, 312, 24, 4, OP.gp, L4);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Visiteur mystérieux", 6, 115); segBarre(g, 4, 129, 312, 24, 3, OP.vis, L3);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Oeufs pondus", 6, 157); segBarre(g, 4, 171, 312, 24, 4, OP.oe, L4);
+  }
+  g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
+  g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
+  g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
+  g.drawString(panPage ? "< Réglages" : "Fréquence >", 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
   if (appelOn) appelFin(); if (H.actif) retirerMain(); VS.on = false; FR.on = false; D.bas = false; tpCible = 0;
-  panneau = true; panSale = true;
+  panneau = true; panSale = true; panPage = 0;
 }
 static void fermerPanneau() {
   panneau = false; plein = true; tDernier = millis();
   if (ambChange) { ambChange = false; construireFond(); if (fondLOk) construireFondLarge(); }
 }
 static void touchPanneau(int x, int y) {
-  if ((y < 28 && x >= 236) || y >= 206) { fermerPanneau(); return; }
+  if (y < 28 && x >= 236) { fermerPanneau(); return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage ^= 1; panSale = true; } return; }
+  if (panPage == 1) {      // fréquence : barres tactiles
+    if (y >= 42 && y < 72) { int i = constrain((x - 4) * 5 / 312, 0, 4); OP.act = (uint8_t)(i + 1); prefs.putUChar("cbact", OP.act); appliquerAct(); }
+    else if (y >= 84 && y < 114) { int i = constrain((x - 4) * 4 / 312, 0, 3); OP.gp = (uint8_t)i; prefs.putUChar("cbgp", OP.gp); gVisGP = rnd(30.0f, 60.0f) * multFreq(OP.gp); }
+    else if (y >= 126 && y < 156) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.vis = (uint8_t)i; prefs.putUChar("cbvis", OP.vis); gVisite = delaiVisite(true); }
+    else if (y >= 168 && y < 198) { int i = constrain((x - 4) * 4 / 312, 0, 3); OP.oe = (uint8_t)i; prefs.putUChar("cboefq", OP.oe); gOeuf = rnd(40.0f, 70.0f) * multFreq(OP.oe); }
+    else return;
+    if (OP.vib) vibrer(40);
+    panSale = true; return;
+  }
   if (y >= 30 && y < 62) {
     if (x >= 40 && x < 90) { R.volume = constrain((int)R.volume - 24, 0, 255); M5.Speaker.setVolume(R.volume); sauverReglages(); panSale = true; sonCri(); }
     else if (x >= 238) { testerSon(); }
@@ -2323,10 +2466,10 @@ static void touchPanneau(int x, int y) {
   switch (i) {
     case 0: if (deuxJeux()) { sonsReels = !sonsReels; prefs.putUChar("cbsons", sonsReels ? 1 : 0); } sonCri(); break;
     case 1: OP.nb = (uint8_t)(OP.nb >= 6 ? 3 : OP.nb + 1); prefs.putUChar("cbnb", OP.nb); appliquerNb(); break;
-    case 2: OP.vis = (uint8_t)((OP.vis + 1) % 3); prefs.putUChar("cbvis", OP.vis); gVisite = delaiVisite(true); break;
-    case 3: OP.sec = (uint8_t)((OP.sec + 1) % 3); prefs.putUChar("cbsec", OP.sec); appliquerSec(); if (OP.vib) vibrer(70); break;
-    case 4: OP.vib = OP.vib ? 0 : 1; prefs.putUChar("cbvib", OP.vib); if (OP.vib) vibrer(90); break;
-    case 5: OP.amb = (uint8_t)((OP.amb + 1) % 3); prefs.putUChar("cbamb", OP.amb); appliquerAmb(); ambChange = true; break;
+    case 2: OP.sec = (uint8_t)((OP.sec + 1) % 3); prefs.putUChar("cbsec", OP.sec); appliquerSec(); if (OP.vib) vibrer(70); break;
+    case 3: OP.vib = OP.vib ? 0 : 1; prefs.putUChar("cbvib", OP.vib); if (OP.vib) vibrer(90); break;
+    case 4: OP.amb = (uint8_t)((OP.amb + 1) % 3); prefs.putUChar("cbamb", OP.amb); appliquerAmb(); ambChange = true; break;
+    case 5: OP.hor = OP.hor ? 0 : 1; prefs.putUChar("cbhor", OP.hor); appliquerAmb(); ambChange = true; break;
     case 6: OP.fps = OP.fps ? 0 : 1; prefs.putUChar("cbfps", OP.fps); debug = (OP.fps != 0); break;
     default: fermerPanneau(); lancerVisite(); return;
   }
@@ -2360,9 +2503,17 @@ static void cielLarge(M5Canvas& g) {      // ciel, lune, étoiles, collines et s
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sy = 2 + (int)((seed >> 8) % 140);
     if (hypotf(sx - mxs, sy - mys) < (LUNE_R + 24) * zs) continue;
     int v = (int)((seed >> 4) % 100);
-    g.drawPixel(sx, sy, v < 70 ? C(150, 62, 74) : C(205, 112, 120));
+    float sk = OP.hor ? 0.50f : 1.0f; g.drawPixel(sx, sy, v < 70 ? CF(150 * sk, 62 * sk, 74 * sk) : CF(205 * sk, 112 * sk, 120 * sk));      // horreur : étoiles rares et ternes
   }
   brume(g, 110, 100, 100, 3, 0.35f); brume(g, 210, 128, 110, 3, 0.35f); brume(g, 90, 150, 100, 3, 0.35f);
+  if (OP.hor) {      // horreur : nuages noirs en lambeaux devant la lune, longues brumes noires basses
+    for (int i = 0; i < 4; i++) {
+      float oy = -9.0f + i * 7.0f + 1.5f * sinf(i * 2.1f), ox = 16.0f * sinf(i * 2.3f + 0.6f), rx = (30.0f + 9.0f * ((i * 5) % 3)) * zs, ry = (2.2f + 0.7f * (i % 3)) * zs;
+      g.fillEllipse((int)(mxs + ox * zs), (int)(mys + oy * zs), (int)rx, (int)(ry + 0.5f), CF(15 + 4 * (i % 2), 1, 3));
+      g.fillEllipse((int)(mxs + (ox + 14.0f) * zs), (int)(mys + (oy + 1.5f) * zs), (int)(rx * 0.5f), (int)(ry * 0.8f + 0.5f), CF(11, 0, 2));
+    }
+    brume(g, 70, 200, 150, 8, 0.85f); brume(g, 250, 204, 150, 7, 0.85f); brume(g, 160, 198, 120, 6, 0.80f);
+  }
   float gy = solHaut(160.0f) * zs + zty;
   seed = 777;      // grain léger dans le ciel : plus de côté « papier lisse »
   for (int i = 0; i < 2600; i++) {
@@ -2379,8 +2530,8 @@ static void cielLarge(M5Canvas& g) {      // ciel, lune, étoiles, collines et s
     }
   }
   for (int x = 0; x < 320; x++) {
-    float yl1 = gy - 24.0f + 6.0f * sinf(x / 40.0f + 1.0f) + 4.0f * sinf(x / 17.0f); g.drawFastVLine(x, (int)yl1, 240 - (int)yl1, C(66, 9, 15));
-    float yl2 = gy - 12.0f + 5.0f * sinf(x / 55.0f + 2.0f) + 3.0f * sinf(x / 23.0f); g.drawFastVLine(x, (int)yl2, 240 - (int)yl2, C(46, 6, 11));
+    float yl1 = gy - 24.0f + 6.0f * sinf(x / 40.0f + 1.0f) + 4.0f * sinf(x / 17.0f); g.drawFastVLine(x, (int)yl1, 240 - (int)yl1, CF(66 * ambCol, 9 * ambCol, 15 * ambCol));
+    float yl2 = gy - 12.0f + 5.0f * sinf(x / 55.0f + 2.0f) + 3.0f * sinf(x / 23.0f); g.drawFastVLine(x, (int)yl2, 240 - (int)yl2, CF(46 * ambCol, 6 * ambCol, 11 * ambCol));
     float ys = solHaut((x - ztx) / zs) * zs + zty; g.drawFastVLine(x, (int)ys, 240 - (int)ys, C(5, 2, 4));
   }
 }
@@ -2389,6 +2540,7 @@ static void construireFondLarge() {
   zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs);
   cielLarge(fondL);
   arbre(fondL);                                                       // l'arbre en entier (les arbres lointains, tous différents, sont dans cielLarge)
+  vignette(fondL);
   syncUI();
 }
 static bool creerLarge() {
@@ -2439,8 +2591,8 @@ static void ouvrir() {
   zoomC = prefs.getUChar("cbvue", 0) ? 1.0f : 0.0f; zoomU = zoomC; pinceOn = false;
   if (zoomC > 0.5f) { if (creerLarge()) { zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs); fondAct = &fondL; } else { zoomC = zoomU = 0.0f; } }
   if (zoomC < 0.5f) { zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); }
-  memset(&GP, 0, sizeof(GP)); gVisGP = rnd(50.0f, 90.0f); tToucher = millis();
-  memset(&OE, 0, sizeof(OE)); OE.ponte = -1; gOeuf = rnd(40.0f, 70.0f); agePous = 0; panneau = false; panSale = true; ambChange = false; oeufsSale = false; appliquerNb();
+  memset(&GP, 0, sizeof(GP)); gVisGP = rnd(50.0f, 90.0f) * multFreq(OP.gp); tToucher = millis(); gEcl = rnd(30.0f, 70.0f); gBatt = rnd(35.0f, 80.0f); eclT = 0.0f; battT = 0.0f;
+  memset(&OE, 0, sizeof(OE)); OE.ponte = -1; gOeuf = rnd(40.0f, 70.0f) * multFreq(OP.oe); agePous = 0; panneau = false; panSale = true; ambChange = false; oeufsSale = false; appliquerNb();
   gAction = 3.0f; gPoof = rnd(14, 24); gObjet = rnd(24, 40); gAttrib = 0; choix = 0; presse = -1; tDernier = millis(); tSec = millis(); nImg = 0; fps = 0; msDessin = 0; volVu = false;
   if (prefs.getUChar("cbvol1", 0) == 0) { if (R.volume < 200) { R.volume = 200; sauverReglages(); } prefs.putUChar("cbvol1", 1); }      // volume de départ plus fort, une seule fois
   if (!lectureEnCours && !M5.Speaker.isRunning()) { M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume); }

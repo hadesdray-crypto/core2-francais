@@ -1,5 +1,5 @@
 {
-    "version": "2.8.0",
+    "version": "2.9.0",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -36,6 +36,9 @@
         "Retournement avec du volume : quand un corbeau change de côté, il tourne pour de vrai (le corps s'élargit, les deux ailes s'échangent, la queue s'ouvre, la tête passe de profil à face, les deux yeux apparaissent à mi-tour) au lieu de s'aplatir.",
         "Vol plus sombre : battements en trois temps (le poignet mène, les plumes de bout d'aile suivent un peu après, remontée plus lente ailes à demi repliées), léger roulis du corps avec la tête presque à l'horizontale, queue en éventail dans les virages, lignes de vitesse.",
         "Dex complet : 26 yeux avec leur vrai nom, rangés par familles dans une liste qui défile au doigt (Sharingan, Mangekyō, Mangekyō éternel, Rinnegan, Rinne Sharingan, Byakugan, autres yeux). Chaque fiche a quatre sections à toucher (Histoire, Porteurs, Pouvoirs, Le saviez-vous ?) et le texte défile au glisser, sans rien couper. Les dessins non vérifiés sont marqués d'un petit « ~ ». Le contenu inventé a disparu ; il reste l'écran « Créer ton œil » et le bouton qui change les yeux des corbeaux.",
+        "Retournement plus épais : quand un corbeau change de côté, il n'est plus jamais une lamelle fine. De face on voit son poitrail large, ses épaules rondes, son cou épais et ses deux yeux ; les ailes se raccourcissent mais restent épaisses à la base.",
+        "Ambiance Horreur (active par défaut, réglable dans les réglages) : ciel presque noir à la lueur rouge très faible, lune sanguine voilée de nuages noirs, brume noire basse, bords de l'écran noirs, étoiles rares et ternes. Les yeux rouges sont presque la seule lumière : ils éclairent la tête et vacillent très légèrement. De temps en temps, un éclair rouge lointain ou un battement de lumière.",
+        "Fréquence réglable : dans les réglages, une deuxième page « Fréquence » avec de grandes barres tactiles : Activité des corbeaux de 1 (calme) à 5 (agité) pour les vols en groupe, les alertes et les poursuites ; Visites d'un corbeau au gros plan (jamais, rare, normale, souvent) ; Visiteur mystérieux ; Oeufs pondus. Tous les choix sont gardés en mémoire.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
