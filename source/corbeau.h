@@ -50,7 +50,7 @@ static const float SOL_Y = 201.0f;
 static const float PERCH[NPE][2] = {{100, 141}, {140, 135.8f}, {180, 130.3f}, {222, 125.6f}, {88, 62.5f}, {24, 94.5f}};
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
-enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE };
+enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE };
 enum { T_GRAINE = 0, T_VIANDE, T_NOIX, T_PAIN, T_BAIES, T_BRILLANT, T_BAGUE, T_KUNAI, T_SHURIKEN, T_PARCHEMIN, T_OEUF, T_NB };
 
 // ---------- petits outils ----------
@@ -109,6 +109,8 @@ static void chargerOptions() {
 struct Oeuf { bool actif; float x, y, t, tc, tp; uint8_t etat; int8_t ponte; };      // etat : 0 posé, 1 qui craque
 static Oeuf OE;
 static float gOeuf = 50.0f, agePous = 0.0f;
+static float gSocial = 14.0f, tAlerte = 0.0f; static int dirAlerte = 1; static bool alerteFuite = false;
+struct Ap2 { int8_t a, b, n; float t; }; static Ap2 AP;      // s'appeler entre eux
 
 static int memTas = 0, memPsram = 0;
 static uint32_t secVu = 0;
@@ -444,7 +446,7 @@ static float coup(float p) {      // 0 = ailes en haut, 1 = en bas : anticipatio
 static inline void ressort(float& x, float& v, float cible, float w, float dt) {      // ressort amorti : démarre et s'arrête en douceur
   v += ((cible - x) * w * w - 2.0f * w * v) * dt; x += v * dt;
 }
-enum { A_REPOS = 0, A_IMMO, A_REGARDE, A_LISSE_DOS, A_LISSE_POIT, A_GRATTE, A_SECOUE };
+enum { A_REPOS = 0, A_IMMO, A_REGARDE, A_LISSE_DOS, A_LISSE_POIT, A_GRATTE, A_SECOUE, A_ETIRE, A_DORT, A_APPEL };
 static float gCalme = 0.0f;       // un seul corbeau à la fois fait sa toilette ou se gratte
 
 struct Corbeau {
@@ -459,6 +461,7 @@ struct Corbeau {
   float fx, fy, fp, ox, oy;                           // point d'appui des pattes (x, y, pente) ; décalage d'atterrissage
   float ang, ray, om; bool gerbe;                     // orbite autour du visiteur
   bool rare; float duvet;                             // petit corbeau : œil doré, duvet
+  float ocx, ocy, tOrb, pCal, pBav, pJou, pCra, hum; bool ocg;      // orbite locale ; personnalité et humeur
   int8_t pj;                                          // objet lancé poursuivi
   float tq, plume, wd, ha0;                           // posture perchée : chute de la queue, longueur de la plume dominante, aile qui pend, angle de repos de la tête
   uint8_t objet;
@@ -858,7 +861,7 @@ static void posture(Corbeau& c) {      // posture perchée : tronc redressé (45
 }
 static void initCorbeau(Corbeau& c, float s) {
   memset(&c, 0, sizeof(c)); c.s = s; c.d = 1; c.dv = 1; c.visible = true; c.perch = -1; c.item = -1;
-  c.pj = -1; posture(c); c.pitch = c.pitchC = c.pr; c.ha = c.haC = c.ha0; c.hb = c.hbC = c.ha0 + 0.49f;
+  c.pj = -1; c.pCal = rnd01(); c.pBav = rnd01(); c.pJou = rnd01(); c.pCra = rnd01(); posture(c); c.pitch = c.pitchC = c.pr; c.ha = c.haC = c.ha0; c.hb = c.hbC = c.ha0 + 0.49f;
   c.pose = c.poseC = A_PLANE; c.tClin = rnd(1.0f, 4.0f); c.resp = rnd(0, 6.28f); c.act = A_IMMO; c.dAct = rnd(1.0f, 5.0f);
 }
 static void placer(Corbeau& c, int i) {      // posé sur la branche : les pattes sur le dessus, le corps déduit
@@ -935,18 +938,36 @@ static void atterrir(Corbeau& c) {
 }
 
 // ----- moments de calme d'un corbeau perché : immobile, regarde autour, lisse ses plumes, se gratte, se secoue -----
+// ----- moments de la vie d'un corbeau perché : immobile, regarde, lisse, gratte, se secoue, s'étire, appelle, dort, descend picorer ou se poudrer -----
+static void descendre(Corbeau& c, uint8_t but) {      // il descend au sol pour picorer ou se poudrer
+  float gx = rnd(100.0f, 300.0f); c.perch = -1; decoller(c, gx, solHaut(gx), but);
+}
 static void prochainActe(Corbeau& c) {
-  uint8_t prec = c.act; c.tAct = 0; int r = random(100); bool lib = gCalme <= 0;
+  uint8_t prec = c.act; c.tAct = 0; bool lib = gCalme <= 0;
   if ((prec == A_LISSE_DOS || prec == A_LISSE_POIT) && random(100) < 45) { c.act = A_SECOUE; c.dAct = 0.9f; return; }
-  if (r < 30) { c.act = A_IMMO; c.dAct = rnd(3, 8); }
-  else if (r < 55) { c.act = A_REGARDE; c.dAct = rnd(3, 6); c.sub = -1; }
-  else if (r < 73 && lib) { c.act = random(2) ? A_LISSE_DOS : A_LISSE_POIT; c.dAct = rnd(3.0f, 4.5f); gCalme = c.dAct + rnd(2, 5); }
-  else if (r < 84 && lib) { c.act = A_GRATTE; c.dAct = rnd(1.9f, 2.6f); gCalme = c.dAct + rnd(2, 5); }
-  else if (r < 90 && lib) { c.act = A_SECOUE; c.dAct = 0.9f; gCalme = c.dAct + rnd(1, 3); }
-  else { c.act = A_IMMO; c.dAct = rnd(2, 5); }
+  bool sol = (c.perch >= 0 && c.perch < 4 && V.ph == V_RIEN && !appelOn && nbDehors() < 2 && c.duvet < 0.5f);
+  float w[11];      // poids de chaque activité, selon la personnalité (calme, bavard, joueur, craintif) et l'humeur
+  w[0] = 0; w[1] = 18 + 30 * c.pCal; w[2] = 14 + 14 * c.pJou + 10 * c.pCra + 20 * c.hum; w[3] = lib ? 14 + 18 * c.pCal : 0; w[4] = lib ? 8 : 0; w[5] = lib ? 5 : 0;
+  w[6] = lib ? 6 + 6 * c.pJou : 0; w[7] = (OP.amb == 2) ? 30 + 30 * c.pCal : 0; w[8] = 4 + 14 * c.pBav + 10 * c.hum; w[9] = sol ? 6 + 14 * c.pJou : 0; w[10] = sol ? 3 + 6 * c.pJou : 0;
+  float tot = 0; for (int i = 1; i <= 10; i++) tot += w[i];
+  float r = rnd01() * tot; int k = 1; for (; k < 10; k++) { if (r < w[k]) break; r -= w[k]; }
+  switch (k) {
+    case 1: c.act = A_IMMO; c.dAct = rnd(3, 8); break;
+    case 2: c.act = A_REGARDE; c.dAct = rnd(3, 6); c.sub = -1; break;
+    case 3: c.act = random(2) ? A_LISSE_DOS : A_LISSE_POIT; c.dAct = rnd(3.0f, 4.5f); gCalme = c.dAct + rnd(2, 5); break;
+    case 4: c.act = A_GRATTE; c.dAct = rnd(1.9f, 2.6f); gCalme = c.dAct + rnd(2, 5); break;
+    case 5: c.act = A_SECOUE; c.dAct = 0.9f; gCalme = c.dAct + rnd(1, 3); break;
+    case 6: c.act = A_ETIRE; c.dAct = 1.8f; gCalme = c.dAct + rnd(1, 3); break;
+    case 7: c.act = A_DORT; c.dAct = rnd(8, 16); break;
+    case 8: c.act = A_APPEL; c.dAct = 1.4f; break;
+    case 9: c.act = A_REPOS; c.dAct = 1.0f; descendre(c, B_FOURRAGE); break;
+    default: c.act = A_REPOS; c.dAct = 1.0f; descendre(c, B_BAIN); break;
+  }
 }
 static void acteur(Corbeau& c, float dt) {
-  c.tAct += dt; if (c.tAct >= c.dAct) prochainActe(c);
+  c.tAct += dt;
+  if (tAlerte > 0 && c.act != A_DORT) { c.haC = c.ha0 - 0.5f; c.hbC = c.haC + 0.49f; c.pitchC = c.pr + 0.1f; c.d = (int8_t)dirAlerte; c.clin = 0; return; }      // alerte : tous regardent dans la même direction
+  if (c.tAct >= c.dAct) prochainActe(c);
   float a = c.tAct, dA = c.dAct;
   float e = pas(a / 0.6f) * (1.0f - pas((a - (dA - 0.6f)) / 0.6f));
   switch (c.act) {
@@ -961,6 +982,12 @@ static void acteur(Corbeau& c, float dt) {
     case A_LISSE_POIT: c.haC = lerpf(c.ha0, 1.95f, e); c.hbC = lerpf(c.ha0 + 0.49f, 2.2f, e) + 0.25f * e * sinf(a * 15.0f); c.pitchC = c.pr - 0.10f * e; break;
     case A_GRATTE: { float g = pas(a / 0.35f) * (1.0f - pas((a - (dA - 0.35f)) / 0.35f)); c.gratC = g; c.haC = lerpf(c.ha0, -0.15f, g); c.hbC = lerpf(c.ha0 + 0.49f, 0.4f, g); c.pitchC = c.pr - 0.07f * g; } break;
     case A_SECOUE: c.ruf = sinf(3.1416f * a / dA); c.pitchC = c.pr + 0.06f * c.ruf * sinf(a * 38.0f); c.haC = c.ha0; c.hbC = c.ha0 + 0.49f; break;
+    case A_ETIRE: {      // il s'étire : ailes qui s'ouvrent, tête levée
+      float g = pas(a / 0.5f) * (1.0f - pas((a - (dA - 0.5f)) / 0.5f));
+      c.wlC = 0.85f * g; c.poseC = A_PLANE; c.pitchC = c.pr - 0.15f * g; c.haC = c.ha0 - 0.3f * g; c.hbC = c.haC + 0.49f;
+    } break;
+    case A_DORT: c.haC = -2.55f; c.hbC = 3.2f; c.clin = 1.0f; c.pitchC = c.pr + 0.1f; break;      // il dort, la tête sous l'aile
+    case A_APPEL: c.haC = c.ha0 - 0.5f; c.hbC = c.haC + 0.49f; c.bec = 0.5f + 0.5f * sinf(a * 14.0f); if (a - dt <= 0.0f) sonCri(); break;      // il appelle
     default: c.haC = c.ha0 + 0.07f * sinf(c.resp * 0.8f + c.s * 7.0f); c.hbC = c.haC + 0.49f; break;
   }
 }
@@ -986,6 +1013,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
   if (c.bec > 0) { c.bec -= dt * 3.0f; if (c.bec < 0) c.bec = 0; }
   if (c.flash > 0) { c.flash -= dt * 4.0f; if (c.flash < 0) c.flash = 0; }
   if (c.tLook > 0) c.tLook -= dt;
+  c.hum = mxf(0.0f, c.hum - dt * 0.05f);
   c.bob = 0; c.hop = 0; c.ruf = 0;
   c.haC = c.ha0; c.hbC = c.ha0 + 0.49f; c.gratC = 0; c.wlC = 0; c.fanC = 0; c.poseC = A_PLANE; c.pitchC = c.pr;
   if (c.surs > 0) { c.surs -= dt; if (c.surs < 0) c.surs = 0; if (c.etat == E_PERCHE || c.etat == E_SOL) c.bob = -3.2f * c.s * sinf(c.surs / 0.30f * 3.1416f); }
@@ -1015,13 +1043,15 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         if (c.gerbe) { c.gerbe = false; c.vx = rnd(-120, 120); c.vy = -rnd(110, 170); }      // envol en gerbe c.perch = (c.but == B_PERCHOIR || c.but == B_VISITEUR) ? c.perch : -1;
         float dist = hypotf(c.tx - c.x, c.ty - c.y);
         if (c.but == B_SORTIR) { c.wx = c.x + c.d * 70.0f; c.wy = mnf(c.y - 50.0f, 60.0f) - rnd(0, 20); c.aWp = true; }
-        else if (dist > 110 && c.but != B_ORBITE && c.but != B_ATTRAPE) { c.wx = (c.x + c.tx) * 0.5f + rnd(-20, 20); c.wy = mnf(c.y, c.ty) - rnd(14, 50); c.aWp = true; }
+        else if (dist > 110 && c.but != B_ORBITE && c.but != B_ATTRAPE && c.but != B_POURSUITE) { c.wx = (c.x + c.tx) * 0.5f + rnd(-20, 20); c.wy = mnf(c.y, c.ty) - rnd(14, 50); c.aWp = true; }
       }
     } break;
     case E_VOL: {
       c.wlC = 1; c.pied = false;
+      if (c.tOrb > 0) { c.tOrb -= dt; if (c.tOrb <= 0 && (c.but == B_ORBITE || c.but == B_POURSUITE)) { c.pj = -1; retourLibre(c); } }
       float gx, gy; bool orb = (c.but == B_ORBITE);
-      if (orb) { c.ang += c.om * dt; float lead = (c.om > 0 ? 0.35f : -0.35f); gx = orbCx + c.ray * cosf(c.ang + lead); gy = orbCy + c.ray * 0.5f * sinf(c.ang + lead); }
+      if (orb) { c.ang += c.om * dt; float lead = (c.om > 0 ? 0.35f : -0.35f); float ox = c.ocg ? orbCx : c.ocx, oy = c.ocg ? orbCy : c.ocy; gx = ox + c.ray * cosf(c.ang + lead); gy = oy + c.ray * 0.5f * sinf(c.ang + lead); }
+      else if (c.but == B_POURSUITE) { Corbeau& tc = cr[c.pj >= 0 ? c.pj : 0]; gx = tc.x; gy = tc.y; }
       else if (c.but == B_ATTRAPE) {
         if (c.pj >= 0 && proj[c.pj].actif) { gx = proj[c.pj].x + proj[c.pj].vx * 0.15f; gy = proj[c.pj].y + proj[c.pj].vy * 0.15f; }
         else { retourLibre(c); if (c.but == B_PERCHOIR) cible(c, c.tx, c.ty, (float)c.d, gx, gy); else { gx = c.tx; gy = c.ty; } }
@@ -1030,12 +1060,13 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       else { if (c.but == B_VISITEUR && c.perch >= 10) ptVis(c.perch - 10, c.tx, c.ty); cible(c, c.tx, c.ty, (float)c.d, gx, gy); }
       float dx = gx - c.x, dy = gy - c.y, dist = sqrtf(dx * dx + dy * dy); if (dist < 0.001f) dist = 0.001f;
       if (c.aWp && dist < 18) { c.aWp = false; break; }
-      bool fin = !c.aWp && !orb && c.but != B_ATTRAPE, proche = fin && dist < 38.0f && c.but != B_SORTIR;
+      bool fin = !c.aWp && !orb && c.but != B_ATTRAPE && c.but != B_POURSUITE, proche = fin && dist < 38.0f && c.but != B_SORTIR;
       float sp = fin ? lim(dist * 2.4f + 16.0f, 16.0f, c.vitesse) : c.vitesse;
       if (c.but == B_SORTIR) sp = c.vitesse * 1.05f;
       if (orb) sp = 125.0f;
       if (c.but == B_ATTRAPE) sp = 190.0f;
-      float k = mnf(1.0f, dt * (c.but == B_ATTRAPE ? 7.0f : 3.0f));
+      if (c.but == B_POURSUITE) sp = 150.0f;
+      float k = mnf(1.0f, dt * (c.but == B_ATTRAPE ? 7.0f : (c.but == B_POURSUITE ? 5.0f : 3.0f)));
       c.vx += (dx / dist * sp - c.vx) * k; c.vy += (dy / dist * sp - c.vy) * k;
       c.x += c.vx * dt; c.y += c.vy * dt;
       if (fabsf(c.vx) > 12 && !proche) c.d = (c.vx > 0) ? 1 : -1; else if (proche) c.d = (dx >= 0) ? 1 : -1;
@@ -1069,7 +1100,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         c.t = 0; c.wlC = 0; c.act = A_IMMO; c.tAct = 0; c.dAct = rnd(1.5f, 4.0f);
         if (c.but == B_PERCHOIR) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(5, 13); c.ox = c.oy = 0; posture(c); }
         else if (c.but == B_VISITEUR) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(5, 13); c.ox = c.oy = 0; c.d = (c.perch == 10) ? -1 : 1; }
-        else if (c.but == B_NOUR || c.but == B_OBJET) { c.etat = E_SOL; c.sub = 0; }
+        else if (c.but == B_NOUR || c.but == B_OBJET || c.but == B_FOURRAGE || c.but == B_BAIN) { c.etat = E_SOL; c.sub = 0; c.peck = 0; c.om = 0; }
         else { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = 4; }
       }
     } break;
@@ -1110,6 +1141,22 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
             c.objet = 0; son(SN_CROC, 170); c.sub = 2; c.peck = 0;
           }
         } else if (c.sub == 2) { c.peck += dt; if (c.peck > 0.9f) { c.but = B_RIEN; apresSol(c); } }
+      }
+      if (c.but == B_FOURRAGE) {      // il marche et sautille, puis picore, trois fois de suite
+        if (c.sub == 0) { c.tx = lim(c.x + rnd(-50, 50), 18, 302); c.sub = 1; c.d = (c.tx >= c.x) ? 1 : -1; }
+        else if (c.sub == 1) {
+          float dxm = c.tx - c.x;
+          if (fabsf(dxm) < 1.8f) { c.sub = 2; c.peck = 0; }
+          else { c.x += (dxm > 0 ? 1 : -1) * mnf(fabsf(dxm), 36.0f * dt); c.hop = -fabsf(sinf(c.t * 10.0f)) * 2.4f * c.s; c.bob = c.hop; c.pitchC = c.pr * 0.55f; c.haC = c.pitchC - 0.2f; c.hbC = c.haC + 0.5f; }
+        } else if (c.sub == 2) {
+          c.peck += dt; float dip = fabsf(sinf(c.peck / 0.42f * 3.1416f)); c.haC = lerpf(-0.3f, 0.55f, dip); c.hbC = lerpf(0.2f, 0.8f, dip); c.pitchC = c.pr * 0.45f - 0.30f * dip;
+          if (c.peck > 1.26f) { c.om += 1; if (c.om >= 3) { c.but = B_RIEN; c.om = 0; apresSol(c); } else c.sub = 0; }
+        }
+      } else if (c.but == B_BAIN) {      // bain de poussière : accroupi, les ailes qui battent, les plumes qui volent
+        c.peck += dt; float fl = sinf(c.peck * 24.0f);
+        c.pitchC = 0.05f; c.bob = 1.4f * c.s + 0.6f * fl; c.wlC = 0.55f + 0.2f * fl; c.poseC = mixA(A_PLANE, A_HAUT, 0.5f + 0.5f * fl); c.haC = -0.2f; c.hbC = 0.3f;
+        if (((int)(c.peck * 7.0f)) != ((int)((c.peck - dt) * 7.0f))) plumes(c.x, c.y + 5.0f * c.s, 1);
+        if (c.peck > 2.8f) { c.but = B_RIEN; c.wlC = 0; apresSol(c); }
       }
       if (c.but == B_RIEN && c.sub == 2 && c.etat == E_SOL && c.t > 0.5f) { c.t = 0; apresSol(c); }
     } break;
@@ -1192,7 +1239,7 @@ static void mettreEnOrbite(Corbeau& c) {      // le corbeau rejoint la nuée qui
     case E_POOF: return;      // il revient d'abord ; il sera recruté ensuite
     default: c.perch = -1; c.but = B_ORBITE; c.aWp = false; break;      // déjà en vol
   }
-  c.ang = atan2f((c.y - cy) / 0.5f, c.x - orbCx); c.om = (random(2) ? 1.0f : -1.0f) * rnd(1.6f, 2.3f); c.ray = rnd(62, 92);
+  c.ang = atan2f((c.y - cy) / 0.5f, c.x - orbCx); c.om = (random(2) ? 1.0f : -1.0f) * rnd(1.6f, 2.3f); c.ray = rnd(62, 92); c.ocg = true; c.tOrb = 0;
 }
 static void envoyerSur(int p) {      // un corbeau de la nuée vient se poser sur le visiteur (épaule, tête ou main)
   int best = -1; float bd = 1e9f, px, py; ptVis(p, px, py);
@@ -1308,6 +1355,7 @@ static void secousse() {
   sonCri(); son(SN_PLUMES, 150);
 }
 static void reagirToucher(Corbeau& c, float tx, float ty) {
+  if (c.act == A_DORT) { c.act = A_IMMO; c.dAct = rnd(2.0f, 4.0f); c.tAct = 0; }
   gAction = 1.5f; c.flash = 1.0f; c.bec = 1; c.clin = 0;
   if (c.etat == E_PERCHE || c.etat == E_SOL) {
     c.d = (tx >= c.x) ? 1 : -1; c.look = lim(atan2f(ty - (c.y - 6.0f * c.s), fabsf(tx - c.x) + 6.0f), -0.9f, 0.8f); c.tLook = 1.3f;      // il tourne la tête vers le doigt
@@ -1493,9 +1541,62 @@ static void majOeuf(float dt) {
   if (cr[PC].etat != E_OFF) { agePous += dt; cr[PC].s = 0.46f + 0.30f * lim(agePous / 240.0f, 0.0f, 1.0f); cr[PC].duvet = 1.0f - lim(agePous / 300.0f, 0.0f, 1.0f); }
 }
 
+// ---------- vie sociale : s'appeler, alerte, chamaille, vol en groupe ----------
+static int perchesLibres(int* l) { int n = 0; for (int k = 0; k < NAD; k++) { Corbeau& c = cr[k]; if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.objet == 0 && c.act <= A_REGARDE) l[n++] = k; } return n; }
+static void appelMutuel() {      // deux corbeaux se font face et s'appellent à tour de rôle
+  int l[NAD]; int n = perchesLibres(l); if (n < 2) return;
+  int a = l[random(n)], b; do { b = l[random(n)]; } while (b == a);
+  cr[a].d = (cr[b].x >= cr[a].x) ? 1 : -1; cr[b].d = -cr[a].d; cr[a].hum = cr[b].hum = 1.0f;
+  AP.a = (int8_t)a; AP.b = (int8_t)b; AP.n = 5; AP.t = 0.2f;
+}
+static void alerte() {      // un danger : tous restent immobiles, la tête levée, regardant dans la même direction
+  dirAlerte = random(2) ? 1 : -1; tAlerte = rnd(4.0f, 6.5f); alerteFuite = (random(100) < 40);
+  for (int k = 0; k < NAD; k++) { Corbeau& c = cr[k]; if (c.etat == E_PERCHE) { if (c.act == A_DORT) { c.act = A_IMMO; c.dAct = 2.0f; c.tAct = 0; } c.hum = 1.0f; } }
+  for (int k = 0; k < NAD; k++) if (cr[k].etat == E_PERCHE) { cr[k].bec = 1; break; }
+  sonCri();
+}
+static void orbiteLocale(Corbeau& c, float cx, float cy, float sens, float duree) {      // vol en cercle autour d'un point (groupe ou poursuite)
+  c.perch = -1; c.ocg = false; c.ocx = cx; c.ocy = cy; c.ray = rnd(40.0f, 70.0f); c.om = sens * rnd(1.4f, 1.9f); c.tOrb = duree;
+  decoller(c, cx, cy, B_ORBITE); c.ang = atan2f((c.y - cy) / 0.5f, c.x - cx);
+}
+static void chamaille() {      // l'un en poursuit un autre en vol, puis ils reviennent
+  int l[NAD]; int n = perchesLibres(l); if (n < 2) return;
+  int a = l[random(n)], b; do { b = l[random(n)]; } while (b == a);
+  float cx = rnd(110.0f, 230.0f), cy = rnd(55.0f, 90.0f);
+  orbiteLocale(cr[b], cx, cy, random(2) ? 1.0f : -1.0f, rnd(5.0f, 7.0f));
+  Corbeau& c = cr[a]; c.perch = -1; c.pj = (int8_t)b; c.tOrb = rnd(5.5f, 7.5f); decoller(c, cx, cy, B_POURSUITE);
+  cr[a].hum = cr[b].hum = 1.0f; sonCri();
+}
+static void volGroupe() {      // plusieurs corbeaux décollent ensemble et tournent en groupe avant de revenir
+  int l[NAD]; int n = perchesLibres(l); if (n < 3) return;
+  float cx = rnd(110.0f, 230.0f), cy = rnd(55.0f, 85.0f), sens = random(2) ? 1.0f : -1.0f, duree = rnd(7.0f, 10.0f);
+  int m = n < 4 ? n : 4;
+  for (int i = 0; i < m; i++) { int j = i + random(n - i); int t = l[i]; l[i] = l[j]; l[j] = t; orbiteLocale(cr[l[i]], cx, cy, sens, duree); }
+  sonCri(); son(SN_AILES, 200);
+}
+static void majSocial(float dt) {
+  if (tAlerte > 0) {
+    tAlerte -= dt;
+    if (tAlerte <= 0 && alerteFuite) { alerteFuite = false; int n = 0; for (int k = 0; k < NAD && n < 2; k++) if (cr[k].etat == E_PERCHE && cr[k].perch < 10 && random(100) < 50) { chasser(cr[k]); n++; } }
+  }
+  if (AP.n > 0) {
+    AP.t -= dt;
+    if (AP.t <= 0) {
+      Corbeau& c = cr[(AP.n % 2) ? AP.a : AP.b];
+      if (c.etat == E_PERCHE) { c.bec = 1; c.flash = 0.5f; c.look = c.ha0 - 0.3f; c.tLook = 0.9f; if (random(2)) sonCri(); else son(SN_CROASSE1, 190); }
+      AP.n--; AP.t = rnd(0.7f, 1.2f);
+    }
+  }
+  gSocial -= dt;
+  if (gSocial <= 0) {
+    gSocial = rnd(12.0f, 26.0f);
+    if (V.ph == V_RIEN && !appelOn && !panneau) { int r = random(100); if (r < 24) appelMutuel(); else if (r < 44) alerte(); else if (r < 62) chamaille(); else if (r < 80) volGroupe(); }
+  }
+}
+
 static void majGlobal(float dt) {
   gAction -= dt; gPoof -= dt; gObjet -= dt; gAttrib -= dt; gCalme -= dt;
-  majVisiteur(dt); majMinis(dt); majOeuf(dt);
+  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt);
   if (H.actif) H.ext += (1.0f - H.ext) * mnf(1.0f, dt * 5.0f); else if (H.ext > 0) { H.ext -= dt * 4.0f; if (H.ext < 0) H.ext = 0; }
   for (int i = 0; i < NPROJ; i++) {      // objets lancés : trajectoire, puis ils retombent et deviennent de l'objet au sol
     Proj& p = proj[i]; if (!p.actif) continue;

@@ -1,5 +1,5 @@
 {
-    "version": "2.6.0",
+    "version": "2.7.0",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -18,6 +18,8 @@
         "Mode Corbeaux : la barre du bas a maintenant cinq modes. Nourrir (comme avant), Main (toucher long = la main se tend et un corbeau s'y pose ; glisse un corbeau pour le déposer sur une branche ; un toucher appelle, un balayage les fait s'envoler), Lancer (glisse et lâche pour lancer bague, kunaï, shuriken, parchemin ou noix : les corbeaux les attrapent en vol), Appel (ils tournent autour du doigt) ou Effrayer (ils s'envolent en nuée puis reviennent), et Fronde (tire un corbeau en arrière et lâche : il est projeté puis revient se percher).",
         "Mode Corbeaux : un bouton « Réglages » ouvre un panneau à grosses touches (volume, sons réels ou synthétiques, nombre de corbeaux de 3 à 6, fréquence du visiteur, sensibilité de la secousse, vibration, ambiance, affichage des images par seconde, retour au menu). Tout est mémorisé.",
         "Œufs magiques : de temps en temps un corbeau pond un œuf sombre à reflets rouges sur la branche. Touche-le : il craque, puis un petit corbeau duveteux naît (il grandit un peu), ou l'œuf explose en plumes avec une surprise (objet rare, corbeau rare à l'œil doré). Tu peux aussi lancer un œuf (mode Lancer) : il explose à l'impact en nuée de plumes et de petits corbeaux. Un petit compteur garde le nombre d'œufs éclos.",
+        "Corbeaux plus vrais : posture perchée redressée (tronc incliné de 45 à 65 degrés, poitrine en avant, queue qui pend), et un DÉZOOM : pince l'écran à deux doigts (ou touche le bouton « Vue » en haut) pour voir l'arbre en entier, le sol et le paysage, avec un zoom animé ; les corbeaux restent utilisables dans les deux vues.",
+        "Vie des corbeaux : chacun a sa personnalité (calme, bavard, joueur, craintif) et son humeur. Ils s'étirent les ailes, picorent et sautillent au sol, se poudrent, dorment la tête sous l'aile (ambiance nuit sombre), s'appellent entre eux, restent en alerte tous dans la même direction, se poursuivent en vol, et volent en groupe.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
