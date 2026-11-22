@@ -26,6 +26,7 @@ static const float STL[5][3] = {{346.0f, 28.0f, -0.12f}, {386.0f, 34.0f, 0.10f},
 struct Mon { uint8_t tour, lng, bet, tres; };      // réglages : décor « tour en ruine » (1) ou « simple » (0) ; échanges à longue distance (1) ou non (0)
 static Mon RGM = {1, 1, 1, 1};      // tres : tresors caches 0 non, 1 rares (defaut), 2 frequents (cle cbtres)      // bet : petites betes 0 non, 1 peu (2), 2 beaucoup (4)
 static const float PX = -4.0f, PY = 205.0f, PRX = 42.0f, PRY = 6.5f;      // mare
+static uint16_t cTour = 0, cMare = 0;      // tresors caches dans la tour et dans la mare (cle cbcach)
 static const float CH0 = -176.0f, CH1 = -112.0f;
 static const float RV0 = 250.0f, RV1 = 318.0f;           // zone de droite : petit ruisseau et bande d'herbe sombre (entre l'arbre et le portique)           // champ : bords gauche et droit
 static const uint16_t CLE_TR = 0x1818;                        // couleur transparente (identique dans les deux ordres d'octets)
@@ -641,7 +642,7 @@ static void solBete(Corbeau& c, int idx, Rt& r, float dt) {      // au sol, face
 // De temps en temps un corbeau decouvre un objet brillant au sol (bague, eclat), le prend au bec, s'envole au loin et le depose a l'interieur de la tour en ruine (le plus souvent)
 // ou dans la mare (parfois), puis revient a l'arbre. La cache grandit (compteurs en memoire, cle cbcach) et se voit en vue Vieux batiments / Mare : reflets dans l'ombre de la porte, eclats dans l'eau.
 // Reglage Tresors : non / rares / frequents (cle cbtres, page Monde). Cout : un objet au bec, au plus 9 + 6 petits points brillants, rien en decor minimal ni pendant l'allegement automatique.
-static uint16_t cTour = 0, cMare = 0; static bool cSale = false; static float tCSale = 0.0f;
+static bool cSale = false; static float tCSale = 0.0f;
 static int8_t tK = -1, tObj = -1; static uint8_t tPh = 0, tOu = 0; static float tT = 0.0f, gTres = 60.0f;      // tK : le corbeau en mission ; tPh 0 il va prendre l'objet, 1 il le porte ; tOu 0 tour, 1 mare
 static void tresFlush() { if (cSale) { prefs.putUInt("cbcach", (uint32_t)cTour | ((uint32_t)cMare << 16)); cSale = false; } }
 static bool tresorDepart(Corbeau& c, int idx) {      // appele quand le corbeau vient de ramasser l'objet : il s'envole vers la cache (renvoie faux : ce n'est pas un tresor, la routine normale continue)
