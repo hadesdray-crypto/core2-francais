@@ -166,23 +166,25 @@ static inline float bordD() { return (320.0f - ztx) / zs + 34.0f; }
 struct VueId { float a, b, c; VueId() { a = zs; b = ztx; c = zty; zs = 1.0f; ztx = 0.0f; zty = 0.0f; } ~VueId() { zs = a; ztx = b; zty = c; } };      // dessin d'interface : sans zoom
 
 // ---------- primitives (suivent la boîte englobante ; ne dessinent pas en mode « sec ») ----------
+static inline bool coordOk(float a, float b) { return fabsf(a) < 6000.0f && fabsf(b) < 6000.0f; }      // faux pour NaN, infini ou valeur énorme : protège contre les gels
 static void tri(M5Canvas& g, float x0, float y0, float x1, float y1, float x2, float y2, uint16_t c) {
   x0 = TX(x0); y0 = TY(y0); x1 = TX(x1); y1 = TY(y1); x2 = TX(x2); y2 = TY(y2);
+  if (!coordOk(x0, y0) || !coordOk(x1, y1) || !coordOk(x2, y2)) return;
   bbPt(x0, y0); bbPt(x1, y1); bbPt(x2, y2); if (sec) return;
   g.fillTriangle(ar(x0), ar(y0), ar(x1), ar(y1), ar(x2), ar(y2), c);
 }
 static void disque(M5Canvas& g, float x, float y, float r, uint16_t c) {
-  x = TX(x); y = TY(y); r *= zs;
+  x = TX(x); y = TY(y); r *= zs; if (!coordOk(x, y) || !(r < 3000.0f)) return;
   bbPt(x - r, y - r); bbPt(x + r, y + r); if (sec) return;
   g.fillCircle(ar(x), ar(y), ar(r) < 1 ? 1 : ar(r), c);
 }
 static void ell(M5Canvas& g, float x, float y, float rx, float ry, uint16_t c) {
-  x = TX(x); y = TY(y); rx *= zs; ry *= zs;
+  x = TX(x); y = TY(y); rx *= zs; ry *= zs; if (!coordOk(x, y) || !(rx < 3000.0f) || !(ry < 3000.0f)) return;
   bbPt(x - rx, y - ry); bbPt(x + rx, y + ry); if (sec) return;
   int a = ar(rx), b = ar(ry); g.fillEllipse(ar(x), ar(y), a < 1 ? 1 : a, b < 1 ? 1 : b, c);
 }
 static void ligne(M5Canvas& g, float x0, float y0, float x1, float y1, uint16_t c) {
-  x0 = TX(x0); y0 = TY(y0); x1 = TX(x1); y1 = TY(y1);
+  x0 = TX(x0); y0 = TY(y0); x1 = TX(x1); y1 = TY(y1); if (!coordOk(x0, y0) || !coordOk(x1, y1)) return;
   bbPt(x0, y0); bbPt(x1, y1); if (sec) return;
   g.drawLine(ar(x0), ar(y0), ar(x1), ar(y1), c);
 }
@@ -607,17 +609,20 @@ static bool appelOn = false;                  // un appel est en cours : les cor
 static float orbCx = 166.0f, orbCy = 90.0f;   // centre de la nuée (le visiteur ou le doigt)
 static const float VX = 166.0f;               // où il se tient sur la branche
 static inline float visPiedsY() { return ytop(VX) + 0.4f; }
-struct RepM { float hx, hy, ux, uy, S, ex, ey; bool g; };
-static RepM repereMain() {      // repère de la main : (hx, hy) = centre de la paume ; elle est calculée comme une main gauche puis retournée pour le côté droit
+struct RepM { float hx, hy, ux, uy, S, ex, ey, mx; bool g; };
+static RepM repereMain() {      // repère de la main : le bras (manche et avant-bras) est FIXE ; la paume pivote autour du poignet ; calculée comme une main gauche puis retournée pour le côté droit
   RepM r; r.g = H.gauche; r.S = 1.85f; float e = pas(H.ext);
   r.ex = H.exs; r.ey = 262.0f;
-  r.hx = lerpf(r.ex, H.x, e); r.hy = lerpf(r.ey, H.y + 0.9f * H.resp * (H.ctrl ? 0.3f : 1.0f), e);
-  float a0 = lim(atan2f(r.ey - r.hy, fabsf(r.hx - r.ex)), 0.15f, 1.3f);      // pente de l'avant-bras : le poignet se plie un peu, la main reste presque à l'horizontale
-  float ang = -(0.06f + 0.26f * a0) + (r.g ? H.tilt : -H.tilt);
-  r.ux = cosf(ang); r.uy = sinf(ang); return r;
+  const float hx0 = lerpf(r.ex, H.x, e), hy0 = lerpf(r.ey, H.y + 0.6f * H.resp, e);      // position de repos de la paume (la main sort du bas de l'écran)
+  float a0 = lim(atan2f(r.ey - hy0, fabsf(hx0 - r.ex)), 0.15f, 1.3f);
+  const float angR = -(0.06f + 0.26f * a0), cr_ = cosf(angR), sr_ = sinf(angR), L0 = 8.5f * r.S;
+  const float wxs = hx0 - L0 * cr_, wys = hy0 - L0 * sr_;      // le poignet ne bouge jamais
+  float tl = lim(H.tilt, -0.7f, 0.7f); const float ang = angR + (r.g ? tl : -tl);      // inclinaison du poignet (positive = vers le bas de l'écran)
+  r.ux = cosf(ang); r.uy = sinf(ang); r.hx = wxs + L0 * r.ux; r.hy = wys + L0 * r.uy; r.mx = hx0;
+  return r;
 }
 static inline void ptMain(const RepM& r, float u, float v, float& X, float& Y) {
-  float X0 = r.hx + (u * r.ux - v * r.uy) * r.S; Y = r.hy + (u * r.uy + v * r.ux) * r.S; X = r.g ? X0 : 2.0f * r.hx - X0;
+  float X0 = r.hx + (u * r.ux - v * r.uy) * r.S; Y = r.hy + (u * r.uy + v * r.ux) * r.S; X = r.g ? X0 : 2.0f * r.mx - X0;
 }
 static void ptVis(int k, float& x, float& y) {      // points d'appui des corbeaux : 0 épaule gauche, 1 épaule droite, 2 dessus de la tête, 3 main du bras tendu
   float y0 = visPiedsY();
@@ -1896,11 +1901,11 @@ static void appeler(float x, float y) {      // un toucher : le corbeau le plus 
 }
 static void rendreObjets();
 static void envoyerMain();
-static void tendreMain(float x, float y) {      // toucher long : la main se tend, un corbeau vient s'y poser
+static void tendreMain(float x, float y) {      // la main sort à une place fixe : le bras ne bouge plus ensuite (le toucher n'a plus d'effet sur lui)
   if (V.ph != V_RIEN || H.actif) return;
-  x = lim(x, 70.0f, 250.0f); y = lim(y, 92.0f, 150.0f);      // la main entière (avant-bras, poignet, paume, doigts) reste dans l'écran
-  H.actif = true; H.x = H.tx = x; H.y = H.ty = y; H.ext = 0; H.gauche = (x < 160.0f); H.pose = PS_REPOS; H.tPose = 0; H.vit = 1.0f; H.tRec = 0.9f;
-  H.vx = H.vy = H.tilt = H.tiltV = H.resp = 0; H.exs = H.gauche ? x - 118.0f : x + 118.0f; H.ouv = H.ouvV = H.esp = H.espV = H.clos = H.closV = H.circ = 0; H.ctrl = false; H.lx = x; H.ly = y; H.tHold = 0; H.lok = false;
+  (void)x; (void)y; const float FX = 205.0f, FY = 128.0f;
+  H.actif = true; H.x = H.tx = FX; H.y = H.ty = FY; H.ext = 0; H.gauche = false; H.pose = PS_REPOS; H.tPose = 0; H.vit = 1.0f; H.tRec = 0.9f;
+  H.vx = H.vy = H.tilt = H.tiltV = H.resp = 0; H.exs = FX + 118.0f; H.ouv = H.ouvV = H.esp = H.espV = H.clos = H.closV = H.circ = 0; H.ctrl = false; H.lx = FX; H.ly = FY; H.tHold = 0; H.lok = false;
   for (int i = 0; i < 5; i++) { H.sp[i] = MP[PS_REPOS][i][0]; H.cu[i] = MP[PS_REPOS][i][1]; H.spv[i] = H.cuv[i] = 0; }
   for (int i = 0; i < 3; i++) H.om[i].actif = false;
   son(SN_GAZ, 140);
@@ -2187,11 +2192,7 @@ static int reconnaitre() {      // reconnaissance simple et tolérante : 1 cercl
 }
 static void traceFin() {
   float dur = (millis() - TR.t0) / 1000.0f;
-  if (D.y > 212.0f && H.actif) { retirerMain(); return; }      // on pousse la main hors de l'écran, vers le bas : elle se retire
-  if (TR.len < 18.0f && dur < 0.5f) {      // un simple toucher : sur la main, elle salue ; ailleurs, elle glisse jusque-là
-    if (hypotf(TR.x[0] - H.x, TR.y[0] - H.y) < 30.0f) { H.pose = PS_VAGUE; H.tPose = 0; H.vit = 1.2f; } else deplacerMain(TR.x[0], TR.y[0]);
-    return;
-  }
+  if (TR.len < 18.0f && dur < 0.5f) return;      // un simple toucher (sur la main ou ailleurs) ne la déplace pas et ne la retire pas : on la retire avec le bouton Main ou en changeant de mode
   int p = reconnaitre(); if (p < 0) return;
   if (p == PS_POINTE) {      // deux lignes qui se croisent : doigts croisés
     float ang = atan2f(TR.y[TR.n - 1] - TR.y[0], TR.x[TR.n - 1] - TR.x[0]);
@@ -2202,17 +2203,17 @@ static void traceFin() {
 }
 static void majMainPose(float dt) {
   if (!H.actif && H.ext <= 0.0f) return;
-  // poignet : ressort amorti avec inertie (il suit le doigt avec un peu de retard, dépasse à peine, puis se pose)
-  H.tx = lim(H.tx, 62.0f, 258.0f); H.ty = lim(H.ty, 92.0f, 152.0f);      // la main reste entièrement visible
-  { float ax = 130.0f * (H.tx - H.x) - 16.0f * H.vx, ay = 130.0f * (H.ty - H.y) - 16.0f * H.vy; H.vx += ax * dt; H.vy += ay * dt; H.x += H.vx * dt; H.y += H.vy * dt; }
+  H.x = H.tx = (H.gauche ? 125.0f : 205.0f); H.y = H.ty = 128.0f; H.vx = H.vy = 0.0f;      // le bras reste immobile
   H.resp = sinf(tAnim * 1.9f);
-  ressort(H.tilt, H.tiltV, lim(H.vx * 0.0028f, -0.4f, 0.4f), 9.0f, dt);      // la main s'incline dans le sens du mouvement
-  H.exs += ((H.gauche ? H.x - 118.0f : H.x + 118.0f) - H.exs) * mnf(1.0f, dt * 5.0f);      // le bout de manche glisse quand la main passe de l'autre côté
   H.circ *= expf(-dt * 0.7f); if (H.tHold > 0) H.tHold -= dt;
-  { float gx = H.ctrl ? lim((D.x - D.x0) / 55.0f, -1.0f, 1.0f) : 0.0f, gy = H.ctrl ? lim((D.y - D.y0) / 55.0f, -1.0f, 1.0f) : 0.0f;
-    ressort(H.ouv, H.ouvV, -gy, 11.0f, dt);      // glisser vers le haut : les doigts s'ouvrent ; vers le bas : le poing se ferme
-    ressort(H.esp, H.espV, gx, 11.0f, dt);       // glisser vers la droite : les doigts s'écartent ; vers la gauche : ils se rapprochent
+  { const bool c_ = H.ctrl; const float sv = lim(hypotf(D.vx, D.vy) / 500.0f, 0.0f, 1.0f), w = (c_ ? 9.0f + 8.0f * sv : 5.0f);      // un trait rapide = mouvement vif ; au relâché, retour doux
+    float gx = c_ ? lim((D.x - D.x0) / 55.0f, -1.0f, 1.0f) : 0.0f, gy = c_ ? lim((D.y - D.y0) / 55.0f, -1.0f, 1.0f) : 0.0f;
+    ressort(H.tilt, H.tiltV, 0.5f * gx, w * 0.8f, dt);      // trait horizontal : le poignet pivote (vers la droite = les doigts s'abaissent)
+    ressort(H.ouv, H.ouvV, -gy, w, dt);      // trait vers le haut : les doigts s'ouvrent ; vers le bas : le poing se ferme
+    ressort(H.esp, H.espV, gx, w, dt);       // trait vers la droite : les doigts s'écartent ; vers la gauche : ils se rapprochent
     ressort(H.clos, H.closV, (H.tHold > 0) ? 1.0f : 0.0f, 7.0f, dt); }      // un cercle : la main se referme doucement sur l'oiseau
+  if (!(H.tilt == H.tilt) || fabsf(H.tilt) > 1.5f) { H.tilt = H.tiltV = 0.0f; }
+  if (!(H.ouv == H.ouv) || !(H.esp == H.esp) || !(H.clos == H.clos)) { H.ouv = H.ouvV = H.esp = H.espV = H.clos = H.closV = 0.0f; }
   for (int i = 0; i < 5; i++) {
     float ts, tc;
     if (H.pose == PS_VAGUE) { ts = MP[PS_REPOS][i][0]; tc = 0.55f * (0.5f + 0.5f * sinf(tAnim * 8.0f * H.vit - i * 0.9f)); }
@@ -2224,10 +2225,11 @@ static void majMainPose(float dt) {
       ts += (MP[PS_ENVELOPPE][i][0] - ts) * H.clos; tc += (MP[PS_ENVELOPPE][i][1] - tc) * H.clos;
     }
     tc += 0.035f * sinf(tAnim * 1.7f + i * 0.6f) * (H.ctrl ? 0.4f : 1.0f);      // respiration au repos
-    tc += lim(-H.vy * 0.0014f, -0.35f, 0.35f) * (0.6f + 0.12f * i);              // les doigts traînent derrière le poignet
+    tc += lim(-H.tiltV * 0.25f, -0.3f, 0.3f) * (0.6f + 0.12f * i);              // les doigts traînent derrière le poignet quand il pivote
     float w = (17.0f - 1.6f * i) * mnf(1.4f, H.vit), z = 0.62f;                   // un ressort par doigt, un peu sous-amorti : l'inertie se voit
     H.spv[i] += ((ts - H.sp[i]) * w * w - 2.0f * z * w * H.spv[i]) * dt; H.sp[i] += H.spv[i] * dt;
     H.cuv[i] += ((tc - H.cu[i]) * w * w - 2.0f * z * w * H.cuv[i]) * dt; H.cu[i] += H.cuv[i] * dt;
+    if (!(H.cu[i] == H.cu[i]) || !(H.sp[i] == H.sp[i])) { H.cu[i] = H.sp[i] = H.cuv[i] = H.spv[i] = 0.0f; }      // garde-fou : jamais de valeur aberrante
     H.cu[i] = lim(H.cu[i], -0.5f, 1.25f); H.sp[i] = lim(H.sp[i], -0.7f, 0.7f);
   }
   if (H.pose != PS_REPOS) { H.tPose += dt; if (H.tPose > 1.9f / H.vit) { H.pose = PS_REPOS; H.tPose = 0; H.vit = 1.0f; } }
@@ -2830,10 +2832,10 @@ static void appui(int x, int y) {
       lacher(choix, (float)x); D.bas = false;
     } break;
     case 1: D.type = 1; D.cible = (int8_t)trouverCorbeau((float)x, (float)y, 1.5f / zs);
-      if (!H.actif && D.cible < 0) tendreMain(mxf(40.0f, mnf(280.0f, (float)x)), mxf(70.0f, mnf(205.0f, (float)y)));      // un appui sur le mode Main : la main sort tout de suite
-      if (H.actif && (D.cible < 0 || hypotf((float)x - H.x, (float)y - H.y) < 34.0f)) {      // le doigt pilote la main en direct (et dessine une forme)
+      if (!H.actif && D.cible < 0) tendreMain((float)x, (float)y);      // un appui sur le mode Main : la main sort tout de suite, à sa place fixe
+      if (H.actif) {      // un trait tracé n'importe où sur l'écran pilote le poignet et les doigts ; le bras ne bouge pas
         D.cible = -1; D.type = 6; TR.n = 0; TR.len = 0; TR.t0 = m; traceAjoute((float)x, (float)y);
-        H.ctrl = true; H.circ = 0; H.lok = false; H.lx = (float)x; H.ly = (float)y; H.tx = mxf(30.0f, mnf(290.0f, (float)x)); H.ty = mxf(60.0f, mnf(212.0f, (float)y));
+        H.ctrl = true; H.circ = 0; H.lok = false; H.lx = (float)x; H.ly = (float)y;
       }
       break;
     case 2: D.type = 2; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; break;
@@ -2853,11 +2855,10 @@ static void glisse(int x, int y) {
       if (D.cible >= 0) {
         if (!D.grab && dist > 9) { D.grab = true; saisir(D.cible, D.x, D.y, false); }
         if (D.grab && cr[D.cible].etat == E_TENU) { cr[D.cible].tx = D.x; cr[D.cible].ty = D.y; }
-      } else if (H.actif) { H.tx = D.x; H.ty = D.y; }
+      }
       break;
-    case 6: {      // la main suit le doigt avec de l'inertie ; les doigts répondent au geste
+    case 6: {      // le trait pilote le poignet et les doigts (le bras reste immobile)
       traceAjoute(D.x, D.y);
-      H.tx = mxf(30.0f, mnf(290.0f, D.x)); H.ty = mxf(60.0f, mnf(212.0f, D.y)); if (D.x < 140.0f) H.gauche = true; else if (D.x > 180.0f) H.gauche = false;
       float sx = D.x - H.lx, sy = D.y - H.ly;
       if (hypotf(sx, sy) > 5.0f) {      // tour de cercle accumulé : assez de tours = la main se referme sur l'oiseau
         float a = atan2f(sy, sx);
@@ -2882,7 +2883,6 @@ static void relache() {
   switch (D.type) {
     case 1:
       if (D.cible >= 0) { if (D.grab) relacherMain(D.cible, D.x, D.y); else reagirToucher(cr[D.cible], D.x, D.y); }
-      else if (H.actif) retirerMain();
       else if (len > 60 && sp > 280) balayage(D.x0, D.y0, D.x, D.y);
       else if (len < 14 && m - D.t0 < 500) appeler(D.x0, D.y0);
       break;
