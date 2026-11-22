@@ -26,7 +26,7 @@ static float TRB() { return 203.0f + 1.2f * sinf(TRX / 37.0f) + 0.8f * sinf(TRX 
 static float PQB() { return 203.0f + 1.2f * sinf(PQX / 37.0f) + 0.8f * sinf(PQX / 13.0f + 1.0f); }
 static const float STL[5][3] = {{346.0f, 28.0f, -0.12f}, {386.0f, 34.0f, 0.10f}, {470.0f, 30.0f, -0.09f}, {498.0f, 22.0f, 0.15f}, {-204.0f, 24.0f, 0.10f}};      // stèles : pied, hauteur, inclinaison
 struct Mon { uint8_t tour, lng; };      // réglages : décor « tour en ruine » (1) ou « simple » (0) ; échanges à longue distance (1) ou non (0)
-static Mon MON = {1, 1};
+static Mon RGM = {1, 1};
 static const float PX = -70.0f, PY = 205.0f, PRX = 34.0f, PRY = 5.5f;      // mare
 static const float CH0 = -176.0f, CH1 = -112.0f;           // champ : bords gauche et droit
 static const uint16_t CLE_TR = 0x1818;                        // couleur transparente (identique dans les deux ordres d'octets)
@@ -102,7 +102,8 @@ static void bakeCiel() {
   }
 }
 
-// ---------- bande lointaine : arbres lointains tous différents, puis deux plans de collines ----------
+// ---------- bande lointaine : arbres lointains tous différents, deux plans de collines, épouvantail au loin ----------
+static void dessinerEpouvantail(M5Canvas& g, float x, float y, float k, uint16_t pc);
 static void bakeLoin() {
   VueId v_; fixerVue(MX0, FY0);
   M5Canvas& g = sFar; g.fillScreen(CLE_TR);
@@ -118,6 +119,7 @@ static void bakeLoin() {
     float yl1 = gy - 24.0f + 6.0f * sinf(xs / 40.0f + 1.0f) + 4.0f * sinf(xs / 17.0f); g.drawFastVLine(x, (int)yl1, h - (int)yl1, CF(66 * ambCol, 9 * ambCol, 15 * ambCol));
     float yl2 = gy - 12.0f + 5.0f * sinf(xs / 55.0f + 2.0f) + 3.0f * sinf(xs / 23.0f); g.drawFastVLine(x, (int)yl2, h - (int)yl2, CF(46 * ambCol, 6 * ambCol, 11 * ambCol));
   }
+  if (RGM.tour) dessinerEpouvantail(g, 566.0f - 40.0f, 193.0f, 0.5f, CF(30 * ambCol, 4 * ambCol, 9 * ambCol));      // épouvantail au loin, derrière la tour
 }
 
 // ---------- bande proche : sol noir, mare, champ, chemin, vieille tour en ruine, portique, stèles, clôture, épouvantail, brume basse ----------
@@ -211,7 +213,7 @@ static void bakeProche() {
     float rx0 = PX - PRX + 2.0f + i * 2.2f + (i > 4 ? PRX * 1.5f : 0.0f), hh = 12.0f + 7.0f * ((i * 5) % 4) * 0.5f, lean = ((i % 3) - 1) * 2.2f;
     epais(g, rx0, PY - 0.5f, rx0 + lean, PY - hh, 1.0f, noir); if (i % 2 == 0) ell(g, rx0 + lean, PY - hh, 1.0f, 2.6f, noir);
   }
-  if (MON.tour) {
+  if (RGM.tour) {
     // chemin de terre qui mène à la tour
     tri(g, TRX - 5, TRB(), TRX + 5, TRB(), TRX + 62, 256, C(15, 4, 8)); tri(g, TRX - 5, TRB(), TRX + 62, 256, TRX - 40, 256, C(15, 4, 8));
     dessinerPortique(g); dessinerTour(g);
@@ -219,7 +221,7 @@ static void bakeProche() {
     cloture(g, 520.0f, 548.0f, 13.0f, noir);
   } else cloture(g, 360.0f, 392.0f, 13.0f, noir);
   dessinerEpouvantail(g, (CH0 + CH1) * 0.5f, solHaut((CH0 + CH1) * 0.5f), 1.0f, noir);
-  brumeBasse(g, MON.tour ? 520 : 260);
+  brumeBasse(g, RGM.tour ? 520 : 260);
 }
 static void bakeArbre() {
   VueId v_; fixerVue(AX0, AY0);
@@ -258,8 +260,10 @@ static void libererSprites() {
   if (vigK) { free(vigK); vigK = nullptr; }
   pret = false;
 }
-static void rebake() {      // appelé par construireFond : première fois = création des bandes, ensuite = redessin (changement d'ambiance)
+static void chargerMon();
+static void rebake() {      // appelé par construireFond : première fois = création des bandes, ensuite = redessin (changement d'ambiance ou de décor)
   if (bpp != 2) return;
+  chargerMon();
   if (!pret) {
     if (tentee) return;
     tentee = true;
@@ -284,18 +288,18 @@ static void spawnGoutte(float x, float y, float vx, float vy) { for (int i = 0; 
 static bool vis(float x0, float x1) { return TX(x1) > -12.0f && TX(x0) < 332.0f; }
 static void dyn() {
   M5Canvas& g = cv; const float t = tAnim; sec = false;
-  if (MON.tour && vis(TRX - 26, TRX + 26)) {      // lanterne rouge dans la fenêtre de la tour : faible, qui vacille, parfois presque éteinte
+  if (RGM.tour && vis(TRX - 26, TRX + 26)) {      // lanterne rouge dans la fenêtre de la tour : faible, qui vacille, parfois presque éteinte
     float f = 0.70f + 0.25f * sinf(t * 7.0f) * sinf(t * 2.1f + 1.0f); if (fmodf(t, 37.0f) < 0.30f) f = 0.10f;
     const float b = TRB();
     disque(g, TRX, b - 55.0f, 8.0f, CF(30 * f, 3 * f, 4 * f)); rect(g, TRX - 4, b - 62, TRX + 4, b - 50, CF(46 * f, 5 * f, 6 * f));
     rect(g, TRX - 2.2f, b - 59, TRX + 2.2f, b - 52, CF(220 * f, 34 * f, 24 * f));
     rect(g, TRX - 0.5f, b - 62, TRX + 0.5f, b - 50, C(3, 1, 2));
   }
-  if (MON.tour && vis(PQX - 12, PQX + 4)) {      // lanterne du portique
+  if (RGM.tour && vis(PQX - 12, PQX + 4)) {      // lanterne du portique
     float f = 0.55f + 0.30f * sinf(t * 5.3f + 2.0f) * sinf(t * 1.7f); const float b = PQB();
     disque(g, PQX - 7.0f, b - 40.5f, 5.5f, CF(24 * f, 3 * f, 4 * f)); disque(g, PQX - 7.0f, b - 40.5f, 1.9f, CF(210 * f, 36 * f, 26 * f));
   }
-  if (MON.tour) {      // brume basse qui dérive lentement
+  if (RGM.tour) {      // brume basse qui dérive lentement
     for (int i = 0; i < 3; i++) {
       float x = fmodf(t * (5.0f + 2.0f * i) + i * 230.0f, 800.0f) + MX0, y = solHaut(x) - 2.5f - 2.0f * i;
       if (vis(x, x + 44.0f)) { float k = ambCol; ligne(g, x, y, x + 44.0f, y, CF(34 * k, 10 * k, 18 * k)); ligne(g, x + 8.0f, y - 1.2f, x + 36.0f, y - 1.2f, CF(24 * k, 7 * k, 13 * k)); }
@@ -379,7 +383,7 @@ static void spotPerch(int dest, int sp, float& x, float& y, float& pente, int& d
 }
 static int choisirDest(int idx) {
   float w[D_NB] = {0};
-  if (MON.tour) { w[D_TOUR] = 30.0f; w[D_STELE] = 14.0f; w[D_PORT] = 12.0f; }
+  if (RGM.tour) { w[D_TOUR] = 30.0f; w[D_STELE] = 14.0f; w[D_PORT] = 12.0f; }
   w[D_MARE] = 34.0f; w[D_CHAMP] = 24.0f; w[D_EPOUV] = 16.0f;
   if (rt[idx].away) w[rt[idx].dest] = 0.0f;
   float tot = 0.0f;
@@ -390,7 +394,7 @@ static int choisirDest(int idx) {
 static bool excursion(Corbeau& c, int idx, int dest) {
   Rt& r = rt[idx]; float tx = 0, ty = 0; int sp = 0;
   if (dest == D_TOUR || dest == D_STELE || dest == D_PORT || dest == D_EPOUV) {
-    if (dest != D_EPOUV && !MON.tour) return false;
+    if (dest != D_EPOUV && !RGM.tour) return false;
     int n = nSp(dest), st = random(n); sp = -1; for (int i = 0; i < n; i++) { int s = (st + i) % n; if (!spotsPris(dest, s)) { sp = s; break; } }
     if (sp < 0) return false; float pe; int dd; spotPerch(dest, sp, tx, ty, pe, dd);
   }
@@ -438,7 +442,7 @@ static void arrivee(Corbeau& c) {      // fin de l'atterrissage sur un site de l
   Rt& r = rt[idx]; r.t = 0; r.ph = 0; r.n = 0; c.ox = c.oy = 0; c.t = 0; c.act = A_IMMO; c.tAct = 0; c.dAct = rnd(1.5f, 3.5f); c.sub = 0; c.peck = 0; c.om = 0;
   if (r.dest == D_TOUR || r.dest == D_EPOUV || r.dest == D_STELE || r.dest == D_PORT) {
     float x, y, pe; int d; spotPerch(r.dest, r.spot, x, y, pe, d); c.fx = x; c.fy = y; c.fp = pe; c.d = (int8_t)d;
-    c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); r.dur = r.grp ? rnd(3.5f, 5.5f) : rnd(11.0f, 19.0f);
+    c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); r.dur = r.cop ? rnd(12.0f, 16.0f) : (r.grp ? rnd(3.5f, 5.5f) : rnd(11.0f, 19.0f));
     c.act = A_REGARDE; c.tAct = 0; c.dAct = rnd(4.0f, 7.0f); c.sub = -1;      // il observe depuis son perchoir
   } else {
     c.etat = E_SOL; r.dur = 0;
@@ -644,7 +648,7 @@ static void dispute(Corbeau& c, int idx, float dt) {      // au sol, face au dé
       if (r.tw > 0.5f && o.actif) {      // il lui prend le morceau : l'autre recule et s'en va
         o.reserve = idx; c.item = iO; c.but = B_NOUR; c.sub = 0; c.peck = 0.0f; lienAj(idx, W, -1);
         Corbeau& w = cr[W]; w.item = -1; w.but = B_RIEN; w.sub = 2; w.peck = 0.0f; w.t = 0.0f; w.surs = 0.3f;
-        r.away = false; c.s = r.sB; r.ph = 0;
+        finR(r); c.s = r.sB; r.ph = 0;
       } else { lienAj(idx, W, -1); retour(c, idx); }
     }
   }
@@ -658,7 +662,7 @@ struct Lng { bool on, inv; uint8_t type, step; int8_t a, b, c3; float t; };
 static Lng LG; static float gLng = 20.0f, tAlertePrec = 0.0f;
 static void chargerMon() {
   static bool lu = false; if (lu) return; lu = true;
-  MON.tour = prefs.getUChar("cbmtour", 1) ? 1 : 0; MON.lng = prefs.getUChar("cblng", 1) ? 1 : 0;
+  RGM.tour = prefs.getUChar("cbmtour", 1) ? 1 : 0; RGM.lng = prefs.getUChar("cblng", 1) ? 1 : 0;
 }
 static void spawnHalo(const Corbeau& c, float amp) {
   int k = 0; float tm = -1.0f;
@@ -702,7 +706,7 @@ static void regrouper() {      // alerte : tous les oiseaux du monde rentrent à
 }
 static void decorChange() {      // le décor passe à « simple » : ceux qui sont sur la tour, le portique ou les stèles rentrent
   if (LG.on) LG.on = false;
-  if (MON.tour) return;
+  if (RGM.tour) return;
   for (int k = 0; k < NAD; k++) { Rt& r = rt[k]; if (r.away && (r.dest == D_TOUR || r.dest == D_STELE || r.dest == D_PORT)) rentrer(k, 0.1f * (float)k); }
 }
 static void finLng() { LG.on = false; gLng = rnd(18.0f, 34.0f); }
@@ -745,7 +749,7 @@ static void debutLng() {
     } break;
     case L_PARADE: {      // deux amis partent ensemble vers un site à deux places, côte à côte
       int a = tr[0], b = -1, best = -99; for (int i = 1; i < nt; i++) { int li = lien[a][tr[i]]; if (li > best) { best = li; b = tr[i]; } }
-      int cand[4], nc = 0; if (MON.tour) { if (nLibres(D_TOUR) >= 2) cand[nc++] = D_TOUR; if (nLibres(D_STELE) >= 2) cand[nc++] = D_STELE; if (nLibres(D_PORT) >= 2) cand[nc++] = D_PORT; } if (nLibres(D_MARE) >= 2) cand[nc++] = D_MARE;
+      int cand[4], nc = 0; if (RGM.tour) { if (nLibres(D_TOUR) >= 2) cand[nc++] = D_TOUR; if (nLibres(D_STELE) >= 2) cand[nc++] = D_STELE; if (nLibres(D_PORT) >= 2) cand[nc++] = D_PORT; } if (nLibres(D_MARE) >= 2) cand[nc++] = D_MARE;
       if (b < 0 || nc == 0) return;
       int d1 = cand[random(nc)], d2 = (d1 == D_MARE) ? D_CHAMP : D_MARE, sq = (random(100) < 55) ? d2 + 1 : 0;
       rt[a].cop = (uint8_t)(b + 1); rt[b].cop = (uint8_t)(a + 1); rt[a].seq = rt[b].seq = (uint8_t)sq; rt[a].grp = rt[b].grp = 1;
@@ -754,7 +758,7 @@ static void debutLng() {
       n.a = (int8_t)a; n.b = (int8_t)b; son(SN_AILES, 200); camPour(16.0f);
     } break;
     default: {      // tournée de groupe : arbre, tour (ou épouvantail), puis mare
-      int d1 = MON.tour ? D_TOUR : D_EPOUV; int m = nLibres(d1); if (m > nt) m = nt; if (m > 3) m = 3; if (m < 2) return;
+      int d1 = RGM.tour ? D_TOUR : D_EPOUV; int m = nLibres(d1); if (m > nt) m = nt; if (m > 3) m = 3; if (m < 2) return;
       int d2 = placeLibre(D_MARE) ? D_MARE : D_CHAMP, lead = tr[0], ok = 0;
       for (int i = 1; i < m; i++) if (rang[tr[i]] < rang[lead]) lead = tr[i];
       int idx[3], ni = 0;
@@ -773,10 +777,10 @@ static void majLng(float dt) {
   const bool calme = V.ph == V_RIEN && !GP.ph && !appelOn && !panneau && !H.actif;
   if (!LG.on) {
     gLng -= dt * actFreq;
-    if (gLng <= 0.0f) { gLng = rnd(18.0f, 34.0f); if (MON.lng && pret && calme && tAlerte <= 0.0f && AP.n == 0 && !S.on) debutLng(); }
+    if (gLng <= 0.0f) { gLng = rnd(18.0f, 34.0f); if (RGM.lng && pret && calme && tAlerte <= 0.0f && AP.n == 0 && !S.on) debutLng(); }
     return;
   }
-  if (!calme || !MON.lng || (tAlerte > 0.0f && LG.type != L_ALERTE)) { finLng(); return; }
+  if (!calme || !RGM.lng || (tAlerte > 0.0f && LG.type != L_ALERTE)) { finLng(); return; }
   LG.t += dt;
   switch (LG.type) {
     case L_APPEL: {      // un oiseau loin appelle, un autre répond (ou l'inverse), le premier rappelle
@@ -863,6 +867,7 @@ static bool camPilote(float dt) {
   if (!cmFin) {
     if (cm == CM_LARGE) {
       tz = 0.5f; tx = 190.0f + 28.0f * sinf(cmT * 0.28f); ty = 118.0f;
+      if (LG.on && LG.a >= 0 && LG.b >= 0) { const float xa = cr[LG.a].x, xb = cr[LG.b].x; tx = lerpf(tx, (xa + xb) * 0.5f, 0.85f); tz = (fabsf(xa - xb) < 190.0f) ? 0.6f : 0.5f; }      // l'échange à distance est au centre de l'image
       if (cmAuto && cmT > cmDur) fermer();
     } else {
       Corbeau& c = cr[suivi < 0 ? 0 : suivi]; Rt& r = rt[suivi < 0 ? 0 : suivi];
@@ -877,6 +882,10 @@ static bool camPilote(float dt) {
         }
         if (S.on && (S.a == suivi || S.b == suivi)) tz = 1.3f;      // une interaction entre oiseaux : on se rapproche
         tx = c.x + c.vx * 0.30f; ty = c.y + c.bob - 8.0f; if (c.etat == E_SOL) ty = c.y - 12.0f;
+        if (LG.on && (LG.a == suivi || LG.b == suivi)) {      // un échange à distance : la caméra garde les deux oiseaux dans l'image
+          const int o = (LG.a == suivi) ? LG.b : LG.a;
+          if (o >= 0 && cr[o].visible && cr[o].etat != E_DEHORS) { const float dd = fabsf(cr[o].x - c.x); if (dd < 420.0f) { tx = (c.x + cr[o].x) * 0.5f; tz = lim(330.0f / (dd + 60.0f), 0.62f, 1.1f); } }
+        }
         if (!r.away && c.etat == E_PERCHE && c.perch >= 0) {      // encore (ou de nouveau) sur l'arbre
           tRetour += dt;
           if (cmT > 2.6f && tRetour > 2.6f && cmT < 8.0f && nbAilleurs() < 3) { int d = choisirDest(suivi); if (d >= 0) excursion(c, suivi, d); }      // il part en excursion : la caméra le suit
@@ -922,17 +931,20 @@ static void maj(float dt) {
   for (int i = 0; i < 14; i++) if (gout[i].on) { Goutte& q = gout[i]; q.t += dt; q.vy += 260.0f * dt; q.x += q.vx * dt; q.y += q.vy * dt; if (q.t > 1.2f || q.y > PY + 2.0f) q.on = false; }
   for (int k = 0; k < NAD; k++) {
     Corbeau& c = cr[k]; Rt& r = rt[k]; if (!r.away) continue;
-    if (c.etat == E_DEHORS || c.etat == E_POOF || c.etat == E_OFF || c.etat == E_TENU || c.etat == E_TIR) { r.away = false; c.s = r.sB; continue; }
-    if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but != B_MONDE) { r.away = false; c.s = r.sB; continue; }      // de retour sur l'arbre
+    if (c.etat == E_DEHORS || c.etat == E_POOF || c.etat == E_OFF || c.etat == E_TENU || c.etat == E_TIR) { finR(r); c.s = r.sB; continue; }
+    if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but != B_MONDE) { finR(r); c.s = r.sB; continue; }      // de retour sur l'arbre
+    if (r.cop && r.tl > 0.0f) { r.tl -= dt; if (r.tl <= 0.0f) { r.tl = 0.0f; finDuo(c, k); } }      // le duo se sépare du site
     float tgt = r.sB * echelleX(c.x); c.s += (tgt - c.s) * mnf(1.0f, dt * 3.0f);      // perspective : plus petit vers la maison, plus grand vers la mare
     if (c.etat == E_PERCHE && c.but == B_MONDE) {      // sur le toit : il observe, puis repart
       r.t += dt;
       if (r.ph == 0 && r.t > r.dur) apres(c, k);
       else if (r.ph == 9 && r.t > 2.0f) retour(c, k);
-      else if (r.ph == 0 && r.t > r.dur * 0.5f && r.n == 0) { r.n = 1; c.bec = 1; sonCri(); }
+      else if (r.ph == 0 && r.t > r.dur * 0.5f && r.n == 0) { r.n = 1; c.bec = 1; sonCri(); spawnHalo(c, 0.8f); }
     }
   }
+  for (int i = 0; i < NHALO; i++) if (halo[i].on) { halo[i].t += dt; if (halo[i].t > 1.3f) halo[i].on = false; }
   majSoc(dt);
+  majLng(dt); majPoursuites();
   for (int k = 0; k < NAD; k++) {      // énergie qui baisse, gros après la viande, joie des baies, sieste quand il est rassasié
     Corbeau& c = cr[k]; en[k] = mxf(0.0f, en[k] - 0.004f * dt); if (tHer[k] > 0.0f) tHer[k] -= dt; if (tJoie[k] > 0.0f) tJoie[k] -= dt;
     if (!rt[k].away && c.etat != E_DEHORS && c.etat != E_OFF) { float tg = sBase[k] * (1.0f + 0.07f * lim(tHer[k] / 3.0f, 0.0f, 1.0f)); if (fabsf(c.s - tg) > 0.002f) c.s += (tg - c.s) * mnf(1.0f, dt * 2.0f); }
@@ -953,7 +965,7 @@ static void maj(float dt) {
   }
 }
 static void reinit() {
-  memset(rt, 0, sizeof(rt)); memset(onde, 0, sizeof(onde)); memset(gout, 0, sizeof(gout)); memset(&S, 0, sizeof(S)); gSoc = rnd(5.0f, 9.0f);
+  chargerMon(); memset(rt, 0, sizeof(rt)); memset(onde, 0, sizeof(onde)); memset(gout, 0, sizeof(gout)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); memset(&S, 0, sizeof(S)); gSoc = rnd(5.0f, 9.0f); gLng = rnd(14.0f, 24.0f); tAlertePrec = 0.0f;
   for (int k = 0; k < NAD; k++) { en[k] = 0.4f; tHer[k] = tJoie[k] = 0.0f; forceK[k] = 0; sBase[k] = cr[k].s; }
   for (int k = 0; k < NAD; k++) rang[k] = (int8_t)k;
   for (int k = NAD - 1; k > 0; k--) { int j = random(k + 1); int8_t q = rang[k]; rang[k] = rang[j]; rang[j] = q; }
@@ -961,6 +973,6 @@ static void reinit() {
   cm = CM_NON; cmFin = false; suivi = -1; lpBird = -1; cz = ZN; cxx = 160.0f; cyy = 128.0f; czv = cxv = cyv = 0.0f;
   gLarge = rnd(40.0f, 70.0f); gTrip = rnd(10.0f, 20.0f); tMonde = 0.0f;
 }
-static void fermerMonde() { libererSprites(); tentee = false; cm = CM_NON; cmFin = false; suivi = -1; memset(rt, 0, sizeof(rt)); }
+static void fermerMonde() { libererSprites(); tentee = false; cm = CM_NON; cmFin = false; suivi = -1; memset(rt, 0, sizeof(rt)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); }
 
 }  // namespace mo

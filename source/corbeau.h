@@ -52,7 +52,7 @@ static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {22
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
 enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE, B_MONDE, B_FAM };      // B_FAM : mission d'un parent (famille.h)
-namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); }      // monde.h : paysage, camera, excursions
+namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); static void decorChange(); }      // monde.h : paysage, camera, excursions
 static void syncUI();
 enum { T_GRAINE = 0, T_VIANDE, T_NOIX, T_PAIN, T_BAIES, T_BRILLANT, T_BAGUE, T_KUNAI, T_SHURIKEN, T_PARCHEMIN, T_OEUF, T_NB };
 
@@ -2508,7 +2508,7 @@ static void dessinerPanneau() {
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux"), 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   if (panPage == 0) {
     // volume : - barre + et TEST SON
@@ -2524,6 +2524,12 @@ static void dessinerPanneau() {
     tuile(g, 4, 100, 153, 32, "Secousse", SEC[OP.sec]); tuile(g, 163, 100, 153, 32, "Vibration", OP.vib ? "Oui" : "Non");
     tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Lumière", OP.hor == 2 ? "Horreur" : (OP.hor == 1 ? "Sombre" : "Clair"));
     tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps ? "Oui" : "Non"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
+  } else if (panPage == 3) {      // monde : décor (tour en ruine / simple) et échanges à longue distance (monde.h)
+    static const char* const LD[2] = {"Simple", "Tour en ruine"}; static const char* const LO[2] = {"Non", "Oui"};
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Décor du monde (tour, portique, stèles, brume)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, mo::RGM.tour ? 1 : 0, LD);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Échanges à longue distance (appels, poursuites, vols)", 6, 73); segBarre(g, 4, 87, 312, 24, 2, mo::RGM.lng ? 1 : 0, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Leur fréquence suit l'Activité (page Fréquence).", 6, 119);
   } else if (panPage == 2) {
     static const char* const LL[3] = {"Clair", "Sombre", "Horreur"}; static const char* const LQ[3] = {"Fluide", "Normal", "Riche"}; static const char* const LM[2] = {"Non", "Oui"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2542,7 +2548,7 @@ static void dessinerPanneau() {
   g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
   g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
-  g.drawString(panPage == 2 ? "< Réglages" : (panPage ? "Image >" : "Fréquence >"), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
+  g.drawString(panPage == 3 ? "< Réglages" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >")), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
@@ -2555,7 +2561,14 @@ static void fermerPanneau() {
 }
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
-  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 3); panSale = true; } return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 4); panSale = true; } return; }
+  if (panPage == 3) {      // monde : décor et échanges lointains (clés cbmtour, cblng)
+    if (y >= 42 && y < 72) { mo::RGM.tour = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbmtour", mo::RGM.tour); mo::decorChange(); ambChange = true; }
+    else if (y >= 84 && y < 114) { mo::RGM.lng = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblng", mo::RGM.lng); }
+    else return;
+    if (OP.vib) vibrer(40);
+    panSale = true; return;
+  }
   if (panPage == 2) {      // image : lumière, qualité, mesures
     if (y >= 42 && y < 72) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.hor = (uint8_t)i; prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; }
     else if (y >= 84 && y < 114) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.q = (uint8_t)i; prefs.putUChar("cbqual", OP.q); qDeg = false; }
