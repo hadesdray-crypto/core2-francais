@@ -13,6 +13,7 @@
 #include <ArduinoJson.h>
 #include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <esp_wifi.h>
 #include <mbedtls/sha256.h>      // contrôle de l'empreinte du programme téléchargé
@@ -25,7 +26,7 @@
 #include "presence.h"      // presence / absence des personnages et des univers (3.1.6)
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.30"
+#define VERSION_PROGRAMME "3.1.31"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 #define SOURCE_MAJ_TEST "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/version.json"      // canal « test » (par défaut) : publié automatiquement après chaque compilation réussie de la branche corbeau
@@ -194,6 +195,7 @@ struct Monde {
 } W;
 
 WebServer serveur(80);
+static int cacheCourantMa = 0, cacheTensionMv = 0;      // lus une fois toutes les 2 s dans la boucle (jamais pendant le dessin d'un ecran)
 bool modeAcces = false;     // le Core2 crée son propre Wi-Fi quand aucun réseau n'est réglé
 M5Canvas cv(&M5.Display);
 String infoDemarrage;       // message affiché au démarrage (module désactivé après plantage, retour arrière...)
@@ -275,27 +277,55 @@ void chargerPerso() {
 }
 
 // ---------- Sons ----------
+// Sons non bloquants (3.1.31) : avant, bip() et jouer() attendaient la fin du son avec delay() (50 a 250 ms d'ecran fige a chaque toucher, caresse, choc, bonne reponse...).
+// Maintenant le son est lance, puis la boucle principale (sonPomper) joue les notes suivantes et referme le haut-parleur a l'heure : l'image ne s'arrete plus.
+static struct { int16_t f[3], d[3]; uint8_t n, i, garde; uint32_t t; bool actif; } SQ;
+static void sonSequence(const int16_t* f, const int16_t* d, int n, int garde) {
+  if (n < 1) return; if (n > 3) n = 3;
+  for (int i = 0; i < n; i++) { SQ.f[i] = f[i]; SQ.d[i] = d[i]; }
+  SQ.n = (uint8_t)n; SQ.i = 0; SQ.garde = (uint8_t)garde; SQ.t = millis(); SQ.actif = true;
+  M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume);
+}
 void bip(int freq, int ms) {
   if (!R.actif[M_SON] || lectureEnCours || page == 32) return;
+  if (SQ.actif) return;      // un son est deja en cours
   if (millis() - dernierBip < 150) return; dernierBip = millis();
-  M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume);
-  M5.Speaker.tone(freq, ms); delay(ms + 10);
-  M5.Speaker.end(); M5.Mic.begin();
+  const int16_t f[1] = {(int16_t)freq}, d[1] = {(int16_t)ms};
+  sonSequence(f, d, 1, 10);
 }
-
 // Petits sons du personnage : une suite de notes très courte pour chaque événement.
 enum { S_MANGER = 0, S_CARESSE, S_CHOC, S_SECOUE, S_PILE, S_WIFI_OK, S_WIFI_KO, S_REVEIL, S_BRANCHE, S_VOL, S_GRAVITE, S_NB };
 void jouer(int s) {
   if (!R.actif[M_SON] || R.volume == 0 || s < 0 || s >= S_NB || lectureEnCours || page == 32) return;
+  if (SQ.actif) return;
   static uint32_t dernier[S_NB];
   if (millis() - dernier[s] < 400) return; dernier[s] = millis();
   static const int16_t N[S_NB][6] = {
     {660, 60, 880, 60, 990, 80}, {520, 50, 620, 50, 740, 70}, {140, 60, 0, 0, 0, 0}, {400, 50, 300, 50, 220, 70},
     {500, 90, 350, 120, 0, 0}, {700, 50, 1000, 70, 0, 0}, {600, 60, 400, 90, 0, 0}, {800, 40, 1100, 60, 0, 0},
     {660, 60, 990, 80, 0, 0}, {900, 30, 1200, 40, 0, 0}, {300, 50, 500, 50, 0, 0} };
+  int16_t f[3], d[3]; int n = 0;
+  for (int i = 0; i < 3; i++) { if (!N[s][i * 2]) break; f[n] = N[s][i * 2]; d[n] = N[s][i * 2 + 1]; n++; }
+  dernierBip = millis();
+  sonSequence(f, d, n, 8);
+}
+void sonPomper() {      // appelee a chaque tour de boucle : joue la note suivante, puis referme le haut-parleur
+  if (!SQ.actif) return;
+  const uint32_t m = millis();
+  if ((int32_t)(m - SQ.t) < 0) return;
+  if (SQ.i < SQ.n) { M5.Speaker.tone(SQ.f[SQ.i], SQ.d[SQ.i]); SQ.t = m + SQ.d[SQ.i] + SQ.garde; SQ.i++; return; }
+  SQ.actif = false;
+  if (page == 32 || lectureEnCours || M5.Speaker.isPlaying()) return;      // les corbeaux, la Matinale ou la voix du Dex jouent : ils gerent eux-memes le haut-parleur
+  M5.Speaker.end(); if (!(veille && !brancheUsb)) M5.Mic.begin();
+}
+// Meme son, mais on attend la fin (seulement avant l'extinction de l'ecran, ou l'image n'a plus d'importance)
+static void bipAttendre(int freq, int ms) {
+  if (!R.actif[M_SON] || lectureEnCours || page == 32) return;
+  if (millis() - dernierBip < 150) return; dernierBip = millis();
+  while (SQ.actif) { sonPomper(); delay(2); }
   M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume);
-  for (int i = 0; i < 3; i++) { int f = N[s][i * 2], d = N[s][i * 2 + 1]; if (!f) break; M5.Speaker.tone(f, d); delay(d + 8); }
-  M5.Speaker.end(); M5.Mic.begin(); dernierBip = millis();
+  M5.Speaker.tone(freq, ms); delay(ms + 10);
+  M5.Speaker.end(); M5.Mic.begin();
 }
 void vibrer(int ms) { M5.Power.setVibration(150); finVibre = millis() + ms; }
 
@@ -410,7 +440,7 @@ void moduleWifi() {
 void moduleSon() {
   debutModule(M_SON);
   static int16_t tampon[256];
-  if (lectureEnCours || page == 32 || page == 33 || M5.Speaker.isRunning()) { finModule(); return; }      // le haut-parleur joue la Matinale, les corbeaux ou le Dex : le micro attend (sinon il reprend la sortie audio et coupe le son)
+  if (lectureEnCours || page == 32 || page == 33 || SQ.actif || M5.Speaker.isRunning()) { finModule(); return; }      // le haut-parleur joue la Matinale, les corbeaux ou le Dex : le micro attend (sinon il reprend la sortie audio et coupe le son)
   if (!M5.Mic.isEnabled()) { M5.Mic.begin(); }
   if (M5.Mic.record(tampon, 256, 16000)) {
     long somme = 0; for (int i = 0; i < 256; i++) somme += abs(tampon[i]);
@@ -1476,8 +1506,87 @@ void dessinerInfos() {
   }
 }
 
+// ---------- Envoi de l'image par zones modifiees + mesure par ecran (3.1.31) ----------
+// Avant : chaque image renvoyait TOUT l'ecran (320 x 240 x 2 octets = 153 600 octets, environ 31 ms de bus a 40 MHz), meme quand presque rien ne change.
+// Maintenant : l'image precedente est gardee en PSRAM ; l'ecran est coupe en tuiles de 40 x 16 pixels ; seules les tuiles modifiees sont envoyees (rien du tout si rien n'a change).
+// Quand l'ecran change presque entierement (plus de 75 % des tuiles), on envoie tout et on ne compare plus pendant 6 images (comparer ne rapporterait rien).
+// Filet de securite : une rangee de tuiles est renvoyee de force toutes les 4 images (tout l'ecran toutes les 60 images), pour effacer tout reste eventuel.
+static uint8_t* imgPrec = nullptr;
+static bool imgPrecOk = false, imgEssaiAlloc = false, imgPousse = false;
+static uint8_t imgPlein = 0, imgRotation = 0;
+static uint16_t imgPct = 100;      // part de l'ecran envoyee a la derniere image (en %)
+static uint32_t imgUs = 0;         // duree (comparaison + envoi) de la derniere image, en microsecondes
+static int imgPageVue = -1;
+static void invaliderImage() { imgPrecOk = false; }      // a appeler quand quelque chose a dessine directement sur l'ecran, hors de pousser()
+static void pousser() {
+  const uint32_t t0 = micros();
+  imgPousse = true;
+  uint8_t* cur = (uint8_t*)cv.getBuffer();
+  const int bpp = cv.getColorDepth() >> 3;
+  if (!cur || bpp < 1 || cv.width() != 320 || cv.height() != 240) { cv.pushSprite(0, 0); imgPct = 100; imgUs = micros() - t0; return; }
+  const size_t pitch = (size_t)320 * bpp;
+  if (!imgPrec && !imgEssaiAlloc) { imgEssaiAlloc = true; imgPrec = (uint8_t*)heap_caps_malloc(pitch * 240, MALLOC_CAP_SPIRAM); }
+  if (page != imgPageVue) { imgPageVue = page; imgPrecOk = false; imgPlein = 0; }      // autre ecran : on repart d'une image complete
+  if (!imgPrec || !imgPrecOk || imgPlein) {
+    if (imgPlein) imgPlein--;
+    cv.pushSprite(0, 0);
+    if (imgPrec && !imgPlein) { memcpy(imgPrec, cur, pitch * 240); imgPrecOk = true; } else imgPrecOk = false;
+    imgPct = 100; imgUs = micros() - t0; return;
+  }
+  const int TXP = 40, TYP = 16, NC = 8, NR = 15;
+  const size_t tb = (size_t)TXP * bpp;
+  uint8_t masque[NR]; int nT = 0;
+  imgRotation++;
+  const int forcee = (imgRotation & 3) == 0 ? (int)((imgRotation >> 2) % NR) : -1;
+  for (int r = 0; r < NR; r++) {
+    masque[r] = 0;
+    for (int c = 0; c < NC; c++) {
+      const size_t off = (size_t)r * TYP * pitch + (size_t)c * tb;
+      const uint8_t* a = cur + off; uint8_t* b = imgPrec + off;
+      bool diff = (r == forcee);
+      if (!diff) for (int j = 0; j < TYP; j++) if (memcmp(a + (size_t)j * pitch, b + (size_t)j * pitch, tb)) { diff = true; break; }
+      if (diff) { for (int j = 0; j < TYP; j++) memcpy(b + (size_t)j * pitch, a + (size_t)j * pitch, tb); masque[r] |= (uint8_t)(1u << c); nT++; }
+    }
+  }
+  imgPct = (uint16_t)(nT * 100 / (NC * NR));
+  if (nT == 0) { imgUs = micros() - t0; return; }
+  if (nT * 4 > NC * NR * 3) { imgPlein = 6; imgPrecOk = false; cv.pushSprite(0, 0); imgUs = micros() - t0; return; }
+  M5.Display.startWrite();
+  for (int r = 0; r < NR;) {
+    int r2 = r; while (r2 + 1 < NR && masque[r2 + 1] == masque[r]) r2++;      // rangees voisines identiques : un seul rectangle plus haut
+    const uint8_t mk = masque[r];
+    for (int c = 0; c < NC;) {
+      if (!(mk & (1u << c))) { c++; continue; }
+      int c1 = c; while (c1 + 1 < NC && (mk & (1u << (c1 + 1)))) c1++;
+      M5.Display.setClipRect(c * TXP, r * TYP, (c1 - c + 1) * TXP, (r2 - r + 1) * TYP);
+      cv.pushSprite(0, 0);
+      c = c1 + 1;
+    }
+    r = r2 + 1;
+  }
+  M5.Display.clearClipRect(); M5.Display.endWrite();
+  imgUs = micros() - t0;
+}
+// Mesure par ecran (hors mode Corbeaux, qui a ses propres compteurs) : lue dans /api/etat et /api/test (champs ecran*, ecrans)
+struct EcranStat { float ms, msEnvoi, ecart; uint16_t pire, pireCourant, pct; uint32_t dernier, n; };
+static EcranStat ST[40];
+static const char* NOMS_ECRAN[36] = {"Accueil", "Reglages", "Wi-Fi : liste", "Wi-Fi : mot de passe", "Wi-Fi : connexion", "Materiel", "Menu", "Radar Wi-Fi", "Analyseur", "Detection",
+  "Meteo", "Horloge", "Niveau", "Sonometre", "Lampe", "Apparence", "Reactions", "Caracteres", "Couleurs d'humeur", "Corps",
+  "Menu jeux", "Jeu Attraper", "Jeu Memoire", "Jeu Pierre-feuille-ciseaux", "Menu perso", "Exercices du cerveau", "Exercice : calcul rapide", "Exercice : memoire des chiffres", "Exercice : deux coups avant", "Exercice : couleurs pieges",
+  "Exercice : reflexes", "Matinale", "Corbeaux", "Dex des yeux", "Recevoir une mise a jour", "Mise a jour automatique"};
+static const char* nomEcran(int p) { return (p >= 0 && p < 36) ? NOMS_ECRAN[p] : "?"; }
+static void compterEcran(int p, uint32_t us) {
+  if (p < 0 || p >= 40) return;
+  EcranStat& s = ST[p]; const uint32_t now = millis(); const uint32_t ecart = now - s.dernier; s.dernier = now;
+  const float ms = us / 1000.0f, env = imgUs / 1000.0f;
+  if (s.n == 0 || ecart > 1500) { s.ms = ms; s.msEnvoi = env; s.pct = imgPct; s.ecart = 0; }
+  else { s.ms += (ms - s.ms) * 0.1f; s.msEnvoi += (env - s.msEnvoi) * 0.1f; s.pct = (uint16_t)((int)s.pct + ((int)imgPct - (int)s.pct) / 8); s.ecart = (s.ecart == 0) ? (float)ecart : s.ecart + ((float)ecart - s.ecart) * 0.1f; }
+  if ((uint16_t)ms > s.pireCourant) s.pireCourant = (uint16_t)ms;
+  if ((++s.n % 100) == 0) { s.pire = s.pireCourant; s.pireCourant = 0; }
+}
 void pousserAccueil() {          // en hauteur, l'image tourne avec l'écran
-  if (rotEcran == 0) { cv.pushSprite(0, 0); return; }
+  if (rotEcran == 0) { pousser(); return; }
+  invaliderImage();      // image tournee : envoyee directement a l'ecran, la copie gardee n'est plus la bonne
   M5.Display.fillRect(0, 0, 70, 240, TFT_BLACK); M5.Display.fillRect(250, 0, 70, 240, TFT_BLACK);
   cv.pushRotateZoom(&M5.Display, 160, 120, (float)rotEcran, 0.75f, 0.75f);
 }
@@ -1573,6 +1682,8 @@ static String autonomieTexte() {      // autonomie estimée sur pile : capacité
   char b[24]; snprintf(b, sizeof(b), "  ~%d h %02d", hh, mm); return String(b);
 }
 static const char* LIB_COURTS[M_NB] = {"Météo", "Wi-Fi", "Son", "Batterie", "Heure", "Gravité", "Messages"};
+static String codeMajCache; static bool codeMajOk = false;      // le code de mise a jour est lu en memoire une seule fois (avant : a chaque image des pages Reglages et Recevoir)
+static const String& codeMajTexte() { if (!codeMajOk) { codeMajCache = prefs.getString("code", "666666"); codeMajOk = true; } return codeMajCache; }
 void dessinerReglages() {
   cv.fillScreen(C(18, 20, 34)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left); cv.setTextColor(C(255, 255, 255));
   cv.drawString("Modules : touche = changer", 8, 6);
@@ -1590,9 +1701,9 @@ void dessinerReglages() {
   cv.setTextDatum(top_left); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(190, 195, 230));
   String ip = (modeAcces || WiFi.status() != WL_CONNECTED) ? "192.168.4.1" : WiFi.localIP().toString();
   cv.drawString("Adresse : http://" + ip, 8, 148);
-  cv.drawString("Version " VERSION_PROGRAMME "   Code maj : " + prefs.getString("code", "666666"), 8, 164);
+  cv.drawString("Version " VERSION_PROGRAMME "   Code maj : " + codeMajTexte(), 8, 164);
   cv.drawString(W.wifiOk ? "Wi-Fi connecté : " + WiFi.SSID() : ((direct || modeAcces) ? "Direct : Core2-francais" : "Pas de Wi-Fi"), 8, 180);
-  cv.drawString("Pile " + String(W.batterie) + " %" + (brancheUsb ? String("  (branché)") : autonomieTexte()) + "  " + String((int)M5.Power.getBatteryCurrent()) + " mA", 8, 192);
+  cv.drawString("Pile " + String(W.batterie) + " %" + (brancheUsb ? String("  (branché)") : autonomieTexte()) + "  " + String(cacheCourantMa) + " mA", 8, 192);
   cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255));
   cv.fillRoundRect(218, 142, 98, 14, 6, C(50, 100, 150)); cv.drawString("Réseaux...", 267, 149);
   cv.fillRoundRect(218, 158, 98, 14, 6, wifiToujours ? C(50, 130, 80) : C(120, 90, 40)); cv.drawString(wifiToujours ? "Wi-Fi : actif" : "Wi-Fi : éco", 267, 165);
@@ -1603,7 +1714,7 @@ void dessinerReglages() {
   cv.fillRoundRect(112, 204, 98, 32, 8, (direct || modeAcces) ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString((direct || modeAcces) ? "Direct : oui" : "Direct : non", 161, 220);
   cv.fillRoundRect(216, 204, 100, 32, 8, C(120, 60, 60)); cv.drawString("Redémarrer", 266, 220);
   cv.setTextDatum(top_left);
-  cv.pushSprite(0, 0);
+  pousser();
 }
 
 
@@ -1615,12 +1726,14 @@ static uint32_t debutConn = 0; static int resultatConn = 0;      // 0 en cours, 
 static uint32_t derniereTouche = 0;
 static int emplacement = 1;      // 1 = Wi-Fi de la maison, 2 = Wi-Fi du téléphone (partage de connexion)
 static uint8_t scanEssais = 0;
+static uint32_t scanDepart = 0;      // le scan demarre a cette heure (apres la deconnexion / entre deux essais) : plus de delay() qui fige l'ecran
 void arreterReconnexion() { WiFi.setAutoReconnect(false); WiFi.disconnect(false, false); delay(150); }
-void lancerScan() { if (WiFi.status() != WL_CONNECTED) arreterReconnexion(); if (WiFi.getMode() == WIFI_OFF) WiFi.mode(WIFI_STA); WiFi.scanDelete(); WiFi.scanNetworks(true, true); scanEnCours = true; debutScan = millis(); nbR = 0; decalR = 0; scanEssais = 0; }
+void lancerScan() { if (WiFi.status() != WL_CONNECTED) { WiFi.setAutoReconnect(false); WiFi.disconnect(false, false); scanDepart = millis() + 150; } else scanDepart = 0; if (WiFi.getMode() == WIFI_OFF) WiFi.mode(WIFI_STA); if (!scanDepart) { WiFi.scanDelete(); WiFi.scanNetworks(true, true); } scanEnCours = true; debutScan = millis(); nbR = 0; decalR = 0; scanEssais = 0; }
 void lireScan() {
+  if (scanDepart) { if ((int32_t)(millis() - scanDepart) < 0) return; scanDepart = 0; WiFi.scanDelete(); WiFi.scanNetworks(true, true); debutScan = millis(); return; }
   int n = WiFi.scanComplete();
   if (n == WIFI_SCAN_RUNNING) { if (millis() - debutScan > 15000) { scanEnCours = false; WiFi.setAutoReconnect(true); } return; }
-  if (n <= 0) { if (scanEssais < 3) { scanEssais++; WiFi.scanDelete(); delay(200); WiFi.scanNetworks(true, true); debutScan = millis(); return; } scanEnCours = false; WiFi.setAutoReconnect(true); return; }
+  if (n <= 0) { if (scanEssais < 3) { scanEssais++; WiFi.scanDelete(); scanDepart = millis() + 200; debutScan = millis(); return; } scanEnCours = false; WiFi.setAutoReconnect(true); return; }
   scanEnCours = false; WiFi.setAutoReconnect(true);
   nbR = 0;
   for (int i = 0; i < n; i++) {
@@ -1689,7 +1802,7 @@ void dessinerWifi() {
     String aff = voirMdp ? mdpSaisi : String(); if (!voirMdp) for (size_t i = 0; i < mdpSaisi.length(); i++) aff += "*";
     if (aff.length() > 24) aff = "..." + aff.substring(aff.length() - 23);
     cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_left); cv.setTextColor(C(255, 255, 255)); cv.drawString(aff + ((millis() / 500) % 2 ? "_" : ""), 10, 29);
-    Touche t[60]; int n = construireClavier(t);
+    static Touche t[60]; static int n = 0; static int cleK = -1; { int ck = (majKb ? 1 : 0) | (symbKb ? 2 : 0) | (voirMdp ? 4 : 0); if (ck != cleK) { cleK = ck; n = construireClavier(t); } }      // le clavier n'est reconstruit que s'il change (60 touches avec leur texte a chaque image avant)
     cv.setTextDatum(middle_center);
     for (int i = 0; i < n; i++) {
       uint16_t col = t[i].code > 0 ? C(52, 56, 96) : (t[i].code == -7 ? C(50, 130, 80) : (t[i].code == -5 ? C(120, 60, 60) : C(70, 76, 130)));
@@ -1709,7 +1822,7 @@ void dessinerWifi() {
     cv.fillRoundRect(176, 204, 140, 32, 8, C(52, 56, 96)); cv.drawString("Accueil", 246, 220);
   }
   cv.setTextDatum(top_left);
-  cv.pushSprite(0, 0);
+  pousser();
 }
 void gererTactileWifi(bool appui, int x, int y) {
   if (!appui) return;
@@ -1755,7 +1868,7 @@ void dessinerMateriel() {
   cv.setTextColor(C(0, 230, 255)); cv.drawString("Matériel du Core2 - version " VERSION_PROGRAMME, 8, y); y += 16;
   cv.setTextColor(C(255, 255, 255));
   String l;
-  l = "Pile : " + String(W.batterie) + " %   " + String((int)M5.Power.getBatteryVoltage()) + " mV   " + String((int)M5.Power.getBatteryCurrent()) + " mA"; cv.drawString(l, 8, y); y += 15;
+  l = "Pile : " + String(W.batterie) + " %   " + String(cacheTensionMv) + " mV   " + String(cacheCourantMa) + " mA"; cv.drawString(l, 8, y); y += 15;
   l = brancheUsb ? "Courant : branché" : "Courant : sur pile"; if (W.charge) l += ", en charge"; cv.drawString(l, 8, y); y += 15;
   if (W.wifiOk) l = "Wi-Fi : " + WiFi.SSID() + "  (" + String(W.rssi) + " dBm)"; else l = "Wi-Fi : non connecté"; cv.drawString(l, 8, y); y += 15;
   if (W.wifiOk) l = "Adresse : " + WiFi.localIP().toString(); else l = (direct || modeAcces) ? "Adresse : 192.168.4.1 (Wi-Fi direct)" : "Adresse : aucune"; cv.drawString(l, 8, y); y += 15;
@@ -1773,7 +1886,7 @@ void dessinerMateriel() {
   cv.fillRoundRect(98, 204, 96, 32, 8, C(52, 56, 96)); cv.drawString("Test son", 146, 220);
   cv.fillRoundRect(198, 204, 118, 32, 8, C(50, 130, 80)); cv.drawString(versionDispo.length() ? "Mettre à jour" : "Vérifier", 257, 220);
   cv.setTextDatum(top_left);
-  cv.pushSprite(0, 0);
+  pousser();
 }
 
 // ---------- Cadre commun des pages d'outils ----------
@@ -1796,14 +1909,14 @@ void dessinerRecevoir() {      // page 34 : tout ce qu'il faut pour envoyer une 
   cv.drawString(co ? WiFi.SSID() : String("connexion en cours..."), 10, 42);
   cv.setFont(&fonts::lgfxJapanGothic_24); cv.setTextColor(co ? C(0, 230, 255) : C(110, 110, 130));
   cv.drawString(co ? WiFi.localIP().toString() : String("pas encore d'adresse"), 10, 83);
-  cv.setTextColor(C(255, 220, 120)); cv.drawString(prefs.getString("code", "666666"), 10, 133);
+  cv.setTextColor(C(255, 220, 120)); cv.drawString(codeMajTexte(), 10, 133);
   cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(150, 160, 210)); cv.drawString("ou  http://core2-francais.local", 10, 168);
   cv.setFont(&fonts::lgfxJapanGothic_16);
   if (co) { cv.setTextColor(C(120, 255, 150)); cv.drawString("Prêt : le Core2 répond", 10, 184); } else { cv.setTextColor(C(255, 190, 110)); cv.drawString("Connexion au Wi-Fi...", 10, 184); }
   char b[20]; snprintf(b, sizeof(b), "reste %ld:%02ld", reste / 60, reste % 60); cv.setTextDatum(top_right); cv.setTextColor(C(190, 195, 230)); cv.drawString(b, 312, 184);
   cv.setTextDatum(top_left);
   boutonBas(4, 150, "Retour", C(52, 56, 96)); boutonBas(160, 156, "Reconnecter", C(50, 130, 80));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 // ---------- Page 35 : « Mise à jour automatique » (Réglages > Mise à jour) ----------
 void changerCanal(bool test) {      // test = branche corbeau (par défaut), stable = branche main ; mémorisé
@@ -1863,7 +1976,7 @@ void dessinerMajAuto() {
   boutonBas(4, 78, "Retour", C(52, 56, 96));
   boutonBas(86, 112, canalTest ? "Canal : test" : "Canal : stable", canalTest ? C(110, 70, 130) : C(50, 100, 150));
   boutonBas(202, 114, majVoulue ? "Recherche..." : "Mettre à jour", majVoulue ? C(90, 90, 100) : C(50, 150, 80));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 struct Tuile { const char* nom; int page; uint16_t coul; };
 static const Tuile TUILES[] = {
@@ -1884,7 +1997,7 @@ void dessinerMenu() {
     cv.fillRoundRect(x, y, 100, 32, 8, TUILES[i].coul); cv.drawRoundRect(x, y, 100, 32, 8, C(120, 160, 220));
     cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString(TUILES[i].nom, x + 50, y + 16);
   }
-  cv.setTextDatum(top_left); cv.pushSprite(0, 0);
+  cv.setTextDatum(top_left); pousser();
 }
 void dessinerRadarWifi() {
   cadrePage("Radar Wi-Fi");
@@ -1907,7 +2020,7 @@ void dessinerRadarWifi() {
   }
   cv.setTextColor(C(150, 160, 200)); cv.drawString(String(nbR) + " réseaux - distance estimée", 6, 196);
   boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(214, 102, scanEnCours ? "..." : "Chercher", C(50, 100, 150));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 void dessinerAnalyseur() {
   cadrePage("Analyseur réseau (observation)");
@@ -1918,7 +2031,7 @@ void dessinerAnalyseur() {
     cv.drawString("de réseau). Le Wi-Fi normal se met en pause pendant", 8, 50);
     cv.drawString("l'analyse, puis se reconnecte à l'arrêt.", 8, 66);
     boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(176, 140, "Démarrer l'analyse", C(50, 130, 80));
-    cv.pushSprite(0, 0); return;
+    pousser(); return;
   }
   uint32_t g = sniffType[0], co = sniffType[1], da = sniffType[2];
   cv.setTextColor(C(0, 230, 255)); cv.drawString("Canal écouté : " + String(canalSniff) + "   " + String(sniffParSeconde) + " trames/s", 8, 30);
@@ -1933,7 +2046,7 @@ void dessinerAnalyseur() {
     cv.setTextColor(C(150, 160, 200)); cv.drawString(String(c), x + 4, 194);
   }
   boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(176, 140, "Arrêter l'analyse", C(130, 60, 60));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 void dessinerDetection() {
   cadrePage("Détection de mouvement (Wi-Fi)");
@@ -1945,7 +2058,7 @@ void dessinerDetection() {
     cv.drawString("Le Wi-Fi se met en pause pendant la mesure.", 8, 66);
     cv.drawString("Ce n'est pas une image : c'est un détecteur.", 8, 82);
     boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(176, 140, "Démarrer", C(50, 130, 80));
-    cv.pushSprite(0, 0); return;
+    pousser(); return;
   }
   cv.fillRoundRect(8, 28, 304, 38, 8, mouvement ? C(120, 30, 40) : C(18, 48, 34));
   cv.setFont(&fonts::lgfxJapanGothic_24); cv.setTextDatum(middle_center);
@@ -1960,7 +2073,7 @@ void dessinerDetection() {
     cv.drawFastVLine(8 + i, base - h, h, h > 40 ? C(255, 120, 110) : C(0, 200, 140));
   }
   boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(176, 140, "Arrêter", C(130, 60, 60));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 void dessinerMeteoPage() {
   cadrePage("Météo");
@@ -1978,7 +2091,7 @@ void dessinerMeteoPage() {
     cv.drawString("Mis à jour il y a " + String((millis() - W.derniereMeteo) / 60000) + " min", 8, 170);
   }
   boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(214, 102, "Actualiser", C(50, 100, 150));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 void dessinerHorloge() {
   cadrePage("Horloge");
@@ -1998,7 +2111,7 @@ void dessinerHorloge() {
   boutonBas(4, 100, "Menu", C(52, 56, 96));
   boutonBas(112, 96, chronoMarche ? "Arrêter" : "Départ", chronoMarche ? C(130, 60, 60) : C(50, 130, 80));
   boutonBas(214, 102, "Remettre 0", C(52, 56, 96));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 void dessinerNiveau() {
   cadrePage("Niveau à bulle");
@@ -2013,7 +2126,7 @@ void dessinerNiveau() {
   cv.drawString("Inclinaison : " + String(angle, 1) + " deg", 8, 30);
   cv.setTextColor(plat ? C(120, 255, 150) : C(150, 160, 200)); cv.drawString(plat ? "À plat" : "Penché", 8, 48);
   boutonBas(4, 100, "Menu", C(52, 56, 96));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 void dessinerSonometre() {
   cadrePage("Sonomètre");
@@ -2028,7 +2141,7 @@ void dessinerSonometre() {
   cv.drawString("Niveau : " + String((int)W.niveauSon), 8, 30);
   cv.setTextColor(C(150, 160, 200)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.drawString("Micro - bruit autour", 8, 52);
   boutonBas(4, 100, "Menu", C(52, 56, 96));
-  cv.pushSprite(0, 0);
+  pousser();
 }
 void dessinerLampe() {
   int niv = lampeNiveau;
@@ -2036,7 +2149,7 @@ void dessinerLampe() {
   cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left); cv.setTextColor(C(40, 40, 40)); cv.drawString("Lampe - glisse pour régler", 8, 6);
   int bw = (int)(300.0f * niv / 255.0f); cv.fillRoundRect(10, 206, 300, 16, 6, C(180, 180, 180)); cv.fillRoundRect(10, 206, bw, 16, 6, C(90, 90, 90));
   cv.fillRoundRect(4, 180, 90, 20, 6, C(60, 60, 60)); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.setFont(&fonts::lgfxJapanGothic_16); cv.drawString("Menu", 49, 190); cv.setTextDatum(top_left);
-  cv.pushSprite(0, 0);
+  pousser();
 }
 
 // ---------- Pages d'apparence : personnage, couleurs, corps, caractères, réactions (l'aperçu vivant est toujours visible à droite) ----------
@@ -2078,7 +2191,7 @@ void dessinerApparence() {
   ligneRegl(128, "Caractères", ">", nullptr);
   ligneRegl(153, "Aime / déteste", ">", nullptr);
   ligneRegl(178, "Couleurs des humeurs", ">", nullptr);
-  dessinerApercu(); boutonBas(4, 100, "Menu", C(52, 56, 96)); cv.pushSprite(0, 0);
+  dessinerApercu(); boutonBas(4, 100, "Menu", C(52, 56, 96)); pousser();
 }
 void dessinerReactions() {
   cadrePage("Aime ou déteste ?");
@@ -2089,7 +2202,7 @@ void dessinerReactions() {
     cv.setTextColor(C(255, 255, 255)); cv.setTextDatum(middle_left); cv.drawString(NOMS_EV[i], 8, y + 7);
     cv.setTextDatum(middle_right); cv.drawString(a > 0 ? "Aime" : (a < 0 ? "Déteste" : "Neutre"), 192, y + 7);
   }
-  cv.setTextDatum(top_left); dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); cv.pushSprite(0, 0);
+  cv.setTextDatum(top_left); dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); pousser();
 }
 void dessinerCaracteres() {
   cadrePage("Caractères (0 à 100)");
@@ -2099,12 +2212,12 @@ void dessinerCaracteres() {
     cv.fillRoundRect(84, y, 106, 20, 5, C(30, 34, 70)); cv.fillRoundRect(84, y, max(4, (int)(106 * FA.carac[i] / 100)), 20, 5, C(0, 170, 220));
     cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString(String(FA.carac[i]), 137, y + 10);
   }
-  cv.setTextDatum(top_left); dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); cv.pushSprite(0, 0);
+  cv.setTextDatum(top_left); dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); pousser();
 }
 void dessinerCouleursHumeur() {
   cadrePage("Couleur selon l'humeur");
   for (int i = 0; i < 6; i++) { const uint8_t* c = FA.cHum[HUMS[i]]; int pi = palIdx(c); bool aucune = !c[0] && !c[1] && !c[2]; ligneRegl(28 + i * 25, NOMS_HUM[i], aucune ? String("Aucune") : String(pi ? NOMS_PAL[pi] : "Autre"), c); }
-  dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); cv.pushSprite(0, 0);
+  dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); pousser();
 }
 void dessinerCorps() {
   cadrePage("Corps : poids et gravité");
@@ -2115,7 +2228,7 @@ void dessinerCorps() {
   ligneRegl(128, "Saut", FA.saut == 0 ? String("Aucun") : String(FA.saut) + " %", nullptr);
   ligneRegl(153, "Rebond", String(FA.rebond), nullptr);
   cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(190, 200, 240)); cv.drawString("Incline le Core2 pour voir l'effet", 6, 182);
-  dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); cv.pushSprite(0, 0);
+  dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); pousser();
 }
 void gererTactileApparence(const m5::touch_detail_t& t) {
   int x = t.x, y = t.y; bool clic = t.wasPressed();
@@ -2272,7 +2385,7 @@ void dessinerJeuAttraper() {
     cv.fillRoundRect(40, 70, 240, 60, 10, C(24, 28, 70)); cv.drawRoundRect(40, 70, 240, 60, 10, C(0, 230, 255));
     cv.drawString(jAEtat == 0 ? "Verts : attrape. Rouges : évite." : "Fini ! +" + String(jAScore) + " points", 160, 90); cv.drawString("Touche l'écran pour jouer", 160, 112);
   }
-  cv.setTextDatum(top_left); boutonBas(4, 100, "Jeux", C(52, 56, 96)); cv.pushSprite(0, 0);
+  cv.setTextDatum(top_left); boutonBas(4, 100, "Jeux", C(52, 56, 96)); pousser();
 }
 
 static uint8_t jMSeq[30]; static int jMLen = 0, jMPos = 0, jMEtat = 0, jMStep = 0, jMLum = -1; static uint32_t jMT = 0;
@@ -2294,7 +2407,7 @@ void dessinerJeuMemoire() {
   cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(255, 255, 255)); cv.setTextDatum(middle_center);
   String msg = jMEtat == 0 ? "Touche pour jouer" : (jMEtat == 1 ? "Regarde..." : (jMEtat == 2 ? "À toi ! (" + String(jMPos) + "/" + String(jMLen) + ")" : "Perdu ! +" + String(max(0, jMLen - 1)) + " points"));
   cv.drawString(msg, 214, 222);
-  cv.setTextDatum(top_left); boutonBas(4, 100, "Jeux", C(52, 56, 96)); cv.pushSprite(0, 0);
+  cv.setTextDatum(top_left); boutonBas(4, 100, "Jeux", C(52, 56, 96)); pousser();
 }
 void toucheMemoire(int x, int y) {
   if (jMEtat == 0 || jMEtat == 3) { jeuMemoireDepart(); return; }
@@ -2329,7 +2442,7 @@ void dessinerJeuPFC() {
   for (int i = 0; i < 3; i++) { int x = 6 + i * 104; cv.fillRoundRect(x, 152, 100, 50, 8, C(34, 38, 78)); cv.drawRoundRect(x, 152, 100, 50, 8, C(0, 150, 200)); dessinerMain(x + 50, 176, i, C(0, 220, 255)); }
   cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(255, 255, 255));
   for (int i = 0; i < 3; i++) cv.drawString(NOMS_MAIN[i], 56 + i * 104, 196);
-  cv.setTextDatum(top_left); boutonBas(4, 100, "Jeux", C(52, 56, 96)); cv.pushSprite(0, 0);
+  cv.setTextDatum(top_left); boutonBas(4, 100, "Jeux", C(52, 56, 96)); pousser();
 }
 void touchePFC(int x, int y) {
   if (y < 152 || y >= 204) return;
@@ -2348,7 +2461,7 @@ void dessinerMenuJeux() {
   ligneRegl(128, "Objets dans la pièce", R.objets ? "Oui" : "Non", nullptr);
   ligneRegl(153, "Réveil du matin", R.reveil.length() ? R.reveil : String("Non"), nullptr);
   cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(255, 230, 90)); cv.drawString("Points : " + String(points), 8, 182);
-  dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); cv.pushSprite(0, 0);
+  dessinerApercu(); boutonBas(4, 100, "Retour", C(52, 56, 96)); pousser();
 }
 void gererTactileJeux(const m5::touch_detail_t& t) {
   int x = t.x, y = t.y; bool clic = t.wasPressed(); if (!clic) return;
@@ -2373,7 +2486,7 @@ void dessinerMenuPerso() {
   cadrePage("Mon personnage");
   static const char* L[8] = {"Changer de personnage", "Apparence et couleurs", "Habitat", "Caractère", "Ce qu'il aime", "Corps et gravité", "Jeux et chapeaux", "Exercices du cerveau"};
   for (int i = 0; i < 8; i++) ligneRegl(26 + i * 22, L[i], i == 0 ? String(FA.nom) : (i == 2 ? String(NOMS_HABITAT[constrain(R.habitat, 0, 2)]) : String(">")), nullptr);
-  dessinerApercu(); boutonBas(4, 100, "Accueil", C(52, 56, 96)); cv.pushSprite(0, 0);
+  dessinerApercu(); boutonBas(4, 100, "Accueil", C(52, 56, 96)); pousser();
 }
 
 // ---------- Exercices du cerveau, avec le Docteur Synapse ----------
@@ -2438,7 +2551,7 @@ void dessinerMenuCerveau() {
   int c = (millis() / 6000) % 5;
   cv.setTextDatum(top_center); cv.setTextColor(C(255, 255, 255)); cv.drawString("Docteur Synapse", 258, 30);
   cv.setTextColor(C(200, 220, 255)); cv.drawString(CONSEILS[c][0], 258, 164); cv.drawString(CONSEILS[c][1], 258, 180); cv.setTextDatum(top_left);
-  boutonBas(4, 100, "Retour", C(52, 56, 96)); cv.pushSprite(0, 0);
+  boutonBas(4, 100, "Retour", C(52, 56, 96)); pousser();
 }
 // état commun des exercices
 static int cxEtat = 0, cxN = 0, cxErr = 0, cxScore = 0, cxMax = 0, cxEssai = 0, cxLen = 0, cxPos = 0, cxHit = 0, cxCibles = 0, cxFa = 0, cxMot = 0, cxEncre = 0, cxFlash = 0;
@@ -2533,7 +2646,7 @@ void dessinerExercice() {
     cv.setFont(&fonts::lgfxJapanGothic_12); cv.drawString("Essai " + String(min(cxEssai + 1, 5)) + " / 5" + (cxEssai ? "   dernier : " + String(cxTemps[cxEssai - 1]) + " ms" : String("")), 160, 180);
   }
   if (m < cxFlashFin) { uint16_t c = cxFlash == 1 ? C(80, 255, 140) : C(255, 60, 60); cv.drawRect(0, 23, 320, 181, c); cv.drawRect(1, 24, 318, 179, c); cv.drawRect(2, 25, 316, 177, c); }
-  cv.setTextDatum(top_left); boutonBas(4, 100, "Retour", C(52, 56, 96)); cv.pushSprite(0, 0);
+  cv.setTextDatum(top_left); boutonBas(4, 100, "Retour", C(52, 56, 96)); pousser();
 }
 void toucheExercice(int x, int y) {
   if (y >= 206 && x < 104) { page = 25; cxEtat = 0; bip(700, 40); return; }
@@ -2758,7 +2871,7 @@ void dessinerMatinale() {
   cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(255, 255, 255)); cv.drawString("Son " + String(R.volume * 100 / 255) + " %", 160, 191);
   boutonBas(4, 100, "Accueil", C(52, 56, 96)); boutonBas(108, 64, "Haut", C(52, 56, 96)); boutonBas(176, 64, "Bas", C(52, 56, 96));
   boutonBas(244, 72, "Stop", lectureEnCours ? C(150, 50, 60) : C(52, 56, 96));
-  cv.setTextDatum(top_left); cv.pushSprite(0, 0);
+  cv.setTextDatum(top_left); pousser();
 }
 void toucheMatinale(int x, int y) {
   if (y >= 206) {
@@ -2784,6 +2897,18 @@ void toucheMatinale(int x, int y) {
 
 #include "corbeau.h"      // mode Corbeaux (page 32)
 #include "dex.h"          // Dex des yeux (page 33)
+static void ajouterMesuresEcran(JsonDocument& d) {
+  d["ecran"] = nomEcran(page); d["ecranNo"] = page;
+  const EcranStat& c = ST[page < 40 && page >= 0 ? page : 0];
+  d["ecranFps"] = (page == 32) ? cb::fpsMoy10 / 10.0f : (c.ecart > 0 ? 1000.0f / c.ecart : 0.0f);
+  d["ecranMs"] = (page == 32) ? (float)cb::emaTot : c.ms;      // duree d'une image : dessin + envoi a l'ecran
+  d["ecranMsEnvoi"] = (page == 32) ? (float)cb::emaPush : c.msEnvoi;      // dont comparaison + envoi a l'ecran
+  d["ecranMsMax"] = (page == 32) ? (float)cb::msMax : (float)(c.pire ? c.pire : c.pireCourant);
+  d["ecranEnvoiPct"] = (page == 32) ? 0 : (int)c.pct;      // part de l'ecran renvoyee (100 = tout l'ecran)
+  JsonObject o = d["ecrans"].to<JsonObject>();
+  for (int p = 0; p < 36; p++) if (ST[p].n > 5) { JsonObject e = o[nomEcran(p)].to<JsonObject>(); e["fps"] = ST[p].ecart > 0 ? 1000.0f / ST[p].ecart : 0.0f; e["ms"] = ST[p].ms; e["envoi"] = ST[p].msEnvoi; e["max"] = ST[p].pire ? ST[p].pire : ST[p].pireCourant; e["pct"] = (int)ST[p].pct; }
+}
+
 void dessinerPage() {
   switch (page) {
     case 0: dessinerAccueil(); break;
@@ -2871,10 +2996,10 @@ void saluerAuRevoir() {
     cv.fillCircle(hx, hy, max(3, (int)(6 * e)), C(255, 210, 90));
     cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255));
     cv.drawString("A bientot !", 160, 28); cv.setTextDatum(top_left);
-    cv.pushSprite(0, 0); esp_task_wdt_reset();
+    pousser(); esp_task_wdt_reset();
     while (millis() - t0 < 55) delay(2);
   }
-  bip(700, 80); bip(500, 130);
+  bipAttendre(700, 80);
 }
 void endormirEcran() {
   if (!veille && page != 32 && page != 33) saluerAuRevoir();
@@ -2887,7 +3012,7 @@ void reveillerEcran() {
     dessinerBoite(); dessinerPerso1();
     int px, py; float e; positionEcran(px, py, e);
     int r = 64 - f * 8; if (r > 0) { cv.drawCircle(px, py, r, C(0, 230, 255)); cv.drawCircle(px, py, r + 3, C(255, 40, 170)); }
-    cv.pushSprite(0, 0); esp_task_wdt_reset(); delay(32);
+    pousser(); esp_task_wdt_reset(); delay(32);
   }
   jouer(S_REVEIL);
 }
@@ -2914,7 +3039,9 @@ void changerVolume(int pas) {
   if (page == 32) corbeauSonVolume(); else if (!lectureEnCours) bip(900, 25);
 }
 void afficherVolume() {          // une barre en haut de l'écran, sur toutes les pages, quand on règle le son
-  if (millis() > finAffVolume || veille) return;
+  static bool barreVue = false;
+  if (millis() > finAffVolume || veille) { if (barreVue) { barreVue = false; invaliderImage(); } return; }      // la barre disparait : l'image est renvoyee en entier une fois
+  barreVue = true;
   M5.Display.fillRoundRect(60, 2, 200, 22, 6, TFT_BLACK); M5.Display.drawRoundRect(60, 2, 200, 22, 6, 0x07FF);
   M5.Display.setFont(&fonts::lgfxJapanGothic_12); M5.Display.setTextColor(TFT_WHITE, TFT_BLACK); M5.Display.setTextDatum(middle_left); M5.Display.drawString("Son", 66, 13);
   M5.Display.fillRect(96, 8, 150, 10, 0x2104); M5.Display.fillRect(96, 8, R.volume * 150 / 255, 10, 0x07E0);
@@ -3146,6 +3273,7 @@ String jsonEtat() {
   d["message"] = W.message; d["lat"] = R.lat; d["lon"] = R.lon; d["luminosite"] = R.luminosite; d["volume"] = R.volume;
   d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = !wifiToujours; d["wifiToujours"] = wifiToujours; d["dessus"] = vueDessusOn; d["presence"] = presenceOn; d["econf"] = ecoForte; d["matvis"] = matVisible;
   d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo;
+  ajouterMesuresEcran(d);
   JsonObject m = d["modules"].to<JsonObject>();
   for (int i = 0; i < M_NB; i++) m[CLES_MODULES[i]] = R.actif[i];
   String s; serializeJson(d, s); return s;
@@ -3179,7 +3307,7 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("vol")) R.volume = constrain(serveur.arg("vol").toInt(), 0, 255);
   if (serveur.hasArg("gravite")) { W.gravite = serveur.arg("gravite") == "1"; prefs.putBool("grav", W.gravite); }
   if (serveur.hasArg("message")) { W.message = serveur.arg("message"); W.finMessage = serveur.hasArg("duree") ? millis() + serveur.arg("duree").toInt() * 1000UL : 0; }
-  if (serveur.hasArg("nouveaucode") && serveur.arg("nouveaucode").length() >= 3) prefs.putString("code", serveur.arg("nouveaucode"));
+  if (serveur.hasArg("nouveaucode") && serveur.arg("nouveaucode").length() >= 3) prefs.putString("code", serveur.arg("nouveaucode")); codeMajOk = false;
   if (serveur.hasArg("direct")) { direct = serveur.arg("direct") == "1"; prefs.putBool("direct", direct); changerDirect = true; }
   if (serveur.hasArg("eco")) { eco = serveur.arg("eco") == "1"; wifiToujours = !eco; prefs.putBool("eco", eco); prefs.putBool("wifitj", wifiToujours); changerDirect = true; }
   if (serveur.hasArg("econf")) { ecoForte = serveur.arg("econf") == "1"; prefs.putUChar("econiv", ecoForte ? 1 : 0); appliquerPalier(); }
@@ -3283,6 +3411,7 @@ void demarrerServeur() {
     d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["canalMaj"] = canalTest ? "test" : "stable"; d["ip"] = WiFi.localIP().toString();
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
     d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["repos"] = reposNiv; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
+    ajouterMesuresEcran(d);
     d["fps"] = cb::fpsMoy10 / 10.0f; d["fpsmin"] = cb::fpsMin; d["msimage"] = cb::emaTot; d["msmax"] = cb::msMax; d["cbCadenceMax"] = (cb::OP.cad == 0 ? 20 : (cb::OP.cad == 1 ? 25 : 30)); d["cbAllegement"] = cb::qMin ? 2 : (cb::qDeg ? 1 : 0); d["cbEcran80MHz"] = cb::ecr80;
   d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
     d["uptimeMs"] = millis(); d["prEtat"] = pr::etat; d["prAbsMs"] = pr::absent() ? (uint32_t)(millis() - pr::debAbsence) : 0; d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
@@ -3351,15 +3480,17 @@ static int ecoPalier() {      // 0 plein régime ; 1 : 30 s sans toucher (60 s e
 void loop() {
   M5.update();
   esp_task_wdt_reset();
+  sonPomper();
   static uint32_t tLent = 0, tSon = 0, tDessin = 0, tPhysique = millis();
   uint32_t m = millis();
   if (finVibre && m > finVibre) { finVibre = 0; M5.Power.setVibration(0); }
   if (m - tLent > 2000) {
     tLent = m;
     bool avantUsb = brancheUsb; brancheUsb = M5.Power.getVBUSVoltage() > 4000;
-    Serial.printf("[energie] pourcent=%d pile=%dmV usb=%dmV courant=%dmA charge=%d veille=%d\n", W.batterie, (int)M5.Power.getBatteryVoltage(), (int)M5.Power.getVBUSVoltage(), (int)M5.Power.getBatteryCurrent(), (int)W.charge, (int)veille);
+    cacheTensionMv = (int)M5.Power.getBatteryVoltage(); cacheCourantMa = (int)M5.Power.getBatteryCurrent();
+    { static uint32_t tSerie = 0; if (m - tSerie > 30000) { tSerie = m; Serial.printf("[energie] pourcent=%d pile=%dmV usb=%dmV courant=%dmA charge=%d veille=%d\n", W.batterie, cacheTensionMv, (int)M5.Power.getVBUSVoltage(), cacheCourantMa, (int)W.charge, (int)veille); } }      // trace rare : un Serial.printf bloque la boucle une dizaine de ms
     moduleBatterie();
-    { float ma = -M5.Power.getBatteryCurrent(); if (brancheUsb) consoMa = 0; else { if (ma < 0) ma = 0; consoMa = (consoMa == 0) ? ma : consoMa * 0.85f + ma * 0.15f; } }
+    { float ma = -(float)cacheCourantMa; if (brancheUsb) consoMa = 0; else { if (ma < 0) ma = 0; consoMa = (consoMa == 0) ? ma : consoMa * 0.85f + ma * 0.15f; } }
     if (M5.In_I2C.readRegister8(0x34, 0x62, 400000) != 8) { M5.In_I2C.writeRegister8(0x34, 0x61, 4, 400000); M5.In_I2C.writeRegister8(0x34, 0x62, 8, 400000); }
     if (brancheUsb != avantUsb) appliquerEconomie();
     if (brancheUsb && !avantUsb) { if (veille) reveillerEcran(); activiteReelle(); if (FA.aime[EV_COURANT] < 0) reagir(EV_COURANT); else dire(phrase(6), 3500); }       // on le branche : l'écran se rallume
@@ -3411,14 +3542,17 @@ void loop() {
       histMvt[histMvtPos] = (uint8_t)h; histMvtPos = (histMvtPos + 1) % (int)sizeof(histMvt);
     }
     { int p = ecoPalier(); if (p != palierEco) { palierEco = p; appliquerPalier(); } }
-    uint32_t periode = (page == 32 ? cb::periodeMs() : (page == 33 ? 18u : (brancheUsb ? 33u : 50u)));
+    uint32_t periode = (page == 32 ? cb::periodeMs() : (page == 33 ? 18u : 33u));
     if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;      // personne ne touche : 15 images/s, puis 8
     if (page == 0 || page == 32) periode = pr::periode(periode);      // presence : en absence 4 images/s (la scene d'entree ou de sortie garde la cadence normale)
     if (!veille) {
       if (page == 32) {      // corbeaux : cadence fixe (pas de dérive : 30 images/s tiennent vraiment 30 images/s quand le dessin suit) ; s'il prend du retard on repart de maintenant
         const uint32_t ecoule = m - tDessin;
         if (ecoule >= periode) { tDessin = (ecoule < periode * 2u) ? tDessin + periode : m; dessinerPage(); afficherVolume(); }
-      } else if (m - tDessin > periode) { tDessin = m; dessinerPage(); afficherVolume(); }
+      } else {      // autres ecrans : 30 images/s a pas fixe (la cadence ne derive plus : 33 ms entre deux images, pas 33 ms + le temps de dessin) ; mesure par ecran
+        const uint32_t ecoule = m - tDessin;
+        if (ecoule >= periode) { tDessin = (ecoule < periode * 2u) ? tDessin + periode : m; imgPousse = false; const uint32_t u0 = micros(); dessinerPage(); if (imgPousse) compterEcran(page, micros() - u0); afficherVolume(); }
+      }
     }
     if (sniffActif || detection || page == 11 || page == 13 || ((page == 34 || page == 35) && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (int32_t)delaiVeilleEcran()) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
@@ -3452,7 +3586,7 @@ void loop() {
     etaitCo = co;
   }
   if (changerDirect) { changerDirect = false; appliquerDirect(); }
-  if (demandeMaj) majDepuisInternet();
+  if (demandeMaj) { majDepuisInternet(); invaliderImage(); }
   {   // Internet seulement quand il sert : branché il reste connecté ; sur pile, le Wi-Fi s'éteint dès qu'on n'en a plus besoin
     static uint32_t debutAttente = 0, pauseMeteo = 0;
     bool meteoDue = R.actif[M_METEO] && (!W.meteoValide || m - W.derniereMeteo > (brancheUsb ? 30UL : (ecoForte ? 180UL : 60UL)) * 60000UL);

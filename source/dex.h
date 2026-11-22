@@ -460,7 +460,7 @@ static void majApercuOeil() { if (ecran == 2) { cb::oeilActif = (uint8_t)(sel + 
 static void quitterApercu() { cb::chargerOeil(); }      // on revient à l'œil réellement choisi
 static void ouvrir() { ouvert = true; cb::vitesseEcran(prefs.getUChar("cbecr", 0) != 0); scL = 0; scP = 0; defile = false; zone = 0; flingV = 0; ecran = 0; sel = 0; tab = 0; sale = true; volVu = false; animSens = 0; cbxOk = false; bas = false; mc->idx = mt->idx = -1; cb::chargerOeil(); batirListe(); }
 static void quitter() { if (!ouvert) return; ouvert = false; cb::vitesseEcran(false); narrArreter(); quitterApercu(); if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); } }
-static void pousser() { cv.pushSprite(0, 0); }
+static void pousser() { ::pousser(); }      // envoi par zones modifiees (3.1.31)
 static void dessiner() {
   if (!ouvert) ouvrir();
   uint32_t m = millis();
