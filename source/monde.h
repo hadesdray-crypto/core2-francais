@@ -17,7 +17,7 @@ static const float MX0 = -240.0f, MX1 = 560.0f;            // largeur des bandes
 static const float FY0 = 80.0f, FY1 = 208.0f;              // bande lointaine : arbres lointains et collines
 static const float NY0 = 80.0f, NY1 = 256.0f;              // bande proche : sol, maison, mare, champ, clôtures
 static const float AX0 = -20.0f, AY0 = 0.0f;               // bande de l'arbre (origine)
-static const int WL = 680, HF = 109, HN = 150, WA = 230, HA = 218;      // tailles en pixels à l'échelle ZN
+static const int WL = (int)(800.0f * ZN + 0.5f), HF = (int)(128.0f * ZN + 0.5f), HN = (int)(176.0f * ZN + 0.5f), WA = (int)(271.0f * ZN + 0.5f), HA = (int)(257.0f * ZN + 0.5f);      // tailles en pixels à l'échelle ZN
 static const float HX = 430.0f, HB = 199.0f;               // maison : milieu et pied
 static const float PX = -70.0f, PY = 205.0f, PRX = 34.0f, PRY = 5.5f;      // mare
 static const float CH0 = -176.0f, CH1 = -112.0f;           // champ : bords gauche et droit
@@ -73,11 +73,11 @@ static void bakeCiel() {
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sy = 2 + (int)((seed >> 8) % 140);
     if (hypotf(sx - mxs, sy - mys) < (LUNE_R + 24) * zs) continue;
     int v = (int)((seed >> 4) % 100);
-    float sk = OP.hor ? 0.50f : 1.0f; g.drawPixel(sx, sy, v < 70 ? CF(150 * sk, 62 * sk, 74 * sk) : CF(205 * sk, 112 * sk, 120 * sk));
+    float sk = (OP.hor == 2) ? 0.50f : ((OP.hor == 1) ? 0.75f : 1.0f); g.drawPixel(sx, sy, v < 70 ? CF(150 * sk, 62 * sk, 74 * sk) : CF(205 * sk, 112 * sk, 120 * sk));
   }
   brume(g, 110, 100, 100, 3, 0.35f); brume(g, 210, 128, 110, 3, 0.35f); brume(g, 90, 150, 100, 3, 0.35f);
   if (OP.hor) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < (OP.hor == 2 ? 4 : 2); i++) {
       float oy = -9.0f + i * 7.0f + 1.5f * sinf(i * 2.1f), ox = 16.0f * sinf(i * 2.3f + 0.6f), rx = (30.0f + 9.0f * ((i * 5) % 3)) * zs, ry = (2.2f + 0.7f * (i % 3)) * zs;
       g.fillEllipse((int)(mxs + ox * zs), (int)(mys + oy * zs), (int)rx, (int)(ry + 0.5f), CF(15 + 4 * (i % 2), 1, 3));
       g.fillEllipse((int)(mxs + (ox + 14.0f) * zs), (int)(mys + (oy + 1.5f) * zs), (int)(rx * 0.5f), (int)(ry * 0.8f + 0.5f), CF(11, 0, 2));
@@ -107,7 +107,7 @@ static void bakeLoin() {
   }
   float gy = solHaut(160.0f) * zs + zty; int h = g.height();
   for (int x = 0; x < g.width(); x++) {
-    float xs = (float)x - 180.0f;      // colonne de l'écran quand la caméra est au repos : les collines coïncident avec la vue normale
+    float xs = (float)x + 160.0f + (MX0 - 160.0f) * ZN;      // colonne de l'écran quand la caméra est au repos : les collines coïncident avec la vue normale
     float yl1 = gy - 24.0f + 6.0f * sinf(xs / 40.0f + 1.0f) + 4.0f * sinf(xs / 17.0f); g.drawFastVLine(x, (int)yl1, h - (int)yl1, CF(66 * ambCol, 9 * ambCol, 15 * ambCol));
     float yl2 = gy - 12.0f + 5.0f * sinf(xs / 55.0f + 2.0f) + 3.0f * sinf(xs / 23.0f); g.drawFastVLine(x, (int)yl2, h - (int)yl2, CF(46 * ambCol, 6 * ambCol, 11 * ambCol));
   }
@@ -184,7 +184,7 @@ static void bakeVig() {
     float dy = (y - 100.0f) / 106.0f;
     for (int x = 0; x < 320; x++) {
       float dx = (x - 160.0f) / 165.0f, d2 = dx * dx + dy * dy, f = 1.0f;
-      if (d2 >= 0.35f) { float t = lim((d2 - 0.35f) / 1.15f, 0.0f, 1.0f); f = 1.0f - 0.93f * t * t * (3.0f - 2.0f * t); }
+      if (d2 >= 0.35f) { float t = lim((d2 - 0.35f) / 1.15f, 0.0f, 1.0f); f = 1.0f - 0.93f * ambVig * t * t * (3.0f - 2.0f * t); }
       vigK[y * 320 + x] = (uint8_t)(f * 255.0f + 0.5f);
     }
   }
@@ -577,7 +577,7 @@ static bool camPilote(float dt) {
   }
   cmT += dt;
   { static int lent = 0;      // si l'image prend trop de temps (vue recomposée), on referme la caméra et on arrête les vues spontanées
-    if (msDessin > 110) { if (++lent > 30 && cmT > 2.0f && !cmFin) { fermer(); gLarge = 1e8f; lent = 0; } } else if (lent > 0) lent--; }
+    if (msDessin > 80) { if (++lent > 20 && cmT > 2.0f && !cmFin) { fermer(); gLarge = 1e8f; lent = 0; } } else if (lent > 0) lent--; }
   if (bloque && !cmFin) fermer();
   float tz = ZN, tx = 160.0f, ty = 128.0f;
   if (!cmFin) {

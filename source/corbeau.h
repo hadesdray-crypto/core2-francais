@@ -45,7 +45,7 @@ static const int NOB = 4;        // objets au sol / qui tombent
 static const int NPE = 6;        // perchoirs
 static const int NPART = 44;    // plumes
 static const int NFX = 6;       // éclats lumineux
-static const int NENT = NCB + NOB + 11;
+static const int NENT = NCB + NOB + 12;
 static const int H_SCENE = 206; // la barre de nourriture occupe le bas
 static const float SOL_Y = 201.0f;
 static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {224, 125.6f}, {88, 62.5f}, {24, 94.5f}};
@@ -81,8 +81,9 @@ static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 
 
 // ---------- réglages du mode (nouvelles clés mémoire : cbnb, cbvis, cbsec, cbvib, cbamb, cbfps, cboeufs) ----------
 // nouvelles clés (2.9.0) : cbact (activité 1 à 5), cbgp (visites au gros plan 0 à 3), cboefq (fréquence des œufs 0 à 3), cbhor (ambiance Horreur)
-struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor; };
-static Opt OP = {5, 1, 1, 1, 0, 0, 3, 2, 2, 1};      // nombre de corbeaux (3 à 6), visiteur (0 jamais, 1 rare, 2 souvent), secousse, vibration, ambiance, images/s, activité (1 à 5), gros plan (0 jamais, 1 rare, 2 normale, 3 souvent), œufs (idem), horreur
+struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q; };      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
+static Opt OP = {5, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0};
+static bool qDeg = false;      // fluidité : quand l'image prend trop de temps, effets encore réduits (automatique)      // nombre de corbeaux (3 à 6), visiteur (0 jamais, 1 rare, 2 souvent), secousse, vibration, ambiance, images/s, activité (1 à 5), gros plan (0 jamais, 1 rare, 2 normale, 3 souvent), œufs (idem), horreur
 static bool panneau = false, panSale = true, ambChange = false, oeufsSale = false;
 static uint32_t nbOeufs = 0;               // œufs éclos
 static int nAct = 5;
@@ -95,9 +96,12 @@ static void appliquerAmb() {
     default: ambK = 1.0f; ambRouge = 0.0f; ambLune = 1.0f; ambBrume = 1.0f; ambEt = 34; break;      // lune et étoiles
   }
   ambCol = 1.0f; ambVig = 0.0f; ambBrC[0] = 24.0f; ambBrC[1] = 1.0f; ambBrC[2] = 9.0f;
-  if (OP.hor) {      // Horreur : ciel presque noir à lueur rouge très faible, lune sanguine voilée, brume noire, bords noirs, étoiles rares
+  if (OP.hor == 2) {      // Horreur : ciel presque noir à lueur rouge très faible, lune sanguine voilée, brume noire, bords noirs, étoiles rares
     ambK *= 0.50f; ambRouge *= 0.2f; ambLune *= 0.60f; ambBrume = 1.0f; ambEt = (ambEt > 9) ? 9 : ambEt / 2 + 1; ambCol = 0.50f; ambVig = 1.0f;
     ambBrC[0] = 4.0f; ambBrC[1] = 0.0f; ambBrC[2] = 2.0f;
+  } else if (OP.hor == 1) {      // Sombre (par défaut) : environ 35 % plus lumineux que l'Horreur, ciel et décor lisibles, lune bien visible, bords peu assombris
+    ambK *= 0.60f; ambRouge *= 0.4f; ambLune *= 0.75f; ambBrume = 1.0f; ambEt = (ambEt > 18) ? 18 : ambEt; ambCol = 0.60f; ambVig = 0.60f;
+    ambBrC[0] = 12.0f; ambBrC[1] = 1.0f; ambBrC[2] = 5.0f;
   }
 }
 static void appliquerSec() { static const float S[3] = {3.4f, 2.2f, 1.5f}; seuilSecousse = S[OP.sec > 2 ? 1 : OP.sec]; }
@@ -119,7 +123,8 @@ static void chargerOptions() {
   OP.act = prefs.getUChar("cbact", 3); if (OP.act < 1 || OP.act > 5) OP.act = 3;
   OP.gp = prefs.getUChar("cbgp", 2); if (OP.gp > 3) OP.gp = 2;
   OP.oe = prefs.getUChar("cboefq", 2); if (OP.oe > 3) OP.oe = 2;
-  OP.hor = prefs.getUChar("cbhor", 1) ? 1 : 0;      // l'ambiance Horreur est active par défaut
+  OP.hor = prefs.getUChar("cbniv", 1); if (OP.hor > 2) OP.hor = 1;      // lumière : Sombre par défaut (nouvelle clé cbniv)
+  OP.q = prefs.getUChar("cbqual", 0); if (OP.q > 2) OP.q = 0;      // qualité : Fluide par défaut (nouvelle clé cbqual)
   nbOeufs = prefs.getUInt("cboeufs", 0);
   appliquerAct(); appliquerAmb(); appliquerSec(); debug = (OP.fps != 0);
 }
@@ -136,6 +141,9 @@ static uint32_t eclGraine = 1;
 struct Ap2 { int8_t a, b, n; float t; }; static Ap2 AP;      // s'appeler entre eux
 
 static int memTas = 0, memPsram = 0;
+static float emaMaj = 0, emaCmp = 0, emaEnt = 0, emaPush = 0, emaCorb = 0, emaTot = 0;      // mesures lissées (ms) : logique, fond, dessin, envoi à l'écran, dont corbeaux
+static uint32_t uCorb = 0;      // temps passé à dessiner les corbeaux pendant l'image (µs)
+static inline uint32_t periodeMs() { return (OP.q == 0) ? 50u : ((OP.q == 1) ? 40u : 33u); }      // 20 images/s fixes en Fluide
 static uint32_t secVu = 0;
 
 struct Rect { int16_t x0, y0, x1, y1; };   // x1, y1 exclus
@@ -150,7 +158,7 @@ static Rect bbRect() { Rect r; r.x0 = (int16_t)(bbx0 - 2); r.y0 = (int16_t)(bby0
 // ---------- vue : échelle et décalage monde -> écran (1 = vue normale, 0.6 = vue large) ----------
 static float zs = 1.0f, ztx = 0.0f, zty = 0.0f;
 static const float zax = 160.0f, zay = 128.0f;      // point fixe du zoom
-static const float ZN = 0.85f;                      // échelle de la vue normale (la vue large est à 0.6)
+static const float ZN = 1.0f;                      // échelle de la vue normale (la vue large est à 0.6)
 static inline float TX(float x) { return x * zs + ztx; }
 static inline float TY(float y) { return y * zs + zty; }
 static inline float bordG() { return -ztx / zs - 34.0f; }                   // bord gauche de l'écran, en coordonnées du monde, moins une marge
@@ -506,7 +514,7 @@ static void vignette(M5Canvas& g) {      // horreur : bords noirs (dessiné une 
     for (int x = 0; x < 320; x++) {
       float dx = (x - 160.0f) / 165.0f, d2 = dx * dx + dy * dy;
       if (d2 < 0.35f) continue;
-      float t = lim((d2 - 0.35f) / 1.15f, 0.0f, 1.0f), f = 1.0f - 0.93f * t * t * (3.0f - 2.0f * t);
+      float t = lim((d2 - 0.35f) / 1.15f, 0.0f, 1.0f), f = 1.0f - 0.93f * ambVig * t * t * (3.0f - 2.0f * t);
       int k = (int)(f * 256.0f); uint8_t* p = b + ((size_t)y * 320 + x) * 2;
       uint16_t v = fort ? (uint16_t)((p[0] << 8) | p[1]) : (uint16_t)((p[1] << 8) | p[0]);
       uint16_t r5 = (uint16_t)((((v >> 11) & 31) * k) >> 8), g6 = (uint16_t)((((v >> 5) & 63) * k) >> 8), b5 = (uint16_t)(((v & 31) * k) >> 8);
@@ -563,7 +571,7 @@ struct Eclat { float x, y, t, dur, taille; bool actif; };
 static Corbeau cr[NCB];
 namespace mo { static bool partir(Corbeau& c); }
 struct VisiteGP { uint8_t ph; float t, dur, sx, sy, ex, ey, th, choc, tCl, cl, tCri, ouv, sc, dy, tChoc; int8_t k, n, nf, mir; bool jeune, impact, cri;
-  float px, py, ps, dvv, pit, pk, x0, y0, s0, dv0, p0, ix[3], iy[3]; int8_t fis; uint32_t gr; };      // px..pit : position, taille, orientation actuelles ; x0..p0 : départ de la sortie ; ix, iy : points d'impact (fissures)      // visite d'un corbeau devant l'écran
+  float px, py, ps, dvv, pit, pk, x0, y0, s0, dv0, p0, ix[3], iy[3]; float fx0, fy0, ha0, hb0; int8_t fis; uint32_t gr; };      // px..pit : position, taille, orientation actuelles ; x0..p0 : départ de la sortie ; ix, iy : points d'impact (fissures)      // visite d'un corbeau devant l'écran
 static VisiteGP GP; static Corbeau vcb; static float gVisGP = 60.0f; static uint32_t tToucher = 0;
 static Obj ob[NOB];
 static Plume pl[NPART];
@@ -763,6 +771,7 @@ static void sonCri() { static const int ids[7] = {SN_CROA1, SN_CROA2, SN_CROA3, 
 
 // ---------- effets ----------
 static void plumes(float x, float y, int n) {
+  if (OP.q == 0) n = (n + 1) / 2;
   for (int k = 0; k < n; k++) {
     int idx = -1; float pire = 1e9f;
     for (int i = 0; i < NPART; i++) { if (!pl[i].actif) { idx = i; break; } if (pl[i].vie < pire) { pire = pl[i].vie; idx = i; } }
@@ -828,7 +837,7 @@ static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, 
   { float tx_, ty_;      // pointes déchirées au bord de fuite
     PW(Wu + tau * 14.0f * wl - dhu * 2.0f, Wv + tav * 14.0f * wl - dhv * 2.0f, tx_, ty_); tri(g, q[4], q[5], q[6], q[7], tx_, ty_, col);
     PW(su + dau * la * 0.45f + tau * 15.0f * wl, sv + dav * la * 0.45f + tav * 15.0f * wl, tx_, ty_); tri(g, q[6], q[7], q[8], q[9], tx_, ty_, col); }
-  for (int k = 0; k < 7; k++) {
+  for (int k = 0; k < (OP.q == 0 ? (qDeg ? 4 : 5) : 7); k++) {
     float phi = k * 0.14f + ((k & 1) ? 0.05f : 0.0f), cph = cosf(phi), sph = sinf(phi);
     float du = dhu * cph + thu * sph, dv = dhv * cph + thv * sph, L = lh * (1.0f - 0.045f * k) * ((k & 1) ? 0.80f : 1.04f);
     float ru = Wu + dhu * 0.7f * k + tau * 0.6f * k, rv = Wv + dhv * 0.7f * k + tav * 0.6f * k, w = 2.4f * wl + 0.7f;
@@ -874,11 +883,11 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     for (int k = 0; k < 2; k++) { float sk = k ? 1.0f : -1.0f; ligne(g, hx + sk * 1.3f * s * dv - sk * 1.8f * s * sn, hy, hx + dv * (3.0f + sk * 1.5f) * s - sk * 2.4f * s * sn, hy + 6.0f * s * e, NOIR); }
   }
   { float sp = hypotf(c.vx, c.vy);      // lignes de vitesse (parallèles à la trajectoire) et image fantôme des ailes : flou de mouvement
-    if (c.wl > 0.5f && c.etat == E_VOL && sp > 95.0f) {
+    if (OP.q >= 1 && c.wl > 0.5f && c.etat == E_VOL && sp > 95.0f) {
       float ux = -c.vx / sp, uy = -c.vy / sp, qx = -uy, qy = ux;
       for (int i = 0; i < 4; i++) { float o = (i - 1.5f) * 6.0f * s, l0 = 14.0f * s + i * 2.5f * s, l1 = l0 + (12.0f + 6.0f * (i % 2) + 0.05f * sp) * s; ligne(g, R_.cx + ux * l0 + qx * o, R_.cy + uy * l0 + qy * o, R_.cx + ux * l1 + qx * o, R_.cy + uy * l1 + qy * o, (i % 2 == 0) ? C(196, 74, 62) : C(130, 40, 40)); }
     }
-    if (c.wl > 0.5f && c.etat == E_VOL) deuxAiles(g, R_, c.poseP, c.wl, C(60, 9, 14)); }
+    if (OP.q >= 1 && c.wl > 0.5f && c.etat == E_VOL) deuxAiles(g, R_, c.poseP, c.wl, C(60, 9, 14)); }
   // ailes ouvertes (vol)
   if (c.wl > 0.04f) deuxAiles(g, R_, c.pose, c.wl, NOIR);
   // queue : plumes pointues qui pendent (perché) ou se rassemblent vers l'arrière (vol), et une plume dominante relevée ; en éventail latéral dans les virages
@@ -932,7 +941,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       float wz = ws * 4.2f; if (sn < 0.001f && c.ro == 0.0f) wz = 0.0f;
       for (int i = 0; i < 5; i++) R_.q(wp[i * 2], wp[i * 2 + 1], wz, q[i * 2], q[i * 2 + 1]);
       poly(g, q, 5, NOIR);
-      for (int k = 0; k < 4; k++) {
+      for (int k = 0; k < (qDeg ? 2 : 4); k++) {
         float u0 = 2.0f - 3.8f * k, v0 = 3.0f, lg = (9.0f + ((k % 2 == 0) ? 4.0f : 0.0f)) * c.wd, x1, y1, x2, y2, x3, y3;
         R_.q(u0 + 2.0f, v0 - 1.4f, wz, x1, y1); R_.q(u0 - 2.0f, v0 + 0.8f, wz, x2, y2); R_.q(u0 - lg, v0 + 1.0f + ((k % 2) ? 2.0f : -1.0f), wz, x3, y3);
         tri(g, x1, y1, x2, y2, x3, y3, NOIR);
@@ -959,7 +968,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     dessinerObjet(g, c.objet - 1, X + dv * 1.5f, Y + 2.0f, 3.6f * s + 0.8f, dv > 0 ? 0.4f : 2.7f, tw);
   }
   // liseré rouge sombre côté lune : du volume ; le ventre s'éclaire quand le corbeau se montre de face
-  { const uint16_t RIMC = OP.hor ? C(70, 12, 18) : C(104, 20, 26); float x1, y1, x2, y2;
+  { const uint16_t RIMC = (OP.hor == 2) ? C(70, 12, 18) : ((OP.hor == 1) ? C(88, 16, 22) : C(104, 20, 26)); float x1, y1, x2, y2;
     const float bd[3][4] = {{8, -5.4f, 0, -6.2f}, {0, -6.2f, -9, -5}, {-9, -5, -14, -3}};
     for (int i = 0; i < 3; i++) { P(bd[i][0], bd[i][1], x1, y1); P(bd[i][2], bd[i][3], x2, y2); ligne(g, x1, y1, x2, y2, RIMC); }
     const float hd[4][4] = {{-3.2f, -4.6f, 0, -5.2f}, {0, -5.2f, 3.4f, -4.4f}, {4.2f, -3.4f, 7.6f, -3.1f}, {7.6f, -3.1f, 13, 0.6f}};
@@ -980,7 +989,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       for (int e = 0; e < 2; e++) {
         float es = e ? -1.0f : 1.0f, vis = 0.85f * dv * es + 0.5f * sn; if (vis < -0.05f) continue;
         float kk = lim((vis + 0.05f) / 0.45f, 0.0f, 1.0f), rr = (0.55f + 0.45f * kk) * ek, ex, ey; PHw(1.6f, -1.0f, es * 3.2f, ex, ey);
-        if (OP.hor) { float lu = lueurOeil * (1.0f + 0.05f * sinf(c.resp * 5.3f)); disque(g, ex, ey, (3.9f * s + 1.6f) * rr * lu, C(34, 3, 7)); disque(g, ex, ey, (2.7f * s + 1.0f) * rr * lu, C(78, 6, 11)); }      // horreur : l'œil est presque la seule lumière, il éclaire la tête autour de lui
+        if (OP.hor && OP.q >= 1) { float lu = lueurOeil * (1.0f + 0.05f * sinf(c.resp * 5.3f)) * ((OP.hor == 2) ? 1.0f : 0.75f); disque(g, ex, ey, (3.9f * s + 1.6f) * rr * lu, C(34, 3, 7)); disque(g, ex, ey, (2.7f * s + 1.0f) * rr * lu, C(78, 6, 11)); }      // horreur : l'œil est presque la seule lumière, il éclaire la tête autour de lui
         disque(g, ex, ey, (1.7f * s + 0.6f) * rr, cA); disque(g, ex, ey, (1.1f * s + 0.2f) * rr, cC);
       }
     } else { float ex, ey; PHw(1.6f, -1.0f, pro * 3.2f, ex, ey); ligne(g, ex - 1.5f, ey, ex + 1.5f, ey, C(70, 8, 12)); }
@@ -1198,44 +1207,48 @@ static void corniche(M5Canvas& g, float y) {      // la corniche de pierre sur l
   g.drawFastHLine(0, yy, 320, C(118, 24, 32)); g.drawFastHLine(0, yy + 1, 320, C(70, 10, 18));
   for (int i = 0; i < 9; i++) { int x = 14 + i * 37 + (i * 17) % 11; g.drawFastVLine(x, yy + 3, 6 + (i * 5) % 9, C(24, 8, 12)); }
 }
-static void poserGP() {      // une seule trajectoire continue (approche, face à la vitre, départ) : la taille et la position ne sautent jamais
-  Corbeau& c = vcb; const float mir = (float)GP.mir, HS = GP.jeune ? 2.1f : 2.6f, HX = 160.0f - mir * 14.0f, HY = 106.0f;
-  float x = HX, y = HY, s = HS, dvv = mir * 0.55f, pit = 0.45f, pk = 0.0f, fan = 0.55f;
-  const float t = GP.t;
-  if (GP.ph == 1) {      // il arrive du fond, grossit, bat des ailes (3 à 4 grands battements), ralentit et se cabre
-    float u = lim(t / GP.dur, 0.0f, 1.0f), e = pas(u);
-    s = lerpf(0.20f, HS, powf(u, 2.3f)); x = lerpf(GP.sx, HX, e); y = lerpf(GP.sy, HY, powf(u, 1.4f)) - 16.0f * sinf(3.1416f * u);
-    dvv = mir * lerpf(1.0f, 0.55f, pas((u - 0.35f) / 0.65f)); pit = lerpf(0.10f, 0.45f, pas((u - 0.55f) / 0.45f)); fan = lerpf(0.0f, 0.55f, pas((u - 0.55f) / 0.45f));
-  } else if (GP.ph == 5) {      // il repart en s'éloignant et en rapetissant, sans coupure
-    float u = lim(t / GP.dur, 0.0f, 1.0f), q = u * u, dir = (GP.ex >= GP.x0) ? 1.0f : -1.0f;
-    x = lerpf(GP.x0, GP.ex, q); y = lerpf(GP.y0, GP.ey, q) - 10.0f * sinf(3.1416f * u); s = lerpf(GP.s0, 0.12f, powf(u, 1.3f));
-    dvv = lerpf(GP.dv0, dir, pas(u / 0.4f)); pit = lerpf(GP.p0, 0.08f, pas(u / 0.35f)); fan = lerpf(0.55f, 0.1f, pas(u / 0.5f));
-  } else {      // face à la vitre : il reste en l'air, ailes ouvertes, et frappe du bec
+static void poserGP() {      // une seule trajectoire continue : il saute de sa branche, grossit en battant des ailes, s'arrête net devant la vitre, tourne la tête, frappe du bec, repart en rapetissant
+  Corbeau& c = vcb; const float mir = (float)GP.mir, HS = GP.jeune ? 2.5f : 3.0f, HX = 160.0f - mir * 12.0f, HY = 112.0f, T0 = 0.30f, t = GP.t;
+  float x = HX, y = HY, s = HS, dvv = mir * 0.45f, pit = 0.42f, pk = 0.0f, fan = 0.55f, wl = 1.0f, ha = -0.30f; bool pied = false, accroupi = false;
+  if (GP.ph == 1) {
+    if (t < T0) {      // il se ramasse sur sa branche, les ailes commencent à s'ouvrir
+      float e = pas(t / T0); x = GP.sx; y = GP.sy + 2.6f * GP.s0 * e; s = GP.s0; dvv = GP.dv0; pit = lerpf(GP.p0, 0.55f, e); fan = 0.0f; wl = pas((t - 0.10f) / 0.20f); pied = (t < T0 - 0.04f); accroupi = true;
+      ha = lerpf(GP.ha0, -0.30f, e);
+    } else {
+      float u = lim((t - T0) / (GP.dur - T0), 0.0f, 1.0f), v = 0.7f * u + 0.3f * pas(u), e = pas(u), k = 1.0f - GP.s0 / HS;
+      s = GP.s0 / (1.0f - k * v); x = lerpf(GP.sx, HX, e) - 20.0f * sinf(3.1416f * u); y = lerpf(GP.sy, HY, e) - 24.0f * sinf(3.1416f * u);
+      dvv = lerpf(GP.dv0, mir * 0.55f, pas(u / 0.6f)); pit = lerpf(lerpf(0.55f, 0.12f, pas(u / 0.25f)), 0.42f, pas((u - 0.55f) / 0.45f)); fan = lerpf(0.0f, 0.55f, pas((u - 0.5f) / 0.5f));
+    }
+  } else if (GP.ph == 5) {
+    float u = lim(t / GP.dur, 0.0f, 1.0f), v2 = powf(u, 1.5f), dir = (GP.ex >= GP.x0) ? 1.0f : -1.0f, k = GP.s0 / 0.15f - 1.0f;
+    s = GP.s0 / (1.0f + k * v2); x = lerpf(GP.x0, GP.ex, u * u) ; y = lerpf(GP.y0, GP.ey, u * u) - 16.0f * sinf(3.1416f * u);
+    dvv = lerpf(GP.dv0, dir, pas(u / 0.45f)); pit = lerpf(GP.p0, 0.08f, pas(u / 0.35f)); fan = lerpf(0.55f, 0.1f, pas(u / 0.5f));
+  } else {      // face à la vitre : en l'air, ailes ouvertes, il tourne (de face puis de trois quarts), puis frappe
     y += 2.5f * sinf(t * 3.1f);
+    if (GP.ph == 3) { float q = lim(t / GP.dur, 0.0f, 1.0f); dvv = mir * lerpf(0.55f * cosf(1.6f * 3.1416f * q), 0.45f, pas((q - 0.75f) / 0.25f)); }
     if (GP.ph == 4) {
       float cyc = 0.9f, tc = t - GP.nf * cyc, sc = 1.0f;
       if (tc < 0.34f) { float e = pas(tc / 0.34f); sc = 1.0f - 0.05f * e; pk = -0.7f * e; }
-      else if (tc < 0.42f) { float u = (tc - 0.34f) / 0.08f; sc = lerpf(0.95f, 1.22f, u); pk = lerpf(-0.7f, 1.0f, u); dvv = mir * lerpf(0.55f, 0.40f, u); }
-      else { float u = pas((tc - 0.42f) / 0.48f); sc = lerpf(1.22f, 1.0f, u); pk = lerpf(1.0f, 0.0f, u); dvv = mir * lerpf(0.40f, 0.55f, u); }
+      else if (tc < 0.42f) { float u = (tc - 0.34f) / 0.08f; sc = lerpf(0.95f, 1.22f, u); pk = lerpf(-0.7f, 1.0f, u); dvv = mir * lerpf(0.45f, 0.30f, u); }
+      else { float u = pas((tc - 0.42f) / 0.48f); sc = lerpf(1.22f, 1.0f, u); pk = lerpf(1.0f, 0.0f, u); dvv = mir * lerpf(0.30f, 0.45f, u); }
       s = HS * sc; GP.sc = sc; GP.pk = pk;
     }
   }
   GP.px = x; GP.py = y; GP.ps = s; GP.dvv = dvv; GP.pit = pit;
-  float cp = coup(c.phase), cpl = coup(fmodf(c.phase + 0.93f, 1.0f));
-  c.etat = E_VOL; c.visible = true; c.flash = 0; c.objet = 0; c.duvet = 0; c.hum = 0; c.pied = false; c.sq = 1.0f; c.ro = 0.10f * sinf(t * 2.2f);
-  c.s = s; c.x = x; c.y = y; c.dv = dvv; c.d = (dvv >= 0.0f) ? 1 : -1; c.pitch = pit; c.fan = fan; c.wl = 1.0f;
-  c.poseP = mixA(A_HAUT, A_BAS, cpl); c.pose = mixA(A_HAUT, A_BAS, cp); c.bob = -2.4f * s * (cp - 0.4f);
-  c.ha = -0.30f + 0.5f * GP.th + 0.30f * pk; c.hb = c.ha + 0.19f + 0.25f * pk; c.bec = (GP.ph == 4) ? lim(-pk * 0.3f, 0.0f, 0.3f) : lim(GP.ouv * 2.6f, 0.0f, 1.0f); c.clin = GP.cl;
+  float cp = accroupi ? 0.0f : coup(c.phase), cpl = accroupi ? 0.0f : coup(fmodf(c.phase + 0.93f, 1.0f));
+  c.etat = E_VOL; c.visible = true; c.flash = 0; c.objet = 0; c.duvet = 0; c.hum = 0; c.pied = pied; c.fx = GP.fx0; c.fy = GP.fy0; c.fp = 0; c.sq = 1.0f; c.ro = accroupi ? 0.0f : 0.10f * sinf(t * 2.2f);
+  c.s = s; c.x = x; c.y = y; c.dv = dvv; c.d = (dvv >= 0.0f) ? 1 : -1; c.pitch = pit; c.fan = fan; c.wl = wl;
+  c.poseP = mixA(A_HAUT, A_BAS, cpl); c.pose = mixA(A_HAUT, A_BAS, cp); c.bob = accroupi ? 0.0f : -2.4f * s * (cp - 0.4f);
+  c.ha = ha + 0.5f * GP.th + 0.30f * pk; c.hb = c.ha + 0.19f + 0.25f * pk; c.bec = (GP.ph == 4) ? lim(-pk * 0.3f, 0.0f, 0.3f) : lim(GP.ouv * 2.6f, 0.0f, 1.0f); c.clin = GP.cl;
 }
-static void dessinerGP(M5Canvas& g) {
+static void dessinerGP(M5Canvas& g) {      // dessiné avec les autres éléments (boîtes englobantes) : seule la zone du corbeau est redessinée et envoyée à l'écran
   if (!GP.ph) return;
   const float szs = zs, sztx = ztx, szty = zty;      // la visite se dessine en pixels écran (zoom 1), le monde reprend ensuite sa place
   float shk = (GP.choc > 0.2f) ? GP.choc : 0.0f;
-  if (GP.ph == 1) { float u = lim(GP.t / GP.dur, 0.0f, 1.0f); shk += 1.4f * u * u * u; } else if (GP.ph <= 4) shk += 0.5f;      // la caméra tremble de plus en plus près
+  if (GP.ph == 1) { float u = lim(GP.t / GP.dur, 0.0f, 1.0f); shk += 1.2f * u * u * u; } else if (GP.ph <= 4) shk += 0.4f;      // la caméra tremble de plus en plus près
   zs = 1.0f; ztx = shk * sinf(GP.t * 71.0f); zty = shk * 0.7f * cosf(GP.t * 57.0f);
-  ell(g, GP.px, 199.0f, 4.0f + 9.0f * GP.ps, 1.0f + 1.6f * GP.ps, C(0, 0, 0));      // l'ombre au sol grandit avec lui
   dessinerCorbeau(g, vcb);
-  { float f = (GP.ph == 5) ? 1.0f - pas(GP.t / (GP.dur * 0.6f)) : 1.0f;      // fissures dans la vitre : de plus en plus grandes à chaque coup
+  { float f = (GP.ph == 5) ? 1.0f - pas(GP.t / (GP.dur * 0.5f)) : 1.0f;      // fissures dans la vitre : de plus en plus grandes à chaque coup
     if (f > 0.02f) for (int k = 0; k < GP.fis && k < 3; k++) {
       uint16_t cl = CF(225.0f * f, 200.0f * f, 200.0f * f);
       for (int i = 0; i < 6; i++) {
@@ -1244,9 +1257,11 @@ static void dessinerGP(M5Canvas& g) {
         ligne(g, GP.ix[k], GP.iy[k], mx, my, cl); ligne(g, mx, my, mx + cosf(b) * ln * 0.45f, my + sinf(b) * ln * 0.45f, cl);
       }
     }
-    if (GP.fis > 0 && GP.tChoc < 0.35f) {      // choc : anneaux autour du point d'impact
+    if (GP.fis > 0 && GP.tChoc < 0.35f) {      // choc : éclair blanc, puis anneaux autour du point d'impact
       int k = (GP.fis > 3 ? 3 : GP.fis) - 1; float u = GP.tChoc / 0.35f, rr = 8.0f + 44.0f * u; uint16_t cl = CF(235 * (1 - u), 205 * (1 - u), 205 * (1 - u));
-      g.drawCircle((int)(GP.ix[k] + ztx), (int)(GP.iy[k] + zty), (int)rr, cl); g.drawCircle((int)(GP.ix[k] + ztx), (int)(GP.iy[k] + zty), (int)(rr * 0.62f), cl);
+      if (GP.tChoc < 0.09f) { float q = 1.0f - GP.tChoc / 0.09f; disque(g, GP.ix[k], GP.iy[k], 6.0f + 14.0f * q, CF(255, 150 + 90 * q, 140 + 90 * q)); disque(g, GP.ix[k], GP.iy[k], 3.0f + 5.0f * q, C(255, 250, 245)); }
+      for (int r = 0; r < 2; r++) { float rad = r ? rr * 0.62f : rr, px = GP.ix[k] + rad, py = GP.iy[k];
+        for (int i = 1; i <= 18; i++) { float a = i * 0.34907f, nx = GP.ix[k] + cosf(a) * rad, ny = GP.iy[k] + sinf(a) * rad; ligne(g, px, py, nx, ny, cl); px = nx; py = ny; } }
     } }
   zs = szs; ztx = sztx; zty = szty;
 }
@@ -2056,8 +2071,8 @@ static void majSocial(float dt) {
 
 // ---------- visite d'un corbeau devant l'écran : déroulement ----------
 static void departGP() {
-  GP.x0 = GP.px; GP.y0 = GP.py; GP.s0 = GP.ps; GP.dv0 = GP.dvv; GP.p0 = GP.pit; GP.ph = 5; GP.t = 0; GP.dur = 2.0f; GP.ouv = 0;
-  float dir = random(2) ? 1.0f : -1.0f; GP.ex = 160.0f + dir * rnd(70.0f, 130.0f); GP.ey = rnd(112.0f, 142.0f); son(SN_AILES, 230);
+  GP.x0 = GP.px; GP.y0 = GP.py; GP.s0 = GP.ps; GP.dv0 = GP.dvv; GP.p0 = GP.pit; GP.ph = 5; GP.t = 0; GP.dur = 1.9f; GP.ouv = 0;
+  float dir = random(2) ? 1.0f : -1.0f; GP.ex = 160.0f + dir * rnd(120.0f, 170.0f); GP.ey = rnd(70.0f, 105.0f); son(SN_AILES, 230);
 }
 static void lancerVisite() {
   if (GP.ph || V.ph != V_RIEN || panneau || appelOn || H.actif) return;
@@ -2065,10 +2080,12 @@ static void lancerVisite() {
   for (int k = 0; k < NAD; k++) { Corbeau& c = cr[k]; if (c.etat == E_PERCHE && c.perch < 10 && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f) l[n++] = k; }
   if (!n) return;
   int k = l[random(n)]; Corbeau& c = cr[k];
+  vcb = c;      // le visiteur est ce corbeau-là : il part de sa branche, à sa taille et dans sa posture
+  memset(&GP, 0, sizeof(GP)); GP.ph = 1; GP.dur = 2.3f; GP.k = (int8_t)k; GP.mir = (c.dv >= 0.0f) ? 1 : -1; GP.jeune = (c.s < 0.8f || rnd01() < 0.25f);
+  GP.sx = TX(c.x); GP.sy = TY(c.y + c.bob); GP.s0 = c.s * zs; GP.dv0 = c.dv; GP.p0 = c.pitch; GP.fx0 = TX(c.fx); GP.fy0 = TY(c.fy); GP.ha0 = c.ha; GP.hb0 = c.hb;
+  GP.sc = 1.0f; GP.tChoc = 1.0f; GP.gr = (uint32_t)random(0x7fffffff);
   c.etat = E_DEHORS; c.visible = false; c.t = 0; c.tfin = 1e6f; c.perch = -1; c.but = B_RIEN;      // il quitte la scène le temps de la visite
-  memset(&GP, 0, sizeof(GP)); GP.ph = 1; GP.dur = 2.8f; GP.k = (int8_t)k; GP.mir = random(2) ? 1 : -1; GP.jeune = (rnd01() < 0.45f || c.s < 0.8f);
-  GP.sx = (GP.mir > 0) ? rnd(40.0f, 110.0f) : rnd(210.0f, 280.0f); GP.sy = rnd(112.0f, 150.0f); GP.sc = 1.0f; GP.tChoc = 1.0f; GP.gr = (uint32_t)random(0x7fffffff);      // il part du lointain, près de l'horizon
-  initCorbeau(vcb, 1.0f); vcb.etat = E_VOL; vcb.phase = rnd01(); poserGP(); son(SN_AILES, 240);
+  vcb.etat = E_VOL; poserGP(); son(SN_AILES, 240);
 }
 static void majGP(float dt) {
   gVisGP -= dt;
@@ -2076,15 +2093,15 @@ static void majGP(float dt) {
     if (gVisGP <= 0) { float rep = (millis() - tToucher) / 1000.0f; bool ok = rep > 20.0f || random(100) < 20; gVisGP = ((rep > 20.0f) ? rnd(40.0f, 90.0f) : rnd(110.0f, 190.0f)) * multFreq(OP.gp); if (ok && OP.gp > 0) lancerVisite(); }      // réglage « Visites au gros plan »
     return;
   }
-  GP.t += dt; vcb.phase += ((GP.ph == 1) ? 1.5f : (GP.ph == 5 ? 2.2f : 1.35f)) * dt; if (vcb.phase >= 1) vcb.phase -= 1;      // grands battements lents : 3 à 4 pendant l'approche
+  GP.t += dt; vcb.phase += ((GP.ph == 1) ? lerpf(2.6f, 1.8f, lim(GP.t / GP.dur, 0.0f, 1.0f)) : (GP.ph == 5 ? 2.6f : 1.5f)) * dt; if (vcb.phase >= 1) vcb.phase -= 1;      // grands battements qui ralentissent à l'approche
   GP.choc *= expf(-dt * 12.0f); GP.tChoc += dt;
   switch (GP.ph) {
-    case 1: if (GP.t >= GP.dur) { GP.ph = 3; GP.t = 0; GP.dur = rnd(0.7f, 1.3f); GP.n = (int8_t)(1 + random(3)); GP.nf = 0; GP.tCl = rnd(1.0f, 2.0f); GP.sc = 1.0f; GP.tChoc = 1.0f; son(SN_AILES, 220); } break;
-    case 3:      // il se cabre devant la vitre, ailes ouvertes, tourne la tête, parfois appelle
-      GP.th = -0.2f + 0.28f * sinf(GP.t * 2.4f) + 0.06f * sinf(GP.t * 2.7f);
-      GP.tCl -= dt; if (GP.tCl <= 0) { GP.cl = 1.0f; GP.tCl = rnd(2.0f, 4.0f); } if (GP.cl > 0) GP.cl = mxf(0.0f, GP.cl - dt * 6.0f);
-      if (!GP.cri && GP.t > 0.3f && random(1000) < 14) { GP.cri = true; GP.tCri = 0; sonCri(); }
-      if (GP.cri) { GP.tCri += dt; GP.ouv = 0.38f * sinf(3.1416f * lim(GP.tCri / 0.7f, 0.0f, 1.0f)); if (GP.tCri > 0.7f) { GP.cri = false; GP.ouv = 0; } }
+    case 1: if (GP.t >= GP.dur) { GP.ph = 3; GP.t = 0; GP.dur = rnd(1.1f, 1.5f); GP.n = (int8_t)(1 + random(3)); GP.nf = 0; GP.tCl = rnd(0.8f, 1.6f); GP.sc = 1.0f; GP.tChoc = 1.0f; son(SN_AILES, 220); } break;
+    case 3:      // il s'arrête net devant la vitre, ailes ouvertes, et tourne de face puis de trois quarts
+      GP.th = -0.2f + 0.2f * sinf(GP.t * 4.0f);
+      GP.tCl -= dt; if (GP.tCl <= 0) { GP.cl = 1.0f; GP.tCl = rnd(1.5f, 3.0f); } if (GP.cl > 0) GP.cl = mxf(0.0f, GP.cl - dt * 6.0f);
+      if (!GP.cri && GP.t > 0.4f && random(1000) < 10) { GP.cri = true; GP.tCri = 0; sonCri(); }
+      if (GP.cri) { GP.tCri += dt; GP.ouv = 0.38f * sinf(3.1416f * lim(GP.tCri / 0.6f, 0.0f, 1.0f)); if (GP.tCri > 0.6f) { GP.cri = false; GP.ouv = 0; } }
       if (GP.t >= GP.dur) { GP.ph = 4; GP.t = 0; GP.nf = 0; GP.impact = false; GP.ouv = 0; GP.cri = false; GP.th *= 0.3f; }
       break;
     case 4: {      // coups de bec dans la vitre : recul, élan, choc avec fissures et tremblement
@@ -2271,13 +2288,13 @@ static void contacts(float dt) {
 static void majGlobal(float dt) {
   contacts(dt); mo::maj(dt);
   gAction -= dt * actFreq; gPoof -= dt * actFreq; gObjet -= dt * actFreq; gAttrib -= dt; gCalme -= dt;
-  if (OP.hor) {      // horreur : lueur des yeux instable (très discret), de rares battements de lumière et éclairs rouges lointains
+  if (OP.hor == 2) {      // horreur : lueur des yeux instable (très discret), de rares battements de lumière et éclairs rouges lointains
     float n = sinf(tAnim * 9.0f) * sinf(tAnim * 2.3f + 1.0f) + 0.5f * sinf(tAnim * 23.0f); lueurOeil = 1.0f + 0.07f * n;
     if (battT > 0.0f) { battT -= dt; float u = 1.0f - lim(battT / 0.95f, 0.0f, 1.0f); lueurOeil += 0.9f * (powf(sinf(3.1416f * lim(u * 2.0f, 0.0f, 1.0f)), 2.0f) + 0.7f * powf(sinf(3.1416f * lim(u * 2.0f - 1.0f, 0.0f, 1.0f)), 2.0f)); }
     else { gBatt -= dt; if (gBatt <= 0.0f) { gBatt = rnd(45.0f, 110.0f); battT = 0.95f; } }
     if (eclT > 0.0f) eclT -= dt; else { gEcl -= dt; if (gEcl <= 0.0f && !panneau) { gEcl = rnd(40.0f, 120.0f); eclT = 0.42f; eclX = rnd(110.0f, 250.0f); eclGraine = (uint32_t)random(1000000) + 1; } }
   } else { lueurOeil = 1.0f; eclT = 0.0f; }
-  gFeuille -= dt; if (gFeuille <= 0) { gFeuille = rnd(2.0f, 4.5f); feuille(); }
+  gFeuille -= dt; if (gFeuille <= 0) { gFeuille = rnd(2.0f, 4.5f) * (OP.q == 0 ? 2.0f : 1.0f); feuille(); }
   majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt); fam::maj(dt);
   if (H.actif) H.ext += (1.0f - H.ext) * mnf(1.0f, dt * 5.0f); else if (H.ext > 0) { H.ext -= dt * 4.0f; if (H.ext < 0) H.ext = 0; }
   for (int i = 0; i < NPROJ; i++) {      // objets lancés : trajectoire, puis ils retombent et deviennent de l'objet au sol
@@ -2369,7 +2386,7 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   bbReset(); dessinerMain(g); nouv[NCB + NOB + 5] = bbRect();
   bbReset(); if (OE.actif) dessinerOeuf(g); nouv[NCB + NOB + 7] = bbRect();      // le visiteur, avant les corbeaux : ils se posent devant lui
   bbReset(); fam::nid(g); nouv[NCB + NOB + 9] = bbRect();      // le nid, derrière les corbeaux
-  for (int k = 0; k < NCB; k++) { bbReset(); if (cr[k].visible) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); } nouv[k] = bbRect(); }
+  { uint32_t u_ = micros(); for (int k = 0; k < NCB; k++) { bbReset(); if (cr[k].visible) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); } nouv[k] = bbRect(); } if (!sech) uCorb += micros() - u_; }
   bbReset(); fam::devant(g); nouv[NCB + NOB + 10] = bbRect();      // les brindilles du bord, devant le parent assis
   bbReset(); for (int i = 0; i < NMINI; i++) if (mini[i].actif) dessinerMini(g, mini[i]); nouv[NCB + NOB + 4] = bbRect();
   bbReset();
@@ -2399,15 +2416,18 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   // texte de mesure (mode debug)
   bbReset();
   if (debug) {
-    bbPt(238, 26); bbPt(318, 54);
+    bbPt(238, 26); bbPt(318, 78);
     if (!sech) {
-      g.fillRoundRect(238, 26, 80, 28, 4, C(0, 0, 0)); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(120, 255, 150)); g.setTextDatum(top_left);
+      g.fillRoundRect(238, 26, 80, 52, 4, C(0, 0, 0)); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(120, 255, 150)); g.setTextDatum(top_left);
       char b[40]; snprintf(b, sizeof(b), "%d i/s  %d ms", fps, msDessin); g.drawString(b, 242, 28);
       snprintf(b, sizeof(b), "T%dk P%dk", memTas, memPsram); g.drawString(b, 242, 40);
+      snprintf(b, sizeof(b), "m%d f%d d%d e%d", (int)(emaMaj + 0.5f), (int)(emaCmp + 0.5f), (int)(emaEnt + 0.5f), (int)(emaPush + 0.5f)); g.drawString(b, 242, 52);
+      snprintf(b, sizeof(b), "corb %d  Q%d%s", (int)(emaCorb + 0.5f), (int)OP.q, qDeg ? "-" : ""); g.drawString(b, 242, 64);
     }
   }
   nouv[NCB + NOB + 2] = bbRect();
-  bbReset(); if (OP.hor && eclT > 0.0f) dessinerEclair(g); nouv[NCB + NOB + 8] = bbRect();
+  bbReset(); if (OP.hor == 2 && eclT > 0.0f) dessinerEclair(g); nouv[NCB + NOB + 8] = bbRect();
+  bbReset(); dessinerGP(g); nouv[NCB + NOB + 11] = bbRect();      // la visite d'un corbeau au gros plan : redessinée par zones, comme le reste
   sec = false;
 }
 
@@ -2469,7 +2489,7 @@ static void dessinerPanneau() {
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage ? "Fréquence des événements" : "Réglages des corbeaux", 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux"), 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   if (panPage == 0) {
     // volume : - barre + et TEST SON
@@ -2483,8 +2503,14 @@ static void dessinerPanneau() {
     char nb[8]; snprintf(nb, sizeof(nb), "%d", OP.nb);
     tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
     tuile(g, 4, 100, 153, 32, "Secousse", SEC[OP.sec]); tuile(g, 163, 100, 153, 32, "Vibration", OP.vib ? "Oui" : "Non");
-    tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Horreur", OP.hor ? "Oui" : "Non");
+    tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Lumière", OP.hor == 2 ? "Horreur" : (OP.hor == 1 ? "Sombre" : "Clair"));
     tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps ? "Oui" : "Non"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
+  } else if (panPage == 2) {
+    static const char* const LL[3] = {"Clair", "Sombre", "Horreur"}; static const char* const LQ[3] = {"Fluide", "Normal", "Riche"}; static const char* const LM[2] = {"Non", "Oui"};
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Lumière de la scène (Sombre par défaut)", 6, 31); segBarre(g, 4, 45, 312, 24, 3, OP.hor, LL);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Qualité (Fluide = 20 images/s, effets réduits)", 6, 73); segBarre(g, 4, 87, 312, 24, 3, OP.q, LQ);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Mesures à l'écran (images/s, temps de dessin)", 6, 115); segBarre(g, 4, 129, 312, 24, 2, OP.fps, LM);
   } else {
     static const char* const L5[5] = {"1", "2", "3", "4", "5"}; static const char* const L4[4] = {"Jamais", "Rare", "Normale", "Souvent"}; static const char* const L3[3] = {"Jamais", "Rare", "Souvent"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2496,7 +2522,7 @@ static void dessinerPanneau() {
   g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
   g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
-  g.drawString(panPage ? "< Réglages" : "Fréquence >", 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
+  g.drawString(panPage == 2 ? "< Réglages" : (panPage ? "Image >" : "Fréquence >"), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
@@ -2509,7 +2535,15 @@ static void fermerPanneau() {
 }
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
-  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage ^= 1; panSale = true; } return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 3); panSale = true; } return; }
+  if (panPage == 2) {      // image : lumière, qualité, mesures
+    if (y >= 42 && y < 72) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.hor = (uint8_t)i; prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; }
+    else if (y >= 84 && y < 114) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.q = (uint8_t)i; prefs.putUChar("cbqual", OP.q); qDeg = false; }
+    else if (y >= 126 && y < 156) { int i = constrain((x - 4) * 2 / 312, 0, 1); OP.fps = (uint8_t)i; prefs.putUChar("cbfps", OP.fps); debug = (OP.fps != 0); }
+    else return;
+    if (OP.vib) vibrer(40);
+    panSale = true; return;
+  }
   if (panPage == 1) {      // fréquence : barres tactiles
     if (y >= 42 && y < 72) { int i = constrain((x - 4) * 5 / 312, 0, 4); OP.act = (uint8_t)(i + 1); prefs.putUChar("cbact", OP.act); appliquerAct(); }
     else if (y >= 84 && y < 114) { int i = constrain((x - 4) * 4 / 312, 0, 3); OP.gp = (uint8_t)i; prefs.putUChar("cbgp", OP.gp); gVisGP = rnd(30.0f, 60.0f) * multFreq(OP.gp); }
@@ -2535,7 +2569,7 @@ static void touchPanneau(int x, int y) {
     case 2: OP.sec = (uint8_t)((OP.sec + 1) % 3); prefs.putUChar("cbsec", OP.sec); appliquerSec(); if (OP.vib) vibrer(70); break;
     case 3: OP.vib = OP.vib ? 0 : 1; prefs.putUChar("cbvib", OP.vib); if (OP.vib) vibrer(90); break;
     case 4: OP.amb = (uint8_t)((OP.amb + 1) % 3); prefs.putUChar("cbamb", OP.amb); appliquerAmb(); ambChange = true; break;
-    case 5: OP.hor = OP.hor ? 0 : 1; prefs.putUChar("cbhor", OP.hor); appliquerAmb(); ambChange = true; break;
+    case 5: OP.hor = (uint8_t)((OP.hor + 1) % 3); prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; break;
     case 6: OP.fps = OP.fps ? 0 : 1; prefs.putUChar("cbfps", OP.fps); debug = (OP.fps != 0); break;
     default: fermerPanneau(); lancerVisite(); return;
   }
@@ -2569,11 +2603,11 @@ static void cielLarge(M5Canvas& g) {      // ciel, lune, étoiles, collines et s
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sy = 2 + (int)((seed >> 8) % 140);
     if (hypotf(sx - mxs, sy - mys) < (LUNE_R + 24) * zs) continue;
     int v = (int)((seed >> 4) % 100);
-    float sk = OP.hor ? 0.50f : 1.0f; g.drawPixel(sx, sy, v < 70 ? CF(150 * sk, 62 * sk, 74 * sk) : CF(205 * sk, 112 * sk, 120 * sk));      // horreur : étoiles rares et ternes
+    float sk = (OP.hor == 2) ? 0.50f : ((OP.hor == 1) ? 0.75f : 1.0f); g.drawPixel(sx, sy, v < 70 ? CF(150 * sk, 62 * sk, 74 * sk) : CF(205 * sk, 112 * sk, 120 * sk));      // horreur : étoiles rares et ternes
   }
   brume(g, 110, 100, 100, 3, 0.35f); brume(g, 210, 128, 110, 3, 0.35f); brume(g, 90, 150, 100, 3, 0.35f);
   if (OP.hor) {      // horreur : nuages noirs en lambeaux devant la lune, longues brumes noires basses
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < (OP.hor == 2 ? 4 : 2); i++) {
       float oy = -9.0f + i * 7.0f + 1.5f * sinf(i * 2.1f), ox = 16.0f * sinf(i * 2.3f + 0.6f), rx = (30.0f + 9.0f * ((i * 5) % 3)) * zs, ry = (2.2f + 0.7f * (i % 3)) * zs;
       g.fillEllipse((int)(mxs + ox * zs), (int)(mys + oy * zs), (int)rx, (int)(ry + 0.5f), CF(15 + 4 * (i % 2), 1, 3));
       g.fillEllipse((int)(mxs + (ox + 14.0f) * zs), (int)(mys + (oy + 1.5f) * zs), (int)(rx * 0.5f), (int)(ry * 0.8f + 0.5f), CF(11, 0, 2));
@@ -2616,11 +2650,25 @@ static bool creerLarge() {
   if (!fondL.createSprite(320, 240)) return false;
   fondLOk = true; construireFondLarge(); return true;
 }
-static void composerTransition() {      // pendant le zoom : la vue large est agrandie ou réduite, les bandeaux restent nets
-  float f = zs / 0.6f;
-  fondL.pushRotateZoom(&cv, 160.0f, zay + (120.0f - zay) * f, 0.0f, f, f);
-  memcpy(cv.getBuffer(), fond.getBuffer(), (size_t)24 * 320 * bpp);
-  memcpy((uint8_t*)cv.getBuffer() + (size_t)206 * 320 * bpp, (const uint8_t*)fond.getBuffer() + (size_t)206 * 320 * bpp, (size_t)34 * 320 * bpp);
+static int ordreOctets = -1;      // 1 : octet fort en premier, 0 : inversé (détecté par un essai)
+static inline uint16_t mix565(uint16_t a, uint16_t b, uint32_t al) {      // al : poids de b, de 0 à 32
+  uint32_t A = (a | ((uint32_t)a << 16)) & 0x07E0F81FUL, B = (b | ((uint32_t)b << 16)) & 0x07E0F81FUL;
+  uint32_t R = ((((B - A) * al) >> 5) + A) & 0x07E0F81FUL; return (uint16_t)(R | (R >> 16));
+}
+static void composerTransition() {      // pendant le zoom : fondu rapide entre la vue normale et la vue large (au lieu d'un zoom point par point), la taille des corbeaux suit le zoom
+  const float p = pas(zoomU); const uint32_t al = (uint32_t)(p * 32.0f + 0.5f);
+  if (ordreOctets < 0) { cv.drawPixel(0, 0, C(248, 0, 0)); ordreOctets = (((const uint8_t*)cv.getBuffer())[0] == 0xF8) ? 1 : 0; cv.drawPixel(0, 0, C(0, 0, 0)); }
+  if (bpp != 2 || !fondLOk || al == 0 || al >= 32) { memcpy(cv.getBuffer(), (al >= 16 && fondLOk ? fondL : fond).getBuffer(), (size_t)320 * 240 * bpp); return; }
+  const uint8_t* a = (const uint8_t*)fond.getBuffer(); const uint8_t* b = (const uint8_t*)fondL.getBuffer(); uint8_t* d = (uint8_t*)cv.getBuffer();
+  memcpy(d, a, (size_t)24 * 640);
+  const size_t o0 = (size_t)24 * 640, n = (size_t)(H_SCENE - 24) * 320;
+  for (size_t i = 0; i < n; i++) {
+    const uint8_t* pa = a + o0 + i * 2; const uint8_t* pb = b + o0 + i * 2; uint8_t* pd = d + o0 + i * 2;
+    uint16_t va = ordreOctets ? (uint16_t)((pa[0] << 8) | pa[1]) : (uint16_t)((pa[1] << 8) | pa[0]), vb = ordreOctets ? (uint16_t)((pb[0] << 8) | pb[1]) : (uint16_t)((pb[1] << 8) | pb[0]);
+    uint16_t v = (va == vb) ? va : mix565(va, vb, al);
+    if (ordreOctets) { pd[0] = (uint8_t)(v >> 8); pd[1] = (uint8_t)(v & 255); } else { pd[1] = (uint8_t)(v >> 8); pd[0] = (uint8_t)(v & 255); }
+  }
+  memcpy(d + (size_t)H_SCENE * 640, a + (size_t)H_SCENE * 640, (size_t)(240 - H_SCENE) * 640);
 }
 static bool pinceOn = false, pinceFait = false; static float pinceD0 = 0;
 static void pincer() {      // pincement à deux doigts : se pincer = dézoom, s'écarter = zoom
@@ -2684,7 +2732,7 @@ static void dessiner() {
   if (tTestSon && millis() > tTestSon) { tTestSon = 0; M5.Speaker.setVolume(R.volume); }
   if (panneau) { if (panSale) { panSale = false; dessinerPanneau(); } return; }
   if (oeufsSale) { oeufsSale = false; boutonOeufs(fond); syncUI(); plein = true; }
-  uint32_t m0 = millis();
+  uint32_t m0 = millis(), u0 = micros(); uCorb = 0;
   float dt = (m0 - tDernier) / 1000.0f; bool longue = dt > 0.4f; tDernier = m0; if (dt > 0.05f) dt = 0.05f; if (dt < 0.001f) dt = 0.001f;
   if (slowT > 0) { slowT -= dt; dt *= 0.4f; }      // ralenti court sur les moments forts
   if (longue) plein = true;
@@ -2696,13 +2744,13 @@ static void dessiner() {
   { float zn = lerpf(ZN, 0.6f, pas(zoomU)); if (zn != zs) { zs = zn; ztx = zax * (1 - zs); zty = zay * (1 - zs); plein = true; } }
   fondAct = (zoomU > 0.5f && fondLOk) ? &fondL : &fond;
   if (mo::camPilote(dt)) { fondAct = &fond; plein = true; }      // monde.h : vue d'ensemble ou suivi d'un oiseau
-  if (GP.ph) plein = true;
   // volume affiché par le programme sur l'écran : on redessine tout quand il disparaît
   if (millis() < finAffVolume) volVu = true; else if (volVu) { volVu = false; plein = true; }
   if (dernierSecouement != secVu) { if (secVu != 0 || dernierSecouement != 0) { if (millis() - dernierSecouement < 600) secousse(); } secVu = dernierSecouement; }
   tAnim = millis() * 0.001f;
   for (int k = 0; k < NCB; k++) majCorbeau(cr[k], k, dt);
   majGlobal(dt);
+  uint32_t u1 = micros();
   if (presse >= 0 && millis() - tPressee > 180) { presse = -1; barreCb(fond, choix, -1); syncUI(); barreSale = true; }
   nListe = 0;
   dessinerEntites(cv, true);        // 1) boîtes englobantes (rien n'est dessiné)
@@ -2713,18 +2761,23 @@ static void dessiner() {
     fusionner();
     for (int i = 0; i < nListe; i++) restaurer(liste[i]);
   }
+  uint32_t u2 = micros();
   dessinerEntites(cv, false);       // 2) dessin réel
   for (int e = 0; e < NENT; e++) anc[e] = nouv[e];
   Rect barre; barre.x0 = 0; barre.y0 = H_SCENE; barre.x1 = 320; barre.y1 = 240;
   if (plein || barreSale) restaurer(barre);       // ce qui a pu déborder sur la barre est effacé
-  dessinerGP(cv);
+  uint32_t u3 = micros();
   M5.Display.startWrite();
   if (plein) { cv.pushSprite(0, 0); plein = false; }
   else { for (int i = 0; i < nListe; i++) pousser(liste[i]); if (barreSale) pousser(barre); }
   barreSale = false;
   M5.Display.endWrite();
+  { uint32_t u4 = micros(); const float k = 0.12f;      // mesures lissées pour l'écran de contrôle et /api/etat
+    emaMaj += ((u1 - u0) / 1000.0f - emaMaj) * k; emaCmp += ((u2 - u1) / 1000.0f - emaCmp) * k; emaEnt += ((u3 - u2) / 1000.0f - emaEnt) * k; emaPush += ((u4 - u3) / 1000.0f - emaPush) * k; emaCorb += (uCorb / 1000.0f - emaCorb) * k;
+    emaTot += ((u4 - u0) / 1000.0f - emaTot) * k;
+    if (OP.q == 0) { if (!qDeg && emaTot > 46.0f) qDeg = true; else if (qDeg && emaTot < 30.0f) qDeg = false; } else qDeg = false; }
   nImg++; msDessin = (int)(millis() - m0);
-  if (millis() - tSec >= 1000) { fps = nImg; nImg = 0; tSec = millis(); memTas = (int)(ESP.getFreeHeap() / 1024); memPsram = (int)(ESP.getFreePsram() / 1024); if (debug) Serial.printf("[corbeau] %d i/s dessin=%d ms heap=%u psram=%u\n", fps, msDessin, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram()); }
+  if (millis() - tSec >= 1000) { fps = nImg; nImg = 0; tSec = millis(); memTas = (int)(ESP.getFreeHeap() / 1024); memPsram = (int)(ESP.getFreePsram() / 1024); if (debug) Serial.printf("[corbeau] %d i/s dessin=%d ms (logique %.1f fond %.1f dessin %.1f ecran %.1f dont corbeaux %.1f) Q%d%s heap=%u psram=%u\n", fps, msDessin, emaMaj, emaCmp, emaEnt, emaPush, emaCorb, (int)OP.q, qDeg ? "-" : "", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram()); }
 }
 
 // ---------- toucher ----------
