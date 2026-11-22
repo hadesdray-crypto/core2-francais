@@ -66,7 +66,8 @@ static void tailleVie(float age, float& s, float& duvet) {      // taille et duv
   else { s = 1.22f; duvet = 0.0f; }
 }
 static int foyerNuit(int k);
-static void nuitCouple();      // âge (secondes) où le poussin devient jeune, puis grand
+static void nuitCouple();
+static bool placeLibre();      // âge (secondes) où le poussin devient jeune, puis grand
 static float faimP = 0.4f, tSoin = 8.0f, tAide = 20.0f, tMenP = 0.0f, tBat = 15.0f, tHost = 90.0f, tSauvP = 0.0f, tCriY = 0.0f, tChaY = 0.0f, tCriP = 4.0f, tEssai = 40.0f, tSurv = 5.0f, tProche = 20.0f;
 static bool rage[NM];
 static float tmis[NM];
