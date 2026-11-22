@@ -65,6 +65,8 @@ static inline int ar(float v) { return (int)lroundf(v); }
 
 // ---------- état général ----------
 static M5Canvas fond(&M5.Display);
+static M5Canvas fondL(&M5.Display);      // fond de la vue large
+static M5Canvas* fondAct = &fond; static bool fondLOk = false; static float zoomU = 0.0f, zoomC = 0.0f;
 static bool ouvert = false, fondOk = false, debug = false, plein = true, sec = false;
 static int bpp = 2;
 static uint32_t tDernier = 0, tSec = 0, tPressee = 0;
@@ -120,20 +122,33 @@ static inline void bbPt(float x, float y) {
 }
 static Rect bbRect() { Rect r; r.x0 = (int16_t)(bbx0 - 2); r.y0 = (int16_t)(bby0 - 2); r.x1 = (int16_t)(bbx1 + 3); r.y1 = (int16_t)(bby1 + 3); return r; }
 
+// ---------- vue : échelle et décalage monde -> écran (1 = vue normale, 0.6 = vue large) ----------
+static float zs = 1.0f, ztx = 0.0f, zty = 0.0f;
+static const float zax = 160.0f, zay = 128.0f;      // point fixe du zoom
+static inline float TX(float x) { return x * zs + ztx; }
+static inline float TY(float y) { return y * zs + zty; }
+static inline float bordG() { return -ztx / zs - 34.0f; }                   // bord gauche de l'écran, en coordonnées du monde, moins une marge
+static inline float bordD() { return (320.0f - ztx) / zs + 34.0f; }
+struct VueId { float a, b, c; VueId() { a = zs; b = ztx; c = zty; zs = 1.0f; ztx = 0.0f; zty = 0.0f; } ~VueId() { zs = a; ztx = b; zty = c; } };      // dessin d'interface : sans zoom
+
 // ---------- primitives (suivent la boîte englobante ; ne dessinent pas en mode « sec ») ----------
 static void tri(M5Canvas& g, float x0, float y0, float x1, float y1, float x2, float y2, uint16_t c) {
+  x0 = TX(x0); y0 = TY(y0); x1 = TX(x1); y1 = TY(y1); x2 = TX(x2); y2 = TY(y2);
   bbPt(x0, y0); bbPt(x1, y1); bbPt(x2, y2); if (sec) return;
   g.fillTriangle(ar(x0), ar(y0), ar(x1), ar(y1), ar(x2), ar(y2), c);
 }
 static void disque(M5Canvas& g, float x, float y, float r, uint16_t c) {
+  x = TX(x); y = TY(y); r *= zs;
   bbPt(x - r, y - r); bbPt(x + r, y + r); if (sec) return;
   g.fillCircle(ar(x), ar(y), ar(r) < 1 ? 1 : ar(r), c);
 }
 static void ell(M5Canvas& g, float x, float y, float rx, float ry, uint16_t c) {
+  x = TX(x); y = TY(y); rx *= zs; ry *= zs;
   bbPt(x - rx, y - ry); bbPt(x + rx, y + ry); if (sec) return;
   int a = ar(rx), b = ar(ry); g.fillEllipse(ar(x), ar(y), a < 1 ? 1 : a, b < 1 ? 1 : b, c);
 }
 static void ligne(M5Canvas& g, float x0, float y0, float x1, float y1, uint16_t c) {
+  x0 = TX(x0); y0 = TY(y0); x1 = TX(x1); y1 = TY(y1);
   bbPt(x0, y0); bbPt(x1, y1); if (sec) return;
   g.drawLine(ar(x0), ar(y0), ar(x1), ar(y1), c);
 }
@@ -205,7 +220,7 @@ struct StopC { float y; float r, g, b; };
 static const StopC STC[5] = {{0, 10, 1, 5}, {72, 72, 6, 12}, {125, 140, 14, 20}, {192, 104, 11, 16}, {240, 30, 3, 8}};
 static void cielRGB(float y, float& r, float& g, float& b) {
   int k = 0; while (k < 3 && y >= STC[k + 1].y) k++;
-  float u = (y - STC[k].y) / (STC[k + 1].y - STC[k].y);
+  float u = lim((y - STC[k].y) / (STC[k + 1].y - STC[k].y), 0.0f, 1.0f);
   r = lerpf(STC[k].r, STC[k + 1].r, u); g = lerpf(STC[k].g, STC[k + 1].g, u); b = lerpf(STC[k].b, STC[k + 1].b, u);
   r = r * ambK + ambRouge; g *= ambK; b *= ambK;
 }
@@ -315,11 +330,11 @@ static void arbre(M5Canvas& g) {
   uint16_t nr = C(5, 2, 4);
   static const float tronc[8][2] = {{72, 254}, {67, 222}, {60, 192}, {66, 160}, {61, 130}, {51, 104}, {54, 78}, {46, 52}};
   membre(g, tronc, 8, 42, 10, true);
-  g.fillTriangle(28, 254, 44, 232, 120, 254, nr); g.fillTriangle(44, 232, 100, 232, 120, 254, nr);
-  g.fillTriangle(44, 232, 56, 208, 100, 232, nr); g.fillTriangle(56, 208, 86, 208, 100, 232, nr);
+  tri(g, 28, 254, 44, 232, 120, 254, nr); tri(g, 44, 232, 100, 232, 120, 254, nr);
+  tri(g, 44, 232, 56, 208, 100, 232, nr); tri(g, 56, 208, 86, 208, 100, 232, nr);
   static const float r1[3][2] = {{44, 238}, {24, 246}, {4, 252}}, r2[3][2] = {{94, 240}, {114, 248}, {136, 254}};
   membre(g, r1, 3, 12, 3, true); membre(g, r2, 3, 11, 3, true);
-  g.fillCircle(53, 100, 6, nr); g.fillCircle(69, 168, 7, nr); g.fillCircle(57, 206, 8, nr); g.fillCircle(65, 134, 5, nr);
+  disque(g, 53, 100, 6, nr); disque(g, 69, 168, 7, nr); disque(g, 57, 206, 8, nr); disque(g, 65, 134, 5, nr);
   static const float c1[3][2] = {{46, 54}, {39, 36}, {44, 18}}, c2[3][2] = {{52, 58}, {60, 40}, {57, 25}};
   membre(g, c1, 3, 9, 2.5f, false); membre(g, c2, 3, 8, 2.2f, false);
   // grosse branche horizontale : le perchoir
@@ -338,7 +353,7 @@ static void arbre(M5Canvas& g) {
   static const int xs[3] = {118, 150, 186}, ls[3] = {14, 11, 10};
   for (int i = 0; i < 3; i++) { float yb = ytop((float)xs[i]); float t[3][2] = {{(float)xs[i], yb + 8}, {xs[i] + 2.0f, yb + 8 + ls[i] * 0.5f}, {xs[i] + 3.0f, yb + 8.0f + ls[i]}}; membre(g, t, 3, 5.2f, 3.2f, false); }
   { float yb = ytop(228); float t[3][2] = {{228, yb + 3}, {231, yb - 6}, {230, yb - 14}}; membre(g, t, 3, 3.8f, 2.6f, false); }
-  g.fillEllipse(60, 178, 3, 6, C(110, 10, 18));     // le trou du tronc : on voit le ciel rouge
+  ell(g, 60, 178, 3, 6, C(110, 10, 18));     // le trou du tronc : on voit le ciel rouge
 }
 
 static const uint8_t LANCE[6] = {T_KUNAI, T_SHURIKEN, T_BAGUE, T_PARCHEMIN, T_BRILLANT, T_OEUF};      // objets que l'on peut lancer
@@ -359,7 +374,7 @@ static void iconeMode(M5Canvas& g, int m, int cx, int cy, uint16_t col) {
   }
 }
 static void barreCb(M5Canvas& g, int sel, int pr) {   // barre du bas : cinq modes à gauche, le choix d'objet (ou de geste) à droite
-  (void)sel;
+  (void)sel; VueId vid_;
   g.fillRect(0, H_SCENE, 320, 34, C(5, 2, 4));
   g.fillRoundRect(2, 208, 316, 30, 10, C(16, 5, 9)); g.drawRoundRect(2, 208, 316, 30, 10, C(96, 18, 26));
   for (int m = 0; m < 5; m++) {
@@ -402,14 +417,19 @@ static void boutonVisiteur(M5Canvas& g) {
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Visiteur", 205, 12); g.setTextDatum(top_left);
 }
 static void boutonOeufs(M5Canvas& g) {      // compteur discret des œufs éclos
+  VueId vid_;
   g.fillRoundRect(142, 2, 32, 20, 8, C(14, 4, 8)); g.drawRoundRect(142, 2, 32, 20, 8, C(110, 22, 30));
   dessinerObjet(g, T_OEUF, 152.0f, 12.0f, 3.2f, 0.0f, 0.0f);
   char b[12]; snprintf(b, sizeof(b), "%u", (unsigned)nbOeufs);
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_left); g.setTextColor(C(230, 170, 160)); g.drawString(b, 159, 12); g.setTextDatum(top_left);
 }
 
+static void boutonVue(M5Canvas& g) {
+  g.fillRoundRect(238, 2, 32, 20, 8, C(14, 4, 8)); g.drawRoundRect(238, 2, 32, 20, 8, C(110, 22, 30));
+  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Vue", 254, 12); g.setTextDatum(top_left);
+}
 static void construireFond() {
-  ciel(fond); arbre(fond); menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); barreCb(fond, choix, -1);
+  ciel(fond); arbre(fond); menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
 }
 
 // ---------- corbeaux ----------
@@ -582,8 +602,7 @@ static void eclat(float x, float y, float dur, float taille) {
 }
 static const float JAMBE = 5.6f;     // longueur des pattes visibles (sous le ventre)
 static void hancheC(float s, float pitch, float dv, float& hx, float& hy) {      // position de la hanche par rapport au centre du corps
-  float ct = cosf(pitch), st = sinf(pitch);
-  hx = dv * s * (0.8f * ct + 4.7f * st); hy = s * (-0.8f * st + 4.7f * ct);
+  hx = dv * s * (0.8f + 1.8f * sinf(pitch)); hy = s * (4.9f + 0.4f * sinf(pitch));
 }
 static void cible(const Corbeau& c, float sx, float sy, float dir, float& tx, float& ty) {      // centre du corps quand les pattes sont sur (sx, sy)
   float hx, hy; hancheC(c.s, c.pr, dir, hx, hy); tx = sx - hx; ty = sy - JAMBE * c.s - hy;
@@ -636,7 +655,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   auto P = [&](float u, float v, float& X, float& Y) { R_.p(u, v, X, Y); };
   // pattes : le pied reste posé sur le support, la hanche suit le corps (les orteils agrippent la branche)
   if (c.pied) {
-    float hx, hy; P(0.8f, 4.7f, hx, hy); float sg = dv >= 0 ? 1.0f : -1.0f;
+    float hx, hy; hx = R_.cx + dv * s * (0.8f + 1.8f * sinf(c.pitch)); hy = R_.cy + s * (4.9f + 0.4f * sinf(c.pitch)); float sg = dv >= 0 ? 1.0f : -1.0f;
     for (int k = 0; k < 2; k++) {
       float sk = k ? 1.0f : -1.0f;
       float hipx = hx + sk * 1.3f * s * dv, hipy = hy - 0.4f;
@@ -650,7 +669,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       ligne(g, fxk, fyk, fxk + sg * 3.4f * s, fyk + 0.3f, NOIR); ligne(g, fxk, fyk, fxk + sg * 2.4f * s, fyk - 0.7f, NOIR); ligne(g, fxk, fyk, fxk - sg * 1.8f * s, fyk + 0.3f, NOIR);
     }
   } else if (c.fan > 0.3f) {      // approche d'un atterrissage : les pattes pendent vers l'avant
-    float hx, hy; P(0.8f, 4.7f, hx, hy); float e = c.fan;
+    float hx, hy; hx = R_.cx + dv * s * (0.8f + 1.8f * sinf(c.pitch)); hy = R_.cy + s * (4.9f + 0.4f * sinf(c.pitch)); float e = c.fan;
     for (int k = 0; k < 2; k++) { float sk = k ? 1.0f : -1.0f; ligne(g, hx + sk * 1.3f * s * dv, hy, hx + dv * (3.0f + sk * 1.5f) * s, hy + 6.0f * s * e, NOIR); }
   }
   // ailes ouvertes (vol)
@@ -670,7 +689,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       P(bu + px_ * w, bv + py_ * w, x1, y1); P(bu - px_ * w, bv - py_ * w, x2, y2); P(bu + dx_ * L, bv + dy_ * L, x3, y3);
       tri(g, x1, y1, x2, y2, x3, y3, NOIR);
     }
-    float th = lerpf(0.0f, -0.34f, perch) + wag * 0.5f, Lp = lerpf(26.0f, c.plume, perch), rx = bu - 1.0f, ry = bv - 1.4f;
+    float th = lerpf(0.0f, -(c.pitch + 0.2f), perch) + wag * 0.5f, Lp = lerpf(26.0f, c.plume, perch), rx = bu - 1.0f, ry = bv - 1.4f;
     for (int seg = 0; seg < 2; seg++) {      // plume dominante : relevée vers l'arrière, avec une courbure
       float dx_ = -cosf(th), dy_ = sinf(th), px_ = sinf(th), py_ = cosf(th), ln = Lp * (seg == 0 ? 0.55f : 0.45f), w0 = seg == 0 ? 3.2f : 2.0f, w1 = seg == 0 ? 2.0f : 0.0f;
       float ex = rx + dx_ * ln, ey = ry + dy_ * ln, a1x, a1y, a2x, a2y, b1x, b1y, b2x, b2y;
@@ -696,8 +715,8 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     for (int i = 0; i < 5; i++) P(wp[i * 2], wp[i * 2 + 1], q[i * 2], q[i * 2 + 1]);
     poly(g, q, 5, NOIR);
     for (int k = 0; k < 4; k++) {
-      float u0 = -3.0f - 4.2f * k, v0 = 2.2f, lg = (8.5f + ((k % 2 == 0) ? 4.5f : 0.0f)) * c.wd, x1, y1, x2, y2, x3, y3;
-      P(u0 + 2.0f, v0 - 1.4f, x1, y1); P(u0 - 2.0f, v0 + 0.8f, x2, y2); P(u0 - 5.5f - 1.0f * k, v0 + lg, x3, y3);
+      float u0 = 2.0f - 3.8f * k, v0 = 3.0f, lg = (9.0f + ((k % 2 == 0) ? 4.0f : 0.0f)) * c.wd, x1, y1, x2, y2, x3, y3;
+      P(u0 + 2.0f, v0 - 1.4f, x1, y1); P(u0 - 2.0f, v0 + 0.8f, x2, y2); P(u0 - lg, v0 + 1.0f + ((k % 2) ? 2.0f : -1.0f), x3, y3);
       tri(g, x1, y1, x2, y2, x3, y3, NOIR);
     }
   }
@@ -828,14 +847,14 @@ static int perchLibre() {
 }
 static int nbDehors() { int n = 0; for (int k = 0; k < NCB; k++) if (cr[k].etat == E_DEHORS || (cr[k].etat == E_VOL && cr[k].but == B_SORTIR)) n++; return n; }
 
-static void posture(Corbeau& c) {      // une posture perchée parmi quatre : corps penché en avant, queue qui pend, plume dominante
+static void posture(Corbeau& c) {      // posture perchée : tronc redressé (45 à 65 degrés), poitrine en avant, queue qui pend, tête dégagée
   switch (random(4)) {
-    case 0: c.pr = 0.12f; c.ha0 = -0.02f; c.tq = 0.62f; c.plume = 34; c.wd = 1.1f; break;
-    case 1: c.pr = 0.30f; c.ha0 = -0.50f; c.tq = 0.34f; c.plume = 30; c.wd = 0.8f; break;
-    case 2: c.pr = 0.20f; c.ha0 = -0.28f; c.tq = 0.78f; c.plume = 38; c.wd = 1.3f; break;
-    default: c.pr = 0.14f; c.ha0 = 0.05f; c.tq = 0.55f; c.plume = 32; c.wd = 1.0f; break;
+    case 0: c.pr = 0.85f; c.tq = 0.20f; c.plume = 34; c.wd = 1.1f; break;
+    case 1: c.pr = 1.00f; c.tq = 0.12f; c.plume = 30; c.wd = 0.9f; break;
+    case 2: c.pr = 0.78f; c.tq = 0.28f; c.plume = 38; c.wd = 1.2f; break;
+    default: c.pr = 1.10f; c.tq = 0.10f; c.plume = 32; c.wd = 1.0f; break;
   }
-  c.pr += rnd(-0.02f, 0.02f);
+  c.pr += rnd(-0.04f, 0.04f); c.ha0 = c.pr - 0.35f + rnd(-0.08f, 0.08f);
 }
 static void initCorbeau(Corbeau& c, float s) {
   memset(&c, 0, sizeof(c)); c.s = s; c.d = 1; c.dv = 1; c.visible = true; c.perch = -1; c.item = -1;
@@ -854,14 +873,14 @@ static void decoller(Corbeau& c, float tx, float ty, uint8_t but) {      // pour
 }
 static void entrer(Corbeau& c, float tx, float ty, uint8_t but) {      // arrive par un bord de l'écran
   bool gauche = (tx < 160) ? (rnd01() < 0.7f) : (rnd01() < 0.3f);
-  c.x = gauche ? -34.0f : 354.0f; c.y = rnd(18, 110); c.d = gauche ? 1 : -1; c.dv = (float)c.d; c.vx = c.d * 90.0f; c.vy = 0; c.pied = false;
+  c.x = gauche ? bordG() : bordD(); c.y = rnd(18, 110); c.d = gauche ? 1 : -1; c.dv = (float)c.d; c.vx = c.d * 90.0f; c.vy = 0; c.pied = false;
   c.etat = E_VOL; c.t = 1.5f; c.tx = tx; c.ty = ty; c.but = but; c.aWp = false; c.visible = true; c.sub = 0; c.act = A_REPOS;
   c.vitesse = rnd(82, 108); c.hz = rnd(2.7f, 3.0f); c.restBat = 4 + random(3); c.planeT = 0; c.phase = rnd01(); c.wl = c.wlC = 1; c.fan = c.fanC = 0; c.pitch = c.pitchC = 0.1f; c.pose = c.poseC = A_BAS;
 }
 static void sortir(Corbeau& c) {
   c.perch = -1; c.item = -1;
-  float tx = (rnd01() < 0.5f) ? -50.0f : 370.0f;
-  if (c.x < 100) tx = -50; else if (c.x > 220) tx = 370;
+  float tx = (rnd01() < 0.5f) ? bordG() - 16.0f : bordD() + 16.0f;
+  if (c.x < 100) tx = bordG() - 16.0f; else if (c.x > 220) tx = bordD() + 16.0f;
   decoller(c, tx, rnd(8, 90), B_SORTIR);
 }
 static void versPerchoir(Corbeau& c) {
@@ -897,7 +916,7 @@ static void attribuer(int iO) {       // un corbeau libre vient chercher la nour
     if (dd < bd) { bd = dd; best = k; }
   }
   if (best < 0) return;
-  Corbeau& c = cr[best]; float x0 = (c.etat == E_DEHORS) ? ((best % 2) ? 354.0f : -34.0f) : c.x;
+  Corbeau& c = cr[best]; float x0 = (c.etat == E_DEHORS) ? ((best % 2) ? bordD() : bordG()) : c.x;
   int dsg = (o.x >= x0) ? 1 : -1;
   float gx = lim(o.x - dsg * 19.0f * c.s, 10, 310), gy = solHaut(gx);
   c.perch = -1; c.item = iO; o.reserve = best; c.objet = 0;
@@ -933,10 +952,10 @@ static void acteur(Corbeau& c, float dt) {
   switch (c.act) {
     case A_IMMO: c.haC = c.ha0 + 0.015f * sinf(c.resp * 0.5f); c.hbC = c.haC + 0.49f; break;
     case A_REGARDE: {
-      static const float AN[4] = {-0.9f, -0.1f, -0.62f, 0.12f};
+      static const float AN[4] = {-0.5f, 0.1f, -0.25f, 0.3f};
       int k = ((int)(a / 1.3f) + (int)(c.s * 10)) & 3;
       if (k != c.sub) { c.sub = k; if (k == 2 && random(100) < 45) { c.d = -c.d; c.surs = 0.22f; } }      // il se retourne d'un petit saut
-      c.haC = AN[k]; c.hbC = c.haC + 0.49f; c.pitchC = c.pr + 0.05f * sinf(a * 3.0f);
+      c.haC = c.ha0 + AN[k]; c.hbC = c.haC + 0.49f; c.pitchC = c.pr + 0.05f * sinf(a * 3.0f);
     } break;
     case A_LISSE_DOS: c.haC = lerpf(c.ha0, -2.55f, e); c.hbC = lerpf(c.ha0 + 0.49f, 3.15f, e) + 0.28f * e * sinf(a * 17.0f); c.pitchC = c.pr + 0.05f * e * sinf(a * 8.5f); c.bob += 0.4f * c.s * e * sinf(a * 17.0f); break;
     case A_LISSE_POIT: c.haC = lerpf(c.ha0, 1.95f, e); c.hbC = lerpf(c.ha0 + 0.49f, 2.2f, e) + 0.25f * e * sinf(a * 15.0f); c.pitchC = c.pr - 0.10f * e; break;
@@ -950,7 +969,7 @@ static void relacherMain(int k, float x, float y);
 static void retourLibre(Corbeau& c) {      // le corbeau en vol cherche un perchoir libre, sinon il sort et reviendra
   int i = perchLibre();
   if (i >= 0) { c.perch = i; c.but = B_PERCHOIR; c.tx = PERCH[i][0]; c.ty = perchY(i); c.aWp = false; }
-  else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? -50.0f : 370.0f; c.ty = rnd(8, 90); c.aWp = false; c.fuite = true; }
+  else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? bordG() - 16.0f : bordD() + 16.0f; c.ty = rnd(8, 90); c.aWp = false; c.fuite = true; }
 }
 static void attraper(Corbeau& c) {      // il attrape l'objet lancé, puis le rapporte sur une branche ou le dépose par terre
   Proj& p = proj[c.pj]; c.objet = p.type + 1; p.actif = false; c.flash = 0.7f; c.bec = 1; son(SN_CROC, 210); plumes(c.x, c.y, 3);
@@ -1038,7 +1057,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         if (p0 > 0.9f && c.phase < 0.1f) son(SN_AILES, 120);
         float cp = coup(c.phase); c.poseC = mixA(A_HAUT, A_BAS, cp); c.bob = -2.4f * c.s * (cp - 0.4f);
       }
-      if (c.but == B_SORTIR) { if (c.x < -32 || c.x > 352) { c.etat = E_DEHORS; c.t = 0; c.visible = false; c.tfin = c.fuite ? rnd(2.0f, 4.5f) : (c.rapporte ? rnd(3.5f, 6.0f) : rnd(6, 16)); c.fuite = false; c.wl = c.wlC = 0; } }
+      if (c.but == B_SORTIR) { if (c.x < bordG() + 2.0f || c.x > bordD() - 2.0f) { c.etat = E_DEHORS; c.t = 0; c.visible = false; c.tfin = c.fuite ? rnd(2.0f, 4.5f) : (c.rapporte ? rnd(3.5f, 6.0f) : rnd(6, 16)); c.fuite = false; c.wl = c.wlC = 0; } }
       else if (c.but == B_ATTRAPE && c.pj >= 0 && proj[c.pj].actif && hypotf(proj[c.pj].x - c.x, proj[c.pj].y - c.y) < 11.0f) attraper(c);
       else if (fin && (dist < 2.5f || (dist < 7.0f && sqrtf(c.vx * c.vx + c.vy * c.vy) < 20.0f))) atterrir(c);
     } break;
@@ -1055,7 +1074,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       }
     } break;
     case E_SOL: {
-      c.pied = true; c.pitchC = c.pr * 0.45f;
+      c.pied = true; c.pitchC = c.pr * 0.45f; c.haC = c.pitchC - 0.35f; c.hbC = c.haC + 0.49f;
       if (c.but == B_NOUR && c.sub <= 1) {
         Obj* o = (c.item >= 0 && c.item < NOB && ob[c.item].actif && ob[c.item].reserve == idx) ? &ob[c.item] : nullptr;
         if (!o) { c.but = B_RIEN; c.item = -1; apresSol(c); break; }
@@ -1106,7 +1125,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       c.vy += 330.0f * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.d = (c.vx >= 0) ? 1 : -1;
       c.pitchC = lim(-atan2f(c.vy, fabsf(c.vx)) * 0.9f, -1.2f, 1.2f); c.haC = -0.30f; c.hbC = 0.19f;
       float sol = solHaut(c.x) - 10.0f;
-      if (c.t > 1.5f || c.x < -30 || c.x > 350 || c.y < -40 || (c.y > sol && c.vy > 0)) {
+      if (c.t > 1.5f || c.x < bordG() || c.x > bordD() || c.y < -40 || (c.y > sol && c.vy > 0)) {
         if (c.y > sol) c.y = sol;
         c.etat = E_VOL; c.t = 0; c.vx *= 0.6f; c.vy = mnf(c.vy, 0.0f) - 20.0f; c.wlC = 1; retourLibre(c);
       }
@@ -1244,7 +1263,7 @@ static void finVisite() {      // il se disperse en corbeaux et en plumes, en un
     else if (c.but == B_ORBITE || c.but == B_VISITEUR) {
       int i = perchLibre();
       if (i >= 0 && random(100) < 65) { c.perch = i; c.but = B_PERCHOIR; c.tx = PERCH[i][0]; c.ty = perchY(i); c.aWp = false; }
-      else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? -50.0f : 370.0f; c.ty = rnd(8, 90); c.aWp = false; c.fuite = true; }
+      else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? bordG() - 16.0f : bordD() + 16.0f; c.ty = rnd(8, 90); c.aWp = false; c.fuite = true; }
     }
   }
 }
@@ -1310,14 +1329,14 @@ static void disperserOrbite(Corbeau& c) {      // la nuée se défait : retour a
   else if (c.but == B_ORBITE || c.but == B_VISITEUR) {
     int i = perchLibre();
     if (i >= 0 && random(100) < 65) { c.perch = i; c.but = B_PERCHOIR; c.tx = PERCH[i][0]; c.ty = perchY(i); c.aWp = false; }
-    else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? -50.0f : 370.0f; c.ty = rnd(8, 90); c.aWp = false; c.fuite = true; }
+    else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? bordG() - 16.0f : bordD() + 16.0f; c.ty = rnd(8, 90); c.aWp = false; c.fuite = true; }
   }
 }
 static void chasser(Corbeau& c) {      // le corbeau fuit ; il reviendra
   if (c.etat == E_DEHORS || c.etat == E_POOF || c.etat == E_TENU || c.etat == E_TIR || c.etat == E_OFF) return;
   c.item = -1; c.rapporte = false; c.fuite = true; c.flash = 0.8f; c.bec = 1; c.pj = -1;
   if (c.etat == E_PERCHE || c.etat == E_SOL || c.etat == E_ATTERRIT) { c.perch = -1; sortir(c); c.fuite = true; c.gerbe = true; }
-  else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? -50.0f : 370.0f; c.ty = rnd(8, 90); c.aWp = false; }
+  else { c.perch = -1; c.but = B_SORTIR; c.tx = (c.x < 160) ? bordG() - 16.0f : bordD() + 16.0f; c.ty = rnd(8, 90); c.aWp = false; }
 }
 static void effrayer(float x, float y) {      // tous les corbeaux proches s'envolent en nuée
   for (int k = 0; k < NCB; k++) if (hypotf(cr[k].x - x, cr[k].y - y) < 170) chasser(cr[k]);
@@ -1488,7 +1507,7 @@ static void majGlobal(float dt) {
       int j = -1; for (int q = 0; q < NOB; q++) if (!ob[q].actif) { j = q; break; }
       if (j >= 0) { Obj& o = ob[j]; o.actif = true; o.type = p.type; o.x = lim(p.x, 12, 308); o.y = sol; o.vy = 0; o.t = 0; o.repos = true; o.reserve = -1; }
       p.actif = false; son(SN_CROC, 90);
-    } else if (p.x < -40 || p.x > 360 || p.y > 260 || p.t > 6.0f) p.actif = false;
+    } else if (p.x < bordG() - 6.0f || p.x > bordD() + 6.0f || p.y > 260 || p.t > 6.0f) p.actif = false;
   }
   if (appelOn) { static float tRec = 0; tRec -= dt; if (tRec <= 0) { tRec = 0.8f; for (int k = 0; k < NCB; k++) { Corbeau& c = cr[k]; if ((c.etat == E_PERCHE && c.perch < 10 && c.objet == 0) || c.etat == E_DEHORS) { mettreEnOrbite(c); c.ray = rnd(24, 46); } } } }
   gVisite -= dt; if (gVisite <= 0 && V.ph == V_RIEN) { if (nbDehors() < 3) invoquer(); else gVisite = 10.0f; }
@@ -1570,11 +1589,11 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   // texte de mesure (mode debug)
   bbReset();
   if (debug) {
-    bbPt(238, 2); bbPt(318, 30);
+    bbPt(238, 26); bbPt(318, 54);
     if (!sech) {
-      g.fillRoundRect(238, 2, 80, 28, 4, C(0, 0, 0)); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(120, 255, 150)); g.setTextDatum(top_left);
-      char b[40]; snprintf(b, sizeof(b), "%d i/s  %d ms", fps, msDessin); g.drawString(b, 242, 4);
-      snprintf(b, sizeof(b), "T%dk P%dk", memTas, memPsram); g.drawString(b, 242, 16);
+      g.fillRoundRect(238, 26, 80, 28, 4, C(0, 0, 0)); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(120, 255, 150)); g.setTextDatum(top_left);
+      char b[40]; snprintf(b, sizeof(b), "%d i/s  %d ms", fps, msDessin); g.drawString(b, 242, 28);
+      snprintf(b, sizeof(b), "T%dk P%dk", memTas, memPsram); g.drawString(b, 242, 40);
     }
   }
   nouv[NCB + NOB + 2] = bbRect();
@@ -1600,7 +1619,7 @@ static void fusionner() {
   }
 }
 static void restaurer(const Rect& r) {      // recopie du fond précalculé dans la zone
-  uint8_t* d = (uint8_t*)cv.getBuffer(); const uint8_t* s = (const uint8_t*)fond.getBuffer(); if (!d || !s) return;
+  uint8_t* d = (uint8_t*)cv.getBuffer(); const uint8_t* s = (const uint8_t*)fondAct->getBuffer(); if (!d || !s) return;
   for (int y = r.y0; y < r.y1; y++) memcpy(d + ((size_t)y * 320 + r.x0) * bpp, s + ((size_t)y * 320 + r.x0) * bpp, (size_t)(r.x1 - r.x0) * bpp);
 }
 static void pousser(const Rect& r) {
@@ -1608,6 +1627,8 @@ static void pousser(const Rect& r) {
 }
 
 // ---------- panneau de réglages (par-dessus la scène : grosses tuiles, fermeture facile) ----------
+static void construireFondLarge();
+static void syncUI();
 static void appliquerNb() {      // nombre de corbeaux visibles (3 à 6) ; l'emplacement 6 est celui du petit corbeau
   nAct = OP.nb;
   for (int k = 0; k < NAD; k++) {
@@ -1650,7 +1671,7 @@ static void ouvrirPanneau() {
 }
 static void fermerPanneau() {
   panneau = false; plein = true; tDernier = millis();
-  if (ambChange) { ambChange = false; construireFond(); }
+  if (ambChange) { ambChange = false; construireFond(); if (fondLOk) construireFondLarge(); }
 }
 static void touchPanneau(int x, int y) {
   if ((y < 28 && x >= 236) || y >= 206) { fermerPanneau(); return; }
@@ -1675,6 +1696,76 @@ static void touchPanneau(int x, int y) {
   panSale = true;
 }
 
+// ---------- vue large (dézoom) : le monde en entier, avec plus d'espace autour ----------
+static void syncUI() {      // les bandeaux de boutons (haut et bas) sont identiques dans les deux fonds
+  if (!fondLOk || !fondOk) return;
+  memcpy(fondL.getBuffer(), fond.getBuffer(), (size_t)24 * 320 * bpp);
+  memcpy((uint8_t*)fondL.getBuffer() + (size_t)206 * 320 * bpp, (const uint8_t*)fond.getBuffer() + (size_t)206 * 320 * bpp, (size_t)34 * 320 * bpp);
+}
+static void cielLarge(M5Canvas& g) {      // ciel, lune, étoiles, collines et sol de la vue large (même monde, échelle réduite)
+  for (int sy = 0; sy < 240; sy++) { float r, gg, b; cielRGB((sy - zty) / zs, r, gg, b); g.drawFastHLine(0, sy, 320, CF(r, gg, b)); }
+  float mxs = LUNE_X * zs + ztx, mys = LUNE_Y * zs + zty; int Rr = (int)((LUNE_R + 58) * zs);
+  for (int sy = (int)mys - Rr; sy <= (int)mys + Rr; sy++) {
+    if (sy < 0 || sy >= H_SCENE) continue;
+    for (int sx = (int)mxs - Rr; sx <= (int)mxs + Rr;) {
+      float dx = sx - mxs, dy = sy - mys, dd = sqrtf(dx * dx + dy * dy);
+      int step = dd < (LUNE_R + 3) * zs ? 1 : 2;
+      if (sx >= 0 && sx < 320 - step && dd < Rr) {
+        float r, gg, b; fondRGB((sx + (step - 1) * 0.5f - ztx) / zs, (sy - zty) / zs, r, gg, b);
+        if (step == 1) g.drawPixel(sx, sy, CF(r, gg, b)); else g.drawFastHLine(sx, sy, step, CF(r, gg, b));
+      }
+      sx += step;
+    }
+  }
+  uint32_t seed = 4242;
+  for (int i = 0; i < ambEt * 2; i++) {
+    seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sx = 2 + (int)((seed >> 8) % 316);
+    seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sy = 2 + (int)((seed >> 8) % 140);
+    if (hypotf(sx - mxs, sy - mys) < (LUNE_R + 24) * zs) continue;
+    int v = (int)((seed >> 4) % 100);
+    g.drawPixel(sx, sy, v < 70 ? C(150, 62, 74) : C(205, 112, 120));
+  }
+  brume(g, 110, 100, 100, 3, 0.35f); brume(g, 210, 128, 110, 3, 0.35f); brume(g, 90, 150, 100, 3, 0.35f);
+  for (int x = 0; x < 320; x++) {
+    float yl1 = 148.0f + 6.0f * sinf(x / 40.0f + 1.0f) + 4.0f * sinf(x / 17.0f); g.drawFastVLine(x, (int)yl1, 240 - (int)yl1, C(66, 9, 15));
+    float yl2 = 160.0f + 5.0f * sinf(x / 55.0f + 2.0f) + 3.0f * sinf(x / 23.0f); g.drawFastVLine(x, (int)yl2, 240 - (int)yl2, C(46, 6, 11));
+    float ys = solHaut((x - ztx) / zs) * zs + zty; g.drawFastVLine(x, (int)ys, 240 - (int)ys, C(5, 2, 4));
+  }
+}
+static void construireFondLarge() {
+  VueId vid_;
+  zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs);
+  cielLarge(fondL);
+  arbre(fondL);                                                       // l'arbre en entier
+  zs = 0.34f; ztx = 232.0f; zty = 173.0f - 254.0f * zs; arbre(fondL);    // deux petits arbres lointains
+  zs = 0.25f; ztx = -8.0f; zty = 173.0f - 254.0f * zs; arbre(fondL);
+  syncUI();
+}
+static bool creerLarge() {
+  if (fondLOk) return true;
+  if (ESP.getFreePsram() < 400000UL && ESP.getFreeHeap() < 300000UL) return false;
+  fondL.setColorDepth(cv.getColorDepth()); fondL.setPsram(true);
+  if (!fondL.createSprite(320, 240)) return false;
+  fondLOk = true; construireFondLarge(); return true;
+}
+static void composerTransition() {      // pendant le zoom : la vue large est agrandie ou réduite, les bandeaux restent nets
+  float f = zs / 0.6f;
+  fondL.pushRotateZoom(&cv, 160.0f, zay + (120.0f - zay) * f, 0.0f, f, f);
+  memcpy(cv.getBuffer(), fond.getBuffer(), (size_t)24 * 320 * bpp);
+  memcpy((uint8_t*)cv.getBuffer() + (size_t)206 * 320 * bpp, (const uint8_t*)fond.getBuffer() + (size_t)206 * 320 * bpp, (size_t)34 * 320 * bpp);
+}
+static bool pinceOn = false, pinceFait = false; static float pinceD0 = 0;
+static void pincer() {      // pincement à deux doigts : se pincer = dézoom, s'écarter = zoom
+  if (M5.Touch.getCount() >= 2) {
+    auto a = M5.Touch.getDetail(0), b = M5.Touch.getDetail(1); float d = hypotf((float)(a.x - b.x), (float)(a.y - b.y));
+    if (!pinceOn) { pinceOn = true; pinceFait = false; pinceD0 = d; D.bas = false; VS.on = false; if (appelOn) appelFin(); }
+    else if (!pinceFait && pinceD0 > 24.0f) {
+      if (d < pinceD0 * 0.72f && zoomC < 0.5f) { zoomC = 1.0f; pinceFait = true; prefs.putUChar("cbvue", 1); }
+      else if (d > pinceD0 * 1.35f && zoomC > 0.5f) { zoomC = 0.0f; pinceFait = true; prefs.putUChar("cbvue", 0); }
+    }
+  } else pinceOn = false;
+}
+
 // ---------- ouverture / fermeture ----------
 static void ouvrir() {
   ouvert = true; fondOk = false; plein = true; chargerSons(); chargerOeil(); chargerOptions();
@@ -1682,7 +1773,7 @@ static void ouvrir() {
   if (ESP.getFreePsram() < 300000UL && ESP.getFreeHeap() < 260000UL) return;
   fond.setColorDepth(cv.getColorDepth()); fond.setPsram(true);
   if (!fond.createSprite(320, 240)) return;
-  fondOk = true;
+  fondOk = true; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondLOk = false; fondAct = &fond;
   construireFond();
   memset(cr, 0, sizeof(cr)); memset(ob, 0, sizeof(ob)); memset(pl, 0, sizeof(pl)); memset(fx, 0, sizeof(fx)); memset(anc, 0, sizeof(anc)); memset(dernierSon, 0, sizeof(dernierSon));
   static const float tailles[NCB] = {1.02f, 0.90f, 0.85f, 0.96f, 0.88f, 0.93f, 0.46f};
@@ -1695,6 +1786,8 @@ static void ouvrir() {
   cr[4].etat = E_DEHORS; cr[4].visible = false; cr[4].t = 0; cr[4].tfin = 6.0f;
   cr[5].etat = E_DEHORS; cr[5].visible = false; cr[5].t = 0; cr[5].tfin = 9.0f;
   cr[PC].etat = E_OFF; cr[PC].visible = false;
+  zoomC = prefs.getUChar("cbvue", 0) ? 1.0f : 0.0f; zoomU = zoomC; pinceOn = false;
+  if (zoomC > 0.5f) { if (creerLarge()) { zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs); fondAct = &fondL; } else { zoomC = zoomU = 0.0f; } }
   memset(&OE, 0, sizeof(OE)); OE.ponte = -1; gOeuf = rnd(40.0f, 70.0f); agePous = 0; panneau = false; panSale = true; ambChange = false; oeufsSale = false; appliquerNb();
   gAction = 3.0f; gPoof = rnd(14, 24); gObjet = rnd(24, 40); gAttrib = 0; choix = 0; presse = -1; tDernier = millis(); tSec = millis(); nImg = 0; fps = 0; msDessin = 0; volVu = false;
   if (R.actif[M_SON] && !lectureEnCours && !M5.Speaker.isEnabled()) { M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume); }
@@ -1702,7 +1795,8 @@ static void ouvrir() {
 }
 static void quitter() {
   if (!ouvert) return;
-  ouvert = false; seuilSecousse = 2.2f;
+  ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
+  if (fondLOk) { fondL.deleteSprite(); fondLOk = false; }
   if (fondOk) { fond.deleteSprite(); fondOk = false; }
   if (!lectureEnCours && M5.Speaker.isEnabled()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); }     // la musique en cours (Matinale) n'est jamais touchée
   Serial.printf("[corbeau] fermé : heap=%u psram=%u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
@@ -1716,21 +1810,28 @@ static void dessiner() {
     cv.drawString("Pas assez de mémoire", 160, 110); cv.drawString("pour les corbeaux", 160, 134); cv.setTextDatum(top_left); cv.pushSprite(0, 0); return;
   }
   if (panneau) { if (panSale) { panSale = false; dessinerPanneau(); } return; }
-  if (oeufsSale) { oeufsSale = false; boutonOeufs(fond); plein = true; }
+  if (oeufsSale) { oeufsSale = false; boutonOeufs(fond); syncUI(); plein = true; }
   uint32_t m0 = millis();
   float dt = (m0 - tDernier) / 1000.0f; bool longue = dt > 0.4f; tDernier = m0; if (dt > 0.05f) dt = 0.05f; if (dt < 0.001f) dt = 0.001f;
   if (longue) plein = true;
+  pincer();
+  if (zoomC > 0.5f && !fondLOk) { if (!creerLarge()) zoomC = 0.0f; }
+  bool anim = fabsf(zoomU - zoomC) > 0.004f;
+  if (anim) { zoomU += (zoomC - zoomU) * mnf(1.0f, dt * 6.0f); if (fabsf(zoomU - zoomC) <= 0.004f) { zoomU = zoomC; anim = false; } plein = true; }
+  else if (zoomU != zoomC) { zoomU = zoomC; plein = true; }
+  { float zn = lerpf(1.0f, 0.6f, pas(zoomU)); if (zn != zs) { zs = zn; ztx = zax * (1 - zs); zty = zay * (1 - zs); plein = true; } }
+  fondAct = (zoomU > 0.5f && fondLOk) ? &fondL : &fond;
   // volume affiché par le programme sur l'écran : on redessine tout quand il disparaît
   if (millis() < finAffVolume) volVu = true; else if (volVu) { volVu = false; plein = true; }
   if (dernierSecouement != secVu) { if (secVu != 0 || dernierSecouement != 0) { if (millis() - dernierSecouement < 600) secousse(); } secVu = dernierSecouement; }
   tAnim = millis() * 0.001f;
   for (int k = 0; k < NCB; k++) majCorbeau(cr[k], k, dt);
   majGlobal(dt);
-  if (presse >= 0 && millis() - tPressee > 180) { presse = -1; barreCb(fond, choix, -1); barreSale = true; }
+  if (presse >= 0 && millis() - tPressee > 180) { presse = -1; barreCb(fond, choix, -1); syncUI(); barreSale = true; }
   nListe = 0;
   dessinerEntites(cv, true);        // 1) boîtes englobantes (rien n'est dessiné)
   if (plein) {
-    memcpy(cv.getBuffer(), fond.getBuffer(), (size_t)320 * 240 * bpp);
+    if (anim) composerTransition(); else memcpy(cv.getBuffer(), fondAct->getBuffer(), (size_t)320 * 240 * bpp);
   } else {
     for (int e = 0; e < NENT; e++) { if (anc[e].x1 > anc[e].x0) ajoutRect(anc[e]); if (nouv[e].x1 > nouv[e].x0) ajoutRect(nouv[e]); }
     fusionner();
@@ -1770,37 +1871,41 @@ static void touchBarre(int x) {
     if (modeCb == 0) { choix = i; lacher(i, rnd(112, 300)); } else choixL = (uint8_t)i;
     presse = i; tPressee = millis();
   } else if (modeCb == 3) appelSub = (x < 248) ? 0 : 1;
-  barreCb(fond, choix, presse); barreSale = true;
+  barreCb(fond, choix, presse); syncUI(); barreSale = true;
 }
 static void appui(int x, int y) {
   uint32_t m = millis();
+  const int sxp = x, syp = y;
+  if (y < H_SCENE) { x = (int)((x - ztx) / zs); y = (int)((y - zty) / zs); }      // la scène est en coordonnées du monde
   D.bas = true; D.x0 = D.x = (float)x; D.y0 = D.y = (float)y; D.vx = D.vy = 0; D.t0 = D.tp = m; D.cible = -1; D.type = 0; D.fait = false; D.grab = false; tpCible = 0; tpFait = false;
-  if (y >= H_SCENE) { D.bas = false; touchBarre(x); return; }
-  if (x < 50 && y < 24) { D.bas = false; page = 6; bip(700, 40); return; }
-  if (x >= 52 && x < 140 && y < 24) {
+  if (syp >= H_SCENE) { D.bas = false; touchBarre(sxp); return; }
+  if (sxp < 50 && syp < 24) { D.bas = false; page = 6; bip(700, 40); return; }
+  if (sxp >= 238 && sxp < 270 && syp < 24) { D.bas = false; zoomC = (zoomC > 0.5f) ? 0.0f : 1.0f; prefs.putUChar("cbvue", zoomC > 0.5f ? 1 : 0); return; }
+  if (sxp >= 52 && sxp < 140 && syp < 24) {
     D.bas = false;
     ouvrirPanneau();
     return;
   }
-  if (x >= 270 && y < 20) { D.bas = false; debug = !debug; OP.fps = debug ? 1 : 0; prefs.putUChar("cbfps", OP.fps); plein = true; return; }
-  if (x >= 176 && x < 236 && y < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
+  if (sxp >= 270 && syp < 20) { D.bas = false; debug = !debug; OP.fps = debug ? 1 : 0; prefs.putUChar("cbfps", OP.fps); plein = true; return; }
+  if (sxp >= 176 && sxp < 236 && syp < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
   if (V.ph == V_PRESENT && x >= VX - 26 && x < VX + (V.arm > 0.3f ? 40 : 26) && y >= visPiedsY() - 76 && y < visPiedsY() + 2) { tpCible = 1; tpT0 = m; return; }
   if (OE.actif && OE.etat == 0 && modeCb != 2 && modeCb != 4 && fabsf(x - OE.x) < 12 && fabsf(y - (OE.y - 5.0f)) < 13) { craquer(); D.bas = false; return; }
   switch (modeCb) {
     case 0: {
-      int b = trouverCorbeau((float)x, (float)y, 1.0f);
+      int b = trouverCorbeau((float)x, (float)y, 1.0f / zs);
       if (b >= 0) { reagirToucher(cr[b], (float)x, (float)y); D.bas = false; return; }
       if (V.ph == V_RIEN && x >= 70 && x < 244 && fabsf(y - ytop((float)x)) < 14) { tpCible = 2; tpT0 = m; tpX = (float)x; D.bas = false; return; }
       lacher(choix, (float)x); D.bas = false;
     } break;
-    case 1: D.type = 1; D.cible = (int8_t)trouverCorbeau((float)x, (float)y, 1.5f); break;
+    case 1: D.type = 1; D.cible = (int8_t)trouverCorbeau((float)x, (float)y, 1.5f / zs); break;
     case 2: D.type = 2; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; break;
     case 3: if (appelSub == 0) { D.type = 3; appelDebut((float)x, (float)y); } else { effrayer((float)x, (float)y); D.bas = false; } break;
-    default: { int b = trouverCorbeau((float)x, (float)y, 1.6f); if (b >= 0) { D.type = 4; D.cible = (int8_t)b; saisir(b, (float)x, (float)y, true); } else D.bas = false; } break;
+    default: { int b = trouverCorbeau((float)x, (float)y, 1.6f / zs); if (b >= 0) { D.type = 4; D.cible = (int8_t)b; saisir(b, (float)x, (float)y, true); } else D.bas = false; } break;
   }
 }
 static void glisse(int x, int y) {
   if (!D.bas) return;
+  x = (int)((x - ztx) / zs); y = (int)((y - zty) / zs);
   uint32_t m = millis(); float dt = (m - D.tp) / 1000.0f;
   if (dt > 0.004f) { D.vx = 0.6f * D.vx + 0.4f * (x - D.x) / dt; D.vy = 0.6f * D.vy + 0.4f * (y - D.y) / dt; D.tp = m; }
   D.x = (float)x; D.y = (float)y;
@@ -1847,6 +1952,7 @@ static void relache() {
 static void toucher(const m5::touch_detail_t& t) {
   if (!ouvert || !fondOk) return;
   if (panneau) { if (t.wasPressed()) touchPanneau(t.x, t.y); return; }
+  if (pinceOn) return;
   if (tpCible && t.isPressed() && !tpFait && millis() - tpT0 > 600) { tpFait = true; if (tpCible == 1) bras(); else invoquer(); }
   if (t.wasReleased()) { if (tpCible && !tpFait) { if (tpCible == 1) gerbe(); else lacher(choix, tpX); } tpCible = 0; relache(); }
   if (t.wasPressed()) appui(t.x, t.y);
