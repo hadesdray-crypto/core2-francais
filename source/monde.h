@@ -380,9 +380,9 @@ static int8_t suivi = -1;
 static bool reculLent = false; static float tReculRe = 0.0f; static int8_t suiviRet = -1;      // suiviRet : le corbeau suivi avant un événement (main, appel) : la vue suivie revient dessus      // recul de la vue : coupé si l'image devient trop lente ; délai avant de reculer de nouveau
 static int8_t lpBird = -1; static uint32_t lpT = 0; static float lpX = 0, lpY = 0;
 // vues choisies (OP.recul) : 0 normale, 1 arbre et rivière, 2 mare, 3 vieux bâtiments, 4 large ; le suivi d'un corbeau est un mode à part
-static const float VUE_Z[6] = {1.0f, 1.30f, 0.72f, 1.0f, 0.50f, 1.10f};      // échelle de la caméra
-static const float VUE_X[6] = {160.0f, 165.0f, -10.0f, 394.0f, 190.0f, 104.0f};      // centre (monde) : arbre + bord de la mare ; la mare a gauche avec le champ ; portique, stèles, tour
-static const float VUE_Y[6] = {128.0f, 118.0f, 130.0f, 125.0f, 118.0f, 102.0f};      // 5 : le nid (branche secondaire, à gauche du tronc) et les branches de nuit
+static const float VUE_Z[6] = {1.0f, 0.92f, 0.80f, 1.25f, 0.46f, 1.04f};      // échelle de la caméra
+static const float VUE_X[6] = {160.0f, 112.0f, -20.0f, 404.0f, 160.0f, 116.0f};      // centre (monde) : arbre + bord de la mare ; la mare a gauche avec le champ ; portique, stèles, tour
+static const float VUE_Y[6] = {128.0f, 126.0f, 130.0f, 145.0f, 118.0f, 130.0f};      // 5 : le nid (branche secondaire, à gauche du tronc) et les branches de nuit
 static const char* const VUE_NOM[6] = {"Vue", "Arbre", "Mare", "Ruine", "Large", "Nid"};      // étiquette du bouton (32 px de large)
 static bool vueFixe() { return OP.recul > 0 || suiviRet >= 0 || (cm == CM_SUIVI && !cmFin); }      // une vue a été choisie : aucun événement spontané ne la quitte
 static const char* etiquette() { return cm == CM_SUIVI ? "Suivi" : ((OP.recul > 0 && OP.recul <= 5) ? VUE_NOM[OP.recul] : (cm == CM_LARGE ? "Large" : "Vue")); }
