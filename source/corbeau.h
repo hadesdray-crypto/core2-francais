@@ -46,14 +46,14 @@ static const int NPE = 6;        // perchoirs
 static const int NPART = 44;    // plumes
 static const int NFX = 6;       // éclats lumineux
 static const int NEXT = 14;                // rectangles en plus pour les groupes d'éléments dispersés (plumes, petits corbeaux de la nuée, éclats) : plusieurs petits rectangles au lieu d'un seul très grand
-static const int NENT = NCB + NOB + 13 + NEXT;
+static const int NENT = NCB + NOB + 14 + NEXT;
 static const int H_SCENE = 206; // la barre de nourriture occupe le bas
 static const float SOL_Y = 201.0f;
 static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {224, 125.6f}, {88, 62.5f}, {24, 94.5f}};
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
 enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE, B_MONDE, B_FAM };      // B_FAM : mission d'un parent (famille.h)
-namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); static void decorChange(); static bool vueFixe(); static void cibler(int b); }      // monde.h : paysage, camera, excursions
+namespace mo { static void decorNormal(M5Canvas& g); static void dessinBetes(M5Canvas& g); static void majNbBetes(); static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); static void decorChange(); static bool vueFixe(); static void cibler(int b); }      // monde.h : paysage, camera, excursions
 static void syncUI();
 enum { T_GRAINE = 0, T_VIANDE, T_NOIX, T_PAIN, T_BAIES, T_BRILLANT, T_BAGUE, T_KUNAI, T_SHURIKEN, T_PARCHEMIN, T_OEUF, T_NB };
 
@@ -603,7 +603,7 @@ static void vignette(M5Canvas& g) {      // horreur : bords noirs (dessiné une 
   }
 }
 static void construireFond() {
-  { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond); vignette(fond); } mo::rebake();      // les arbres lointains sont dessinés dans cielLarge, derrière les collines
+  { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond); mo::decorNormal(fond); vignette(fond); } mo::rebake();      // les arbres lointains sont dessinés dans cielLarge, derrière les collines
   menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
   cOk = false; nEnCours = false;      // le paysage en cache de la caméra n'est plus valable (ambiance ou décor changés)
 }
@@ -2611,7 +2611,7 @@ static void dessinerEclair(M5Canvas& g) {      // éclair rouge lointain, très 
   }
 }
 static void dessinerFiche(M5Canvas& g);
-static const int E0 = NCB + NOB + 13;      // premiers rectangles supplémentaires : plumes (2), petits corbeaux (3), éclats (1), puis 6 morceaux du décor animé du monde
+static const int E0 = NCB + NOB + 14;      // premiers rectangles supplémentaires : plumes (2), petits corbeaux (3), éclats (1), puis 6 morceaux du décor animé du monde
 static const int EG_PL = NCB + NOB, EG_FX = NCB + NOB + 1, EG_MI = NCB + NOB + 4, EG_DYN = E0 + 6;
 static bool chg[NENT], dr[NENT]; static uint32_t hsh[NENT], hshAnc[NENT];      // chg : l'élément a changé depuis l'image précédente ; dr : il faut le dessiner ; hsh : empreinte de son dessin
 static inline bool hachable(int e) { return e < NCB + NOB || e == NCB + NOB + 3 || e == NCB + NOB + 5 || e == NCB + NOB + 7 || e == NCB + NOB + 9 || e == NCB + NOB + 10 || e >= EG_DYN; }      // éléments dont deux images identiques sont reconnues par l'empreinte (les autres sont toujours redessinés)
@@ -2666,6 +2666,7 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   rec(NCB + NOB + 3, [&] { if (V.ph == V_PRESENT) dessinerVisiteur(g); });
   rec(NCB + NOB + 5, [&] { dessinerMain(g); });
   rec(NCB + NOB + 7, [&] { if (OE.actif) dessinerOeuf(g); });      // le visiteur, avant les corbeaux : ils se posent devant lui
+  rec(NCB + NOB + 13, [&] { mo::dessinBetes(g); });      // les petites betes, au sol, derriere les corbeaux
   rec(NCB + NOB + 9, [&] { fam::nid(g); });      // le nid, derriere les corbeaux
   { const uint32_t u_ = micros(); for (int k = 0; k < NCB; k++) rec(k, [&] { if (cr[k].visible && !horsChamp(cr[k])) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); } }); uCorb += micros() - u_; }
   rec(NCB + NOB + 10, [&] { fam::devant(g); });      // les brindilles du bord, devant le parent assis
@@ -2849,7 +2850,7 @@ static void dessinerPanneau() {
     g.drawString("Décor du monde (tour, portique, stèles, brume)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, mo::RGM.tour ? 1 : 0, LD);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Échanges à longue distance (appels, poursuites, vols)", 6, 73); segBarre(g, 4, 87, 312, 24, 2, mo::RGM.lng ? 1 : 0, LO);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Décor : arrière-plan complet, allégé ou minimal", 6, 115); segBarre(g, 4, 129, 312, 24, 3, OP.dec, LDC);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Leur fréquence suit l'Activité (page Fréquence). Le décor s'allège aussi seul si l'image ralentit.", 6, 160);
+    { static const char* const LB[3] = {"Non", "Peu", "Beaucoup"}; g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Petites bêtes à attraper (escargots, lézards, insectes)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, mo::RGM.bet, LB); }
   } else if (panPage == 2) {
     static const char* const LL[3] = {"Clair", "Sombre", "Horreur"}; static const char* const LQ[3] = {"Fluide", "Normal", "Riche"}; static const char* const LM[2] = {"Non", "Oui"}; static const char* const LM3p[3] = {"Non", "Images/s", "Détails"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2943,6 +2944,7 @@ static void touchPanneau(int x, int y) {
     if (y >= 42 && y < 72) { mo::RGM.tour = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbmtour", mo::RGM.tour); mo::decorChange(); ambChange = true; }
     else if (y >= 84 && y < 114) { mo::RGM.lng = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblng", mo::RGM.lng); }
     else if (y >= 126 && y < 156) { OP.dec = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbdec", OP.dec); ambChange = true; }      // le decor est refait a la fermeture du panneau
+    else if (y >= 168 && y < 198) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.bet = (uint8_t)v; prefs.putUChar("cbbet", mo::RGM.bet); mo::majNbBetes(); }
     else return;
     if (OP.vib) vibrer(40);
     panSale = true; return;
