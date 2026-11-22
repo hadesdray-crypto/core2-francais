@@ -1,6 +1,6 @@
 {
-    "version": "3.1.14",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=7015cb7583b8",
+    "version": "3.1.15",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=8a09db1ff814",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
         "En bas, une barre de nourriture (graines, viande, noix, pain, baies, objet brillant) : touche une icône ou touche l'écran, la nourriture tombe et un corbeau vient la prendre.",
@@ -114,17 +114,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "7015cb7583b87b97ad53326bf5a12096561c9b9b244e047b09794a00eb61afea",
+    "sha256": "8a09db1ff814d3b2358128acc12de0b32d1ec277d8fc15d66b68208ad19f7b54",
     "size": 5117376,
     "canal": "test",
     "notes": [
-        "3.1.14 : bouton Mettre a jour automatique (canal test/stable, controles de securite SHA-256) + publication automatique sur la branche corbeau",
+        "3.1.15 : numero de version (3.1.14 pris par le bouton Mettre a jour) : parent attitre du petit, entraide, protection, nourriture rare",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.14",
-        "run": "45041458342",
-        "commit": "5c99da302a83"
+        "version": "3.1.15",
+        "run": "45041494399",
+        "commit": "e9c751abdc56"
     }
 }
