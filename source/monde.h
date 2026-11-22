@@ -586,7 +586,7 @@ static bool excursion(Corbeau& c, int idx, int dest) {
 }
 static bool partir(Corbeau& c) {      // appelé par sortir() : une sortie devient une excursion vers la maison, la mare ou le champ
   if (!pret || c.fuite || c.rapporte || V.ph != V_RIEN || GP.ph || appelOn) return false;
-  int idx = (int)(&c - cr); if (idx < 0 || idx >= NAD) return false;
+  int idx = (int)(&c - cr); if (idx < 0 || idx >= NAD || natSante(idx) > 0) return false;
   if (nbAilleurs() >= 2 || random(100) < 15) return false;
   int d = choisirDest(idx); if (d < 0) return false;
   return excursion(c, idx, d);
@@ -774,7 +774,7 @@ struct Soc { bool on; uint8_t type, step; int8_t a, b, c3; };
 static Soc S; static float tS = 0.0f, gSoc = 8.0f;
 static bool libreSoc(int k) {
   Corbeau& c = cr[k];
-  return c.visible && c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f && !rt[k].away;
+  return c.visible && c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f && !rt[k].away && natSante(k) < 2;
 }
 static void vers(Corbeau& c, const Corbeau& o) { c.d = (o.x >= c.x) ? 1 : -1; }
 static void figer(Corbeau& c, float dur) { c.act = A_IMMO; c.tAct = 0.0f; c.dAct = dur; c.hum = 1.0f; }
@@ -841,7 +841,7 @@ static void majSoc(float dt) {
       else if (S.step == 2 && T > 1.5f) {
         bool aGagne = (rang[S.a] < rang[S.b]) ? (random(100) < 75) : (random(100) < 35);
         Corbeau& Gw = aGagne ? A : B; Corbeau& Lz = aGagne ? B : A;
-        Gw.act = A_SECOUE; Gw.tAct = 0.0f; Gw.dAct = 0.9f; sonCri(); lienAj(S.a, S.b, -2); S.step = 3; chasser(Lz);
+        Gw.act = A_SECOUE; Gw.tAct = 0.0f; Gw.dAct = 0.9f; sonCri(); lienAj(S.a, S.b, -2); S.step = 3; chasser(Lz); natBagarre(aGagne ? S.a : S.b, aGagne ? S.b : S.a, 0);
       } else if (S.step == 3 && T > 2.5f) S.on = false;
       break;
     default: {      // appels à trois : chacun répond à tour de rôle
@@ -864,6 +864,7 @@ static void miettes(Corbeau& c) {      // le pain se partage : deux miettes tomb
 }
 static void mange(Corbeau& c, int idx, int type) {      // chaque nourriture a un effet réel et visible
   if (idx < 0 || idx >= NAD) return;
+  natNourri(idx);
   switch (type) {
     case T_GRAINE: en[idx] += 0.10f; break;
     case T_VIANDE: en[idx] += 0.45f; tHer[idx] = 25.0f; if (forceK[idx] < 3) forceK[idx]++; c.flash = 0.6f; break;      // beaucoup d'énergie : plus gros, plus fort
@@ -876,6 +877,7 @@ static void mange(Corbeau& c, int idx, int type) {      // chaque nourriture a u
 }
 static void mangeBete(Corbeau& c, int idx, int kind) {      // nourriture naturelle : l'escargot rassasie un peu, le lezard donne de la force, le scarabee de la bonne humeur
   if (idx < 0 || idx >= NAD) return;
+  natNourri(idx);
   if (kind == BT_LEZ) { en[idx] += 0.26f; tHer[idx] = mxf(tHer[idx], 10.0f); c.flash = 0.35f; }
   else if (kind == BT_SCA) { en[idx] += 0.09f; tJoie[idx] = mxf(tJoie[idx], 8.0f); c.hum = 1.0f; }
   else en[idx] += 0.14f;
@@ -921,10 +923,10 @@ static void dispute(Corbeau& c, int idx, float dt) {      // au sol, face au dé
     c.wlC = (r.tw > 0.5f) ? 0.5f : 0.0f; c.poseC = mixA(A_PLANE, A_HAUT, 0.4f);
     if (r.t > 0.8f) {
       if (r.tw > 0.5f && o.actif) {      // il lui prend le morceau : l'autre recule et s'en va
-        o.reserve = idx; c.item = iO; c.but = B_NOUR; c.sub = 0; c.peck = 0.0f; lienAj(idx, W, -1);
+        o.reserve = idx; c.item = iO; c.but = B_NOUR; c.sub = 0; c.peck = 0.0f; lienAj(idx, W, -1); natBagarre(idx, W, 1);
         Corbeau& w = cr[W]; w.item = -1; w.but = B_RIEN; w.sub = 2; w.peck = 0.0f; w.t = 0.0f; w.surs = 0.3f;
         finR(r); c.s = r.sB; r.ph = 0;
-      } else { lienAj(idx, W, -1); retour(c, idx); }
+      } else { lienAj(idx, W, -1); natBagarre(W, idx, 1); retour(c, idx); }
     }
   }
 }

@@ -45,7 +45,7 @@ static const int NOB = 4;        // objets au sol / qui tombent
 static const int NPE = 6;        // perchoirs
 static const int NPART = 44;    // plumes
 static const int NFX = 6;       // éclats lumineux
-static const int NEXT = 14;                // rectangles en plus pour les groupes d'éléments dispersés (plumes, petits corbeaux de la nuée, éclats) : plusieurs petits rectangles au lieu d'un seul très grand
+static const int NEXT = 15;                // rectangles en plus pour les groupes d'éléments dispersés (plumes, petits corbeaux de la nuée, éclats) : plusieurs petits rectangles au lieu d'un seul très grand
 static const int NENT = NCB + NOB + 14 + NEXT;
 static const int H_SCENE = 206; // la barre de nourriture occupe le bas
 static const float SOL_Y = 201.0f;
@@ -1605,8 +1605,10 @@ static void attraper(Corbeau& c) {      // il attrape l'objet lancé, puis le ra
   c.aWp = false; c.pj = -1;
 }
 
+static uint8_t natSante(int k); static bool natMort(int k); static void natNourri(int k); static void natBagarre(int w, int l, int src); static bool natImmobile(const Corbeau& c); static void natSauver(bool force); static void natPromu(int k); static int natSlotLibre(); static void natHeritage(int p);      // nature.h (3.1.34)
 #include "monde.h"
 #include "famille.h"
+#include "nature.h"
 
 static void majCorbeau(Corbeau& c, int idx, float dt) {
   c.t += dt; c.resp += dt;
@@ -2012,6 +2014,7 @@ static void disperserOrbite(Corbeau& c) {      // la nuée se défait : retour a
 }
 static void chasser(Corbeau& c) {      // le corbeau fuit ; il reviendra
   if (c.etat == E_DEHORS || c.etat == E_POOF || c.etat == E_TENU || c.etat == E_TIR || c.etat == E_OFF) return;
+  { const int ki_ = (int)(&c - cr); if (ki_ >= 0 && ki_ < NCB && natSante(ki_) >= 2 && c.etat == E_PERCHE) { c.surs = 0.3f; c.bec = 1.0f; return; } }      // un blesse grave ne vole plus : il se fige
   eclat(c.x, c.y - 4.0f, 0.12f, 0.6f);      // éclat de choc au départ rapide
   c.item = -1; c.rapporte = false; c.fuite = true; c.flash = 0.8f; c.bec = 1; c.pj = -1;
   if (c.etat == E_PERCHE || c.etat == E_SOL || c.etat == E_ATTERRIT) { c.perch = -1; sortir(c); c.fuite = true; c.gerbe = true; }
@@ -2461,6 +2464,7 @@ static void impulsion(Corbeau& c, float jx, float jy) {      // coup reçu : en 
 }
 static void choc(float x, float y, Corbeau* a, Corbeau* b, float force) {      // plumes, éclat, cri : le choc se voit et s'entend (pas plus de deux par seconde)
   if (tChocCb > 0) return; tChocCb = 0.45f;
+  nat::choc(a, b, force);
   plumes(x, y, force > 120.0f ? 5 : 3); eclat(x, y, 0.12f, 0.6f); son(SN_PLUMES, 130);
   if (a) { a->flash = 0.6f; a->bec = 1; } if (b) { b->flash = 0.6f; b->bec = 1; }
   if (random(100) < 65) sonCri(); vib(30);
@@ -2510,7 +2514,7 @@ static void majGlobal(float dt) {
     if (eclT > 0.0f) eclT -= dt; else { gEcl -= dt; if (gEcl <= 0.0f && !panneau) { gEcl = rnd(40.0f, 120.0f); eclT = 0.42f; eclX = rnd(110.0f, 250.0f); eclGraine = (uint32_t)random(1000000) + 1; } }
   } else { lueurOeil = 1.0f; eclT = 0.0f; }
   gFeuille -= dt; if (gFeuille <= 0) { gFeuille = rnd(2.0f, 4.5f) * (OP.q == 0 ? 2.0f : 1.0f); feuille(); }
-  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt); fam::maj(dt);
+  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt); fam::maj(dt); nat::maj(dt);
   if (H.actif) H.ext += (1.0f - H.ext) * mnf(1.0f, dt * 5.0f); else if (H.ext > 0) { H.ext -= dt * 4.0f; if (H.ext < 0) H.ext = 0; }
   for (int i = 0; i < NPROJ; i++) {      // objets lancés : trajectoire, puis ils retombent et deviennent de l'objet au sol
     Proj& p = proj[i]; if (!p.actif) continue;
@@ -2590,7 +2594,7 @@ static void dessinerFiche(M5Canvas& g);
 static const int E0 = NCB + NOB + 14;      // premiers rectangles supplémentaires : plumes (2), petits corbeaux (3), éclats (1), puis 6 morceaux du décor animé du monde
 static const int EG_PL = NCB + NOB, EG_FX = NCB + NOB + 1, EG_MI = NCB + NOB + 4, EG_DYN = E0 + 6;
 static bool chg[NENT], dr[NENT]; static uint32_t hsh[NENT], hshAnc[NENT];      // chg : l'élément a changé depuis l'image précédente ; dr : il faut le dessiner ; hsh : empreinte de son dessin
-static inline bool hachable(int e) { return e < NCB + NOB || e == NCB + NOB + 3 || e == NCB + NOB + 5 || e == NCB + NOB + 7 || e == NCB + NOB + 9 || e == NCB + NOB + 10 || e >= EG_DYN; }      // éléments dont deux images identiques sont reconnues par l'empreinte (les autres sont toujours redessinés)
+static inline bool hachable(int e) { return e < NCB + NOB || e == NCB + NOB + 3 || e == NCB + NOB + 5 || e == NCB + NOB + 7 || e == NCB + NOB + 9 || e == NCB + NOB + 10 || e == NCB + NOB + 2 || e >= EG_DYN; }      // éléments dont deux images identiques sont reconnues par l'empreinte (les autres sont toujours redessinés)
 static inline Rect rVide() { Rect r; r.x0 = 9997; r.y0 = 9997; r.x1 = -9996; r.y1 = -9996; return r; }
 static inline int aireR(const Rect& r) { return (r.x1 - r.x0) * (r.y1 - r.y0); }
 static inline Rect unionR(const Rect& a, const Rect& b) { Rect r; r.x0 = a.x0 < b.x0 ? a.x0 : b.x0; r.y0 = a.y0 < b.y0 ? a.y0 : b.y0; r.x1 = a.x1 > b.x1 ? a.x1 : b.x1; r.y1 = a.y1 > b.y1 ? a.y1 : b.y1; return r; }
@@ -2644,7 +2648,7 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   rec(NCB + NOB + 7, [&] { if (OE.actif) dessinerOeuf(g); });      // le visiteur, avant les corbeaux : ils se posent devant lui
   rec(NCB + NOB + 13, [&] { mo::dessinBetes(g); });      // les petites betes, au sol, derriere les corbeaux
   rec(NCB + NOB + 9, [&] { fam::nid(g); });      // le nid, derriere les corbeaux
-  { const uint32_t u_ = micros(); for (int k = 0; k < NCB; k++) rec(k, [&] { if (cr[k].visible && !horsChamp(cr[k])) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); } }); uCorb += micros() - u_; }
+  { const uint32_t u_ = micros(); for (int k = 0; k < NCB; k++) rec(k, [&] { if (cr[k].visible && !horsChamp(cr[k])) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); nat::sur(g, k); } }); uCorb += micros() - u_; }
   rec(NCB + NOB + 10, [&] { fam::devant(g); });      // les brindilles du bord, devant le parent assis
   // petits corbeaux de la nuee : un rectangle par groupe proche (au plus quatre)
   if (sech) {
@@ -2672,8 +2676,9 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
     recOn = false; cmdF[SL_FX] = cmdN; grouper(t, n, EG_FX, E0 + 5, 2);
   } else if (cmdOvf) { for (int i = 0; i < NFX; i++) if (fx[i].actif) dessinerEclatFx(g, fx[i]); }
   else rejouer(g, cmdD[SL_FX], cmdF[SL_FX]);
-  if (sech) nouv[NCB + NOB + 2] = rVide();      // (emplacement libre : l'ancien affichage des mesures a l'ecran est supprime)
+  rec(NCB + NOB + 2, [&] { nat::dessinerSteles(g); });      // les steles des disparus (au pied de l'arbre, discretes)
   rec(NCB + NOB + 8, [&] { if (OP.hor == 2 && eclT > 0.0f && !qMin) dessinerEclair(g); });
+  rec(E0 + 14, [&] { nat::dessinerPred(g); });      // le predateur (rapace, hibou, renard) : une silhouette de plus, par-dessus les corbeaux
   rec(NCB + NOB + 11, [&] { dessinerGP(g); });      // la visite d'un corbeau au gros plan : redessinee par zones, comme le reste
   if (veut(NCB + NOB + 12)) { bbReset(); if (OP.fiche) dessinerFiche(g); fin(NCB + NOB + 12); }      // la fiche flottante d'un corbeau (double toucher)
   sec = false;
@@ -2709,10 +2714,10 @@ static void pousser(const Rect& r) {
 static void construireFondLarge();
 static void syncUI();
 static void appliquerNb() {      // nombre de corbeaux visibles (1 à 8) ; l'emplacement 8 est celui du petit corbeau
-  nAct = OP.nb;
+  nAct = OP.nb; nat::oublier(nAct);      // le reglage est un maximum : les emplacements au-dela sont oublies ; les disparus restent absents
   for (int k = 0; k < NAD; k++) {
     Corbeau& c = cr[k];
-    if (k >= nAct) { if (c.etat != E_OFF) { c.etat = E_OFF; c.visible = false; c.perch = -1; c.but = B_RIEN; c.objet = 0; c.pj = -1; c.item = -1; c.rapporte = false; c.fuite = false; c.aWp = false; } }
+    if (k >= nAct || natMort(k)) { if (c.etat != E_OFF) { c.etat = E_OFF; c.visible = false; c.perch = -1; c.but = B_RIEN; c.objet = 0; c.pj = -1; c.item = -1; c.rapporte = false; c.fuite = false; c.aWp = false; } }
     else if (c.etat == E_OFF) { c.etat = E_DEHORS; c.visible = false; c.t = 0; c.tfin = rnd(0.8f, 2.5f); c.but = B_RIEN; c.perch = -1; c.wl = c.wlC = 0; c.fan = c.fanC = 0; }
   }
   for (int i = 0; i < NOB; i++) if (ob[i].actif && ob[i].reserve >= 0) ob[i].reserve = -1;
@@ -2742,7 +2747,7 @@ static void dessinerPanneau() {
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, nourriture" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, nourriture" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   if (panPage == 0) {
     // volume : - barre + et TEST SON
@@ -2771,6 +2776,14 @@ static void dessinerPanneau() {
     g.drawString("Caméra automatique (vue d'ensemble pendant les échanges)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, OP.cauto, LO);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Non : la vue choisie reste, sans gros plan ni visiteur spontanés.", 6, 77);
     g.drawString("Le bouton Vue ou la page Main et vue changent de vue.", 6, 93); g.drawString("En Suivi, touche un corbeau pour le suivre.", 6, 109);
+  } else if (panPage == 10) {      // nature : predateurs, blessures, mort, mode (cles cbnpre, cbnble, cbnmor, cbnmod)
+    static const char* const LPR[3] = {"Jamais", "Rares", "Fréquents"}; static const char* const LBL[2] = {"Non", "Oui"}; static const char* const LMO[3] = {"Jamais", "Rare", "Réaliste"}; static const char* const LMD[2] = {"Nature", "Protecteur"};
+    char sb[64]; snprintf(sb, sizeof(sb), "Mode : Nature ou Protecteur   (stèles : %u)", (unsigned)nat::SV.nMort);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Prédateurs : rapace, hibou la nuit, renard", 6, 31); segBarre(g, 4, 45, 312, 24, 3, nat::RN.pred, LPR);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Blessures : boiter, guérir, cicatrices", 6, 73); segBarre(g, 4, 87, 312, 24, 2, nat::RN.bles, LBL);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Mort (jamais le dernier ; stèle, oeuf de secours)", 6, 115); segBarre(g, 4, 129, 312, 24, 3, nat::RN.mort, LMO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString(sb, 6, 157); segBarre(g, 4, 171, 312, 24, 2, nat::RN.mode, LMD);
   } else if (panPage == 9) {      // vie, nid et couple (clés cbafnai, cbafnui, cbafcpl, cbafnid)
     static const char* const LN[2] = {"Oeuf attrapé", "Libre (comme avant)"}; static const char* const LU[2] = {"Au nid", "Sur l'arbre"}; static const char* const LC[2] = {"Non", "Oui"}; static const char* const LB[3] = {"Lente", "Normale", "Rapide"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2827,7 +2840,7 @@ static void dessinerPanneau() {
   g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
   g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
-  g.drawString(panPage == 9 ? "< Réglages" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
+  g.drawString(panPage == 10 ? "< Réglages" : panPage == 9 ? "Nature >" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
@@ -2840,7 +2853,16 @@ static void fermerPanneau() {
 }
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
-  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 10); panSale = true; } return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 11); panSale = true; } return; }
+  if (panPage == 10) {      // nature (cles cbnpre, cbnble, cbnmor, cbnmod)
+    if (y >= 42 && y < 72) { nat::RN.pred = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbnpre", nat::RN.pred); nat::gPred = nat::delaiPred(); }
+    else if (y >= 84 && y < 114) { nat::RN.bles = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbnble", nat::RN.bles); }
+    else if (y >= 126 && y < 156) { nat::RN.mort = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbnmor", nat::RN.mort); }
+    else if (y >= 168 && y < 198) { nat::RN.mode = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbnmod", nat::RN.mode); nat::gPred = nat::delaiPred(); }
+    else return;
+    if (OP.vib) vibrer(40);
+    panSale = true; return;
+  }
   if (panPage == 9) {      // vie, nid et couple (clés cbafnai, cbafnui, cbafcpl, cbafnid)
     if (y >= 42 && y < 72) { fam::AFR.naiss = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbafnai", fam::AFR.naiss); }
     else if (y >= 84 && y < 114) { fam::AFR.nuit = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbafnui", fam::AFR.nuit); }
@@ -3102,7 +3124,8 @@ static void dessinerFiche(M5Canvas& g) {
     if (j2 >= 0 && (best >= 40 || best <= -40)) snprintf(l4, sizeof(l4), "Rang %d, %s %s", (int)fam::S.rang[k] + 1, lk, nomC[j2]); else snprintf(l4, sizeof(l4), "Rang %d, %s", (int)fam::S.rang[k] + 1, lk);
   } else { snprintf(l2, sizeof(l2), "Trait : ?"); snprintf(l4, sizeof(l4), "Colonie en formation"); }
   char l5[40]; l5[0] = 0; fam::texteLien(k, l5, sizeof(l5), nomC);
-  fbh = FBH + (l5[0] ? 12 : 0); fbb = fbh - 20;
+  char l6[40]; l6[0] = 0; nat::texteSante(k, l6, sizeof(l6));
+  fbh = FBH + (l5[0] ? 12 : 0) + (l6[0] ? 12 : 0); fbb = fbh - 20;
   float px = TX(c.x), py = TY(c.y + c.bob);
   int x0 = (int)lim(px - FBW * 0.5f, 2.0f, 318.0f - FBW), y0 = (int)lim(py - 30.0f * c.s * zs - fbh - 2.0f, 28.0f, (float)(H_SCENE - fbh - 2));
   fbx = x0; fby = y0;
@@ -3111,6 +3134,7 @@ static void dessinerFiche(M5Canvas& g) {
   g.setTextDatum(top_left); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); g.drawString(l1, x0 + 6, y0 + 3);
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(230, 170, 160)); g.drawString(l2, x0 + 6, y0 + 22); g.drawString(l3, x0 + 6, y0 + 34); g.drawString(l4, x0 + 6, y0 + 46);
   if (l5[0]) { g.setTextColor(C(255, 205, 130)); g.drawString(l5, x0 + 6, y0 + 58); }
+  if (l6[0]) { g.setTextColor(C(255, 170, 150)); g.drawString(l6, x0 + 6, y0 + 58 + (l5[0] ? 12 : 0)); }
   g.fillRoundRect(x0 + 6, y0 + fbb, 66, 16, 6, C(50, 100, 60)); g.fillRoundRect(x0 + 78, y0 + fbb, 66, 16, 6, C(100, 50, 40));      // boutons : Lui donner / Lui lancer
   g.setTextDatum(middle_center); g.setTextColor(C(255, 250, 240)); g.drawString("Lui donner", x0 + 39, y0 + fbb + 8); g.drawString("Lui lancer", x0 + 111, y0 + fbb + 8); g.setTextDatum(top_left);
 }
@@ -3176,6 +3200,7 @@ static void chargerPas() {
   for (int k = 0; k < NCB; k++) initCorbeau(cr[k], tailles[k] * tailleF());
   cr[0].d = -1; cr[1].d = 1; cr[2].d = 1; placer(cr[0], 3); placer(cr[1], 1); placer(cr[2], 4);
   for (int k = 0; k < 3; k++) cr[k].tfin = rnd(3, 8);
+  nat::init();      // nature.h : sante, cicatrices, steles, reglages (avant fam::init pour que les rangs tiennent compte des disparus)
   fam::init();      // famille.h : la colonie (traits, rôles, rangs, perchoirs attitrés) est relue de la mémoire
   chargerNoms(); FI.k = -1; tapK = -1; pendOn = false; visType = -1;
   gCalme = 0; memset(&V, 0, sizeof(V)); memset(mini, 0, sizeof(mini)); memset(proj, 0, sizeof(proj)); memset(&H, 0, sizeof(H)); memset(BRAIS, 0, sizeof(BRAIS)); tBraise = 0.0f; memset(&VS, 0, sizeof(VS)); memset(&FR, 0, sizeof(FR)); memset(&D, 0, sizeof(D));
@@ -3214,7 +3239,7 @@ static void quitterPas() {
       fam::sauver(true);      // ecritures en memoire de la colonie : une etape a elles seules
     } break;
     case 1: {
-      libererCamCache(); if (cmdB) { free(cmdB); cmdB = nullptr; cmdMax = 0; } fam::pret = false;
+      libererCamCache(); if (cmdB) { free(cmdB); cmdB = nullptr; cmdMax = 0; } nat::ferme(); fam::pret = false;
       qGarder = (fondGarde && mo::gardeMonde() && ESP.getFreePsram() >= 600000UL);      // le fond et le paysage restent en memoire (reouverture rapide) s'il reste assez de PSRAM
       mo::fermerMonde(qGarder); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
     } break;
@@ -3540,7 +3565,7 @@ static void toucher(const m5::touch_detail_t& t) {
   mo::appuiLong(t);
   if (tpCible && t.isPressed() && !tpFait && millis() - tpT0 > 600) { tpFait = true; if (D.type == 7) { D.type = 0; D.bas = false; VS.on = false; visType = -1; } if (tpCible == 1) bras(); else if (tpCible == 3) lancerVisite(); else invoquer(); }
   if (t.wasReleased()) { if (tpCible && !tpFait) { if (tpCible == 1) gerbe(); else if (D.type != 7) lacher(choix, tpX); } tpCible = 0; relache(); }
-  if (t.wasPressed()) appui(t.x, t.y);
+  if (t.wasPressed()) { if (!nat::toucher(t.x, t.y)) appui(t.x, t.y); }      // un toucher sur un predateur le fait fuir
   else if (t.isPressed()) glisse(t.x, t.y);
 }
 

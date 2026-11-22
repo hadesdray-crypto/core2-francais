@@ -26,7 +26,7 @@
 #include "presence.h"      // presence / absence des personnages et des univers (3.1.6)
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.33"
+#define VERSION_PROGRAMME "3.1.34"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 #define SOURCE_MAJ_TEST "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/version.json"      // canal « test » (par défaut) : publié automatiquement après chaque compilation réussie de la branche corbeau
@@ -3493,6 +3493,7 @@ void demarrerServeur() {
     d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["repos"] = reposNiv; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
     ajouterMesuresEcran(d);
     d["fps"] = cb::fpsMoy10 / 10.0f; d["fpsmin"] = cb::fpsMin; d["msimage"] = cb::emaTot; d["msmax"] = cb::msMax; d["cbCadenceMax"] = (cb::OP.cad == 0 ? 20 : (cb::OP.cad == 1 ? 25 : 30)); d["cbAllegement"] = cb::qMin ? 2 : (cb::qDeg ? 1 : 0); d["cbEcran80MHz"] = cb::ecr80;
+  d["natPredateur"] = (int)cb::nat::PD.kind; d["natPhase"] = (int)cb::nat::PD.ph; d["natSteles"] = cb::nat::SV.nMort; d["natBlessures"] = cb::nat::SV.nBless; d["natCoups"] = cb::nat::SV.nPred; d["natVivants"] = cb::nat::pretN ? cb::nat::vivTot() : 0;
   d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
     d["uptimeMs"] = millis(); d["prEtat"] = pr::etat; d["prAbsMs"] = pr::absent() ? (uint32_t)(millis() - pr::debAbsence) : 0; d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
     d["pileMv"] = M5.Power.getBatteryVoltage(); d["usbMv"] = M5.Power.getVBUSVoltage(); d["courantMa"] = M5.Power.getBatteryCurrent(); d["niveau"] = M5.Power.getBatteryLevel(); d["etatCharge"] = (int)M5.Power.isCharging(); d["puce"] = (int)M5.Power.getType();

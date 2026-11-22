@@ -98,7 +98,7 @@ static void changer(int a, int b, int d) {
 
 static void calculerRangs() {
   int sc[NM];
-  for (int k = 0; k < NM; k++) sc[k] = S.frc[k] * 2 + S.aud[k] + (S.role[k] == R_ALPHA ? 2000 : 0) + (k == 0 ? 1000 : 0) - (S.role[k] == R_JEUNE ? 1000 : 0);
+  for (int k = 0; k < NM; k++) sc[k] = S.frc[k] * 2 + S.aud[k] + (S.role[k] == R_ALPHA ? 2000 : 0) + (k == 0 ? 1000 : 0) - (S.role[k] == R_JEUNE ? 10000 : 0) - (natMort(k) ? 3000 : 0);
   for (int k = 0; k < NM; k++) { int n = 0; for (int j = 0; j < NM; j++) if (sc[j] > sc[k] || (sc[j] == sc[k] && j < k)) n++; S.rang[k] = (uint8_t)n; }
 }
 static void echanger(int k, int perch) { for (int j = 0; j < NM; j++) if (j != k && foyer[j] == perch) { foyer[j] = foyer[k]; break; } foyer[k] = (int8_t)perch; }
@@ -131,7 +131,7 @@ static void appliquer(Corbeau& c, int k) {      // les traits de la colonie devi
   c.pCal = S.cal[k] / 255.0f; c.pBav = S.soc[k] / 255.0f; c.pJou = S.cur[k] / 255.0f; c.pCra = 1.0f - S.aud[k] / 255.0f;
 }
 static void sauver(bool force) {
-  sauverY(force); sauverAdu(force);
+  sauverY(force); sauverAdu(force); natSauver(force);
   if (!pret || !sale) return;
   if (!force && tSauv < 90.0f) return;
   S.age = (uint16_t)mnf(ageF, 60000.0f);
@@ -143,6 +143,7 @@ static void sauverTard() { sale = true; if (tSauv < 87.0f) tSauv = 87.0f; }     
 static bool libre(int k) {      // perché sur l'arbre, sans rien à faire de particulier : disponible pour une sortie ou un rôle collectif
   if (k < 0 || k >= NAD) return false;
   const Corbeau& c = cr[k];
+  if (natSante(k)) return false;      // un corbeau blesse ne part pas en sortie de groupe
   if (k < 2 && S.fph >= F_NID) return false;      // le couple a mieux à faire
   if (k == PE.par && soinOn()) return false;      // le parent attitré veille sur son petit
   return c.etat == E_PERCHE && c.visible && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f && !mo::rt[k].away;
@@ -734,7 +735,7 @@ static void pose(Corbeau& c, int idx, float dt) {      // attitudes des parents 
   }
 }
 static bool enService(const Corbeau& c) {      // un parent qui a des œufs ou des petits ne rejoint ni la nuée du visiteur ni l'appel
-  int k = (int)(&c - cr); return pret && k >= 0 && ((k < 2 && nichee()) || ((k == PE.par || k == PC) && soinOn()) || (cvOn && k == (int)cvK));
+  int k = (int)(&c - cr); return pret && k >= 0 && ((k < 2 && nichee()) || ((k == PE.par || k == PC) && soinOn()) || (cvOn && k == (int)cvK) || natSante(k) > 0);
 }
 static void majFam(float dt) {      // à chaque image : poussins qui réclament, couverts la nuit, ponte
   if (layT > 0.0f) { layT -= dt; if (layT <= 0.0f && S.nEuf < noeufs()) { S.nEuf++; sale = true; son(SN_POP_APP, 80); plumes(NX, NY - 6.0f, 2); } }      // l'œuf apparaît dans le nid
@@ -797,6 +798,7 @@ static void debutPetit(bool rare) {      // appelé par naissance() : le petit a
   faimP = 0.35f; tSoin = 8.0f; ym.on = false; hostY = -1;
   poserPetit(xPetitLibre());
   if (p >= 0) changer(p, PC, 40);
+  natHeritage(p);      // selection naturelle : traits des parents + petite mutation
   sauverY(true);
 }
 static void restaurerY() {      // à l'ouverture du mode : le petit (ou le jeune devenu grand, s'il y a de la place) revient, avec son âge et son parent
@@ -810,7 +812,7 @@ static void restaurerY() {      // à l'ouverture du mode : le petit (ou le jeun
   poserPetit(xPetitLibre()); faimP = 0.45f; tSoin = 10.0f;
   if (PE.par < NAD && cr[PE.par].etat == E_OFF) PE.par = 255;
 }
-static bool immobile(const Corbeau& c) { return (int)(&c - cr) == PC && soinOn() && c.etat == E_PERCHE; }      // le petit ne s'éloigne pas de la branche de ses parents
+static bool immobile(const Corbeau& c) { return ((int)(&c - cr) == PC && soinOn() && c.etat == E_PERCHE) || natImmobile(c); }      // le petit ne s'éloigne pas de la branche de ses parents
 static void rattrapageY(uint32_t secs) { if (soinOn() && secs > 40UL) faimP = mxf(faimP, 0.7f); if (ADU.ver == 1) { ageAdu = mnf(ageAdu + (float)secs * 0.3f, 65000.0f); saleAdu = true; } }      // au retour de l'utilisateur : le petit réclame
 static int prix(int t) { return t == T_VIANDE ? 5 : (t == T_PAIN ? 4 : (t == T_NOIX ? 3 : (t == T_BAIES ? 2 : 1))); }
 static bool defier(int P, int iO) {      // il y a peu de nourriture : le parent défie celui qui tient le morceau (la bagarre est celle du bloc J : ailes ouvertes, cris, choc, le plus fort l'emporte)
@@ -909,14 +911,16 @@ static void apresEclosion() {      // appelé par eclore() : le couveur quitte l
   if (k >= 0 && mis[k].ph == M_OEUF) finMission(k);
 }
 static void promouvoir() {      // le petit est adulte : il prend sa place dans la colonie (N + 1, mémorisé) ; si la colonie est pleine il reste sur l'emplacement du petit
-  if (AFR.naiss != 0 || !RG.on || nAct >= NAD || nAct < 1 || cr[PC].etat == E_OFF) return;
-  const int k = nAct; Corbeau& c = cr[PC];
+  if (AFR.naiss != 0 || !RG.on || nAct < 1 || cr[PC].etat == E_OFF) return;
+  const int kl = natSlotLibre(); if (kl < 0 && nAct >= NAD) return;      // un emplacement laisse par un disparu est reoccupe d'abord
+  const int k = (kl >= 0) ? kl : nAct; Corbeau& c = cr[PC];
   cr[k] = c; Corbeau& n = cr[k];
   mo::rt[k] = mo::rt[PC]; mo::sBase[k] = c.s; mo::rt[k].sB = c.s;
   mis[k] = mis[PC]; memset(&mis[PC], 0, sizeof(Mis)); tmis[k] = 0.0f; tmis[PC] = 0.0f;
   n.duvet = 0.0f;
   c.etat = E_OFF; c.visible = false; c.perch = -1; c.but = B_RIEN; c.objet = 0; c.item = -1; c.pj = -1; c.duvet = 0.0f;
-  OP.nb = (uint8_t)(k + 1); nAct = OP.nb; prefs.putUChar("cbnb", OP.nb);
+  if (kl < 0) { OP.nb = (uint8_t)(k + 1); nAct = OP.nb; prefs.putUChar("cbnb", OP.nb); }
+  natPromu(k);      // traits herites, sante, rangs
   appliquer(n, k); PE.res = 1; saleP = true;
   ADU.ver = 1; ADU.k = (uint8_t)k; ageAdu = Y_GRAND; saleAdu = true; sauverAdu(true);
   if (n.etat == E_PERCHE && n.but == B_RIEN) { n.perch = -1; n.tfin = rnd(1.0f, 2.5f); versPerchoir(n); }      // il rejoint son perchoir
