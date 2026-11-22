@@ -1,5 +1,5 @@
 {
-    "version": "2.5.1",
+    "version": "2.5.2",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -15,6 +15,7 @@
         "Nouveau : le Dex des yeux (tuile « Dex » du menu). Une liste de 12 emplacements, une fiche par œil (motif dessiné par le code, texte, pouvoirs imaginaires, « Le saviez-vous ? » avec de vrais faits sur les corbeaux), glisser pour passer d'une fiche à l'autre, et un écran pour créer son propre œil (couleur, virgules, motif).",
         "L'œil choisi dans le Dex change les yeux des corbeaux dans le mode Corbeaux (bouton Activer, Retirer pour revenir au rouge normal).",
         "Corbeaux perchés plus sombres : corps penché en avant, queue et ailes repliées terminées par des plumes pointues et déchiquetées qui pendent, une longue plume relevée vers l'arrière, et quatre postures différentes qui changent à chaque fois qu'ils se posent.",
+        "Mode Corbeaux : la barre du bas a maintenant cinq modes. Nourrir (comme avant), Main (toucher long = la main se tend et un corbeau s'y pose ; glisse un corbeau pour le déposer sur une branche ; un toucher appelle, un balayage les fait s'envoler), Lancer (glisse et lâche pour lancer bague, kunaï, shuriken, parchemin ou noix : les corbeaux les attrapent en vol), Appel (ils tournent autour du doigt) ou Effrayer (ils s'envolent en nuée puis reviennent), et Fronde (tire un corbeau en arrière et lâche : il est projeté puis revient se percher).",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
