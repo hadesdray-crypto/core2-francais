@@ -498,9 +498,10 @@ static void boutonVisiteur(M5Canvas& g) {
 static void boutonOeufs(M5Canvas& g) {      // compteur discret des œufs éclos
   VueId vid_;
   g.fillRoundRect(142, 2, 32, 20, 8, C(14, 4, 8)); g.drawRoundRect(142, 2, 32, 20, 8, C(110, 22, 30));
-  dessinerObjet(g, T_OEUF, 152.0f, 12.0f, 3.2f, 0.0f, 0.0f);
+  dessinerObjet(g, T_OEUF, 151.0f, 12.0f, 3.2f, 0.0f, 0.0f);
+  g.drawFastHLine(166, 7, 5, C(255, 170, 150)); g.drawFastVLine(168, 5, 5, C(255, 170, 150));      // « + » : toucher pour faire apparaître un œuf tout de suite
   char b[12]; snprintf(b, sizeof(b), "%u", (unsigned)nbOeufs);
-  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_left); g.setTextColor(C(230, 170, 160)); g.drawString(b, 159, 12); g.setTextDatum(top_left);
+  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_left); g.setTextColor(C(230, 170, 160)); g.drawString(b, 157, 14); g.setTextDatum(top_left);
 }
 
 static void boutonVue(M5Canvas& g) {
@@ -2002,9 +2003,23 @@ static void pondre() {      // un corbeau perché se secoue : il va pondre
   if (!n) return;
   int k = l[random(n)]; Corbeau& c = cr[k]; c.act = A_SECOUE; c.tAct = 0; c.dAct = 1.2f; c.bec = 1; OE.ponte = (int8_t)k; OE.tp = 1.1f; sonCri();
 }
+static void oeufMaintenant() {      // bouton « œuf » : un œuf apparaît tout de suite (un corbeau perché pond en une demi-seconde, sinon il apparaît dans un éclat)
+  if (V.ph != V_RIEN || GP.ph) return;
+  if (OE.actif || OE.ponte >= 0) { son(SN_POP_APP, 110); return; }      // il y en a déjà un
+  pondre();
+  if (OE.ponte >= 0) OE.tp = 0.45f;
+  else {
+    float x = rnd(96.0f, 216.0f); OE.actif = true; OE.x = x; OE.y = ytop(x) + 0.4f; OE.t = 0; OE.tc = 0; OE.etat = 0;
+    son(SN_POP_APP, 170); plumes(x, OE.y - 4, 5); eclat(x, OE.y - 5, 0.25f, 0.8f); vib(60);
+  }
+  gOeuf = rnd(60.0f, 120.0f) * multFreq(OP.oe);
+}
 static void majOeuf(float dt) {
   gOeuf -= dt;
-  if (gOeuf <= 0) { gOeuf = rnd(70.0f, 130.0f) * multFreq(OP.oe); if (OP.oe > 0 && V.ph == V_RIEN && !OE.actif && OE.ponte < 0 && !panneau) pondre(); }
+  if (gOeuf <= 0) {      // un œuf toutes les 60 à 120 s (réglage « Œufs pondus ») tant qu'il n'y en a pas déjà un ; si personne ne peut pondre ou s'il y en a un, on réessaie bientôt
+    gOeuf = rnd(60.0f, 120.0f) * multFreq(OP.oe);
+    if (OP.oe > 0) { if (V.ph == V_RIEN && !OE.actif && OE.ponte < 0 && !panneau) { pondre(); if (OE.ponte < 0) gOeuf = rnd(4.0f, 8.0f); } else gOeuf = rnd(6.0f, 10.0f); }
+  }
   if (OE.ponte >= 0) {
     OE.tp -= dt;
     if (OE.tp <= 0) {
@@ -2015,7 +2030,7 @@ static void majOeuf(float dt) {
       }
     }
   }
-  if (OE.actif) { OE.t += dt; if (OE.etat == 0 && OE.t > 90.0f) craquer(); if (OE.etat == 1) { OE.tc += dt; if (OE.tc > 1.0f) eclore(); } }
+  if (OE.actif) { OE.t += dt; if (OE.etat == 0 && OE.t > 45.0f) craquer(); if (OE.etat == 1) { OE.tc += dt; if (OE.tc > 1.0f) eclore(); } }
   if (cr[PC].etat != E_OFF) { agePous += dt; cr[PC].s = 0.62f + 0.36f * lim(agePous / 240.0f, 0.0f, 1.0f); cr[PC].duvet = 1.0f - lim(agePous / 300.0f, 0.0f, 1.0f); }
 }
 
@@ -2713,7 +2728,7 @@ static void ouvrir() {
   if (zoomC > 0.5f) { if (creerLarge()) { zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs); fondAct = &fondL; } else { zoomC = zoomU = 0.0f; } }
   if (zoomC < 0.5f) { zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); }
   memset(&GP, 0, sizeof(GP)); gVisGP = rnd(50.0f, 90.0f) * multFreq(OP.gp); tToucher = millis(); gEcl = rnd(30.0f, 70.0f); gBatt = rnd(35.0f, 80.0f); eclT = 0.0f; battT = 0.0f;
-  memset(&OE, 0, sizeof(OE)); OE.ponte = -1; gOeuf = rnd(40.0f, 70.0f) * multFreq(OP.oe); agePous = 0; panneau = false; panSale = true; ambChange = false; oeufsSale = false; appliquerNb();
+  memset(&OE, 0, sizeof(OE)); OE.ponte = -1; gOeuf = rnd(20.0f, 45.0f) * multFreq(OP.oe); agePous = 0; panneau = false; panSale = true; ambChange = false; oeufsSale = false; appliquerNb();
   gAction = 3.0f; gPoof = rnd(14, 24); gObjet = rnd(24, 40); gAttrib = 0; choix = 0; presse = -1; tDernier = millis(); tSec = millis(); nImg = 0; fps = 0; msDessin = 0; volVu = false;
   if (prefs.getUChar("cbvol1", 0) == 0) { if (R.volume < 200) { R.volume = 200; sauverReglages(); } prefs.putUChar("cbvol1", 1); }      // volume de départ plus fort, une seule fois
   if (!lectureEnCours && !M5.Speaker.isRunning()) { M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume); }
@@ -2864,6 +2879,7 @@ static void appui(int x, int y) {
     return;
   }
   if (sxp >= 270 && syp < 20) { D.bas = false; debug = !debug; OP.fps = debug ? 1 : 0; prefs.putUChar("cbfps", OP.fps); plein = true; return; }
+  if (sxp >= 140 && sxp < 176 && syp < 24) { D.bas = false; oeufMaintenant(); return; }      // bouton œuf
   if (sxp >= 176 && sxp < 236 && syp < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
   if (V.ph == V_PRESENT && x >= VX - 26 && x < VX + (V.arm > 0.3f ? 40 : 26) && y >= visPiedsY() - 76 && y < visPiedsY() + 2) { tpCible = 1; tpT0 = m; return; }
   if (OE.actif && OE.etat == 0 && modeCb != 2 && modeCb != 4 && fabsf(x - OE.x) < 12 && fabsf(y - (OE.y - 5.0f)) < 13) { craquer(); D.bas = false; return; }
