@@ -2,6 +2,7 @@
     "version": "3.1.16",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=f0c76e5a004a",
     "changes": [
+        "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
         "En bas, une barre de nourriture (graines, viande, noix, pain, baies, objet brillant) : touche une icône ou touche l'écran, la nourriture tombe et un corbeau vient la prendre.",
         "Parfois un corbeau disparaît en un clin d'œil dans une explosion de plumes et un éclair rouge de l'œil, puis réapparaît ailleurs ; un autre rapporte un objet (bague, kunaï, shuriken, parchemin) et le dépose.",
@@ -118,7 +119,7 @@
     "size": 5122800,
     "canal": "test",
     "notes": [
-        "3.1.16 : correction de compilation (BR est une macro du processeur, tableau renomme BRAIS) et reglage de la paume (plus haute, pouce vers l'avant, ond",
+        "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
