@@ -1,6 +1,6 @@
 {
-    "version": "3.1.24",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=a16231465440",
+    "version": "3.1.25",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=7e8d3640eeca",
     "changes": [
         "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -115,17 +115,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "a162314654402af0a52437f2b3dc6e1f5acf40f9526d63497fc321bf9c295d6e",
-    "size": 5145936,
+    "sha256": "7e8d3640eecae16027378d599fbbc555587b7f010ca50c8366ee64d260a5acc8",
+    "size": 5145376,
     "canal": "test",
     "notes": [
-        "3.1.24 : mise a jour rapide : compteur d'images/s jamais affiche a l'ecran (seulement /api/etat), decor allege par defaut, nettoyage du code mort (anc",
+        "3.1.25 : un seul plan principal : collines, arbres lointains, sol, mare, champ, tour et arbre cuits dans un seul sprite (plus de plan lointain a paral",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.24",
-        "run": "45055773747",
-        "commit": "a86469e3a184"
+        "version": "3.1.25",
+        "run": "45056452961",
+        "commit": "e2ad72fbf46a"
     }
 }
