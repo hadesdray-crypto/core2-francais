@@ -1682,6 +1682,7 @@ static void declencherPoof(Corbeau& c) {
 // ---------- le visiteur : apparition, interactions, disparition ----------
 static bool ptOccupe(int p) { for (int k = 0; k < NCB; k++) if (cr[k].perch == 10 + p) return true; return false; }
 static void mettreEnOrbite(Corbeau& c) {      // le corbeau rejoint la nuée qui tourne autour du visiteur
+  if (fam::enService(c)) return;      // un parent qui a des œufs ou des petits reste près du nid
   float cy = orbCy;
   c.item = -1; c.rapporte = false; c.fuite = false; c.sub = 0; c.objet = 0;
   switch (c.etat) {

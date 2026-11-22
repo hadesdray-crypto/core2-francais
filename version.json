@@ -1,5 +1,5 @@
 {
-    "version": "3.1.2",
+    "version": "3.1.3",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -59,6 +59,8 @@
         "Wi-Fi fiable pour les mises à jour : le Wi-Fi reste toujours actif par défaut (jamais coupé, jamais endormi, même sur pile). Dans Réglages, le bouton « Wi-Fi : actif / éco » permet de revenir à l'économie de pile. Une pastille verte ou rouge en haut à droite de Réglages montre si le Wi-Fi est connecté.",
         "Nouveau bouton « Mise à jour » dans Réglages : il rallume le Wi-Fi tout de suite, se reconnecte, et affiche en grand le nom du réseau, l'adresse IP, le code de mise à jour et « Prêt » quand le Core2 répond ; il reste éveillé au moins 15 minutes.",
         "Reconnexion plus robuste : si la box redémarre ou si le signal tombe, le Core2 se reconnecte tout seul ; après 1 min 30 sans réseau, toute la radio est relancée, et l'adresse core2-francais.local est réannoncée après chaque reconnexion.",
+        "Famille complète : quand les trois œufs ont été couvés (la femelle y reste, le mâle lui apporte à manger), ils éclosent : des poussins duveteux au bec rouge grand ouvert réclament, les parents leur rapportent de la nourriture tour à tour, les petits grandissent (duvet gris puis plumes noires, ailes qui battent) et quittent le nid l'un après l'autre. Le premier jeune rejoint le groupe de corbeaux quand il y a de la place. Le nid se vide, puis une nouvelle ponte recommence après un moment.",
+        "Les parents protègent le nid : le visiteur, la main, un objet lancé tout près ou un corbeau étranger qui s'approche déclenchent l'alarme (cri, le groupe se fige et regarde l'intrus) ; la femelle ouvre les ailes, hérisse la gorge et ouvre le bec ; le mâle s'interpose ailes ouvertes devant le nid ou fonce sur le corbeau étranger pour le chasser. Les parents ne partent plus avec la nuée du visiteur. La nuit, quand le groupe dort, la femelle couvre les poussins.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
