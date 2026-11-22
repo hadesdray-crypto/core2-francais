@@ -243,8 +243,8 @@ static bool lancer(int kind) {
 }
 static void declencher() {
   bool ok = false;
-  if (fam::repos > 8.0f && random(100) < 70) ok = lancer(P_HIBOU);
-  if (!ok && random(100) < 40) ok = lancer(P_RENARD);
+  if (fam::repos > 0.0f) { if (fam::repos > 8.0f) ok = lancer(P_HIBOU); if (!ok) gPred = rnd(20.0f, 40.0f); return; }      // le groupe dort : seul le hibou rode
+  if (random(100) < 40) ok = lancer(P_RENARD);
   if (!ok) ok = lancer(P_RAPACE);
   if (!ok) gPred = rnd(20.0f, 40.0f);
 }
@@ -421,7 +421,7 @@ static void dessinerRapace(M5Canvas& g) {
   float sp = hypotf(PD.vx, PD.vy), fx = PD.dir, fy = 0.0f; if (sp > 6.0f) { fx = PD.vx / sp; fy = PD.vy / sp; }
   const float sg = (fx >= 0.0f) ? 1.0f : -1.0f; Fr f = {PD.x, PD.y, fx, fy, -fy * sg, fx * sg, 1.1f};
   const float o = (PD.ph == 0) ? 0.85f + 0.12f * sinf(PD.t * 7.0f) : ((PD.ph == 1) ? 0.12f : 0.7f), sw = 6.0f + 19.0f * o;
-  const uint16_t cA = C(30, 17, 22), cB = C(54, 30, 34), cC = C(40, 22, 26);
+  const uint16_t cA = C(44, 26, 30), cB = C(76, 46, 46), cC = C(58, 34, 38);
   for (int s = -1; s <= 1; s += 2) {      // deux ailes : une grande, une plus claire derriere
     tri3(g, f, 3.0f, 2.5f * s, -6.0f, (2.5f + sw) * s, -8.0f, 2.0f * s, cA);
     if (!dgE()) tri3(g, f, 3.0f, 2.5f * s, -8.0f, 2.0f * s, -14.0f, (2.0f + sw * 0.5f) * s, cB);
@@ -452,16 +452,16 @@ static void dessinerHibou(M5Canvas& g) {
   if (PD.porte) ell(g, x, y + 10.0f * s, 3.2f * s, 1.9f * s, C(8, 5, 10));
 }
 static void dessinerRenard(M5Canvas& g) {
-  const float d = PD.dir, s = 1.0f, y0 = PD.y; const float cr_ = (PD.ph == 0) ? 1.0f : 0.0f, gait = sinf(PD.t * ((PD.ph == 2) ? 16.0f : 6.0f)) * ((PD.ph == 1) ? 0.0f : 1.6f);
-  const float by = y0 - (6.6f - 1.9f * cr_) * s, x = PD.x;
+  const float d = PD.dir, s = 1.15f, y0 = PD.y; const float cr_ = (PD.ph == 0) ? 1.0f : 0.0f, gait = sinf(PD.t * ((PD.ph == 2) ? 16.0f : 6.0f)) * ((PD.ph == 1) ? 0.0f : 1.6f);
+  const float by = y0 - (7.4f - 2.0f * cr_) * s, x = PD.x;
   const uint16_t cB = C(122, 52, 26), cD = C(58, 28, 20), cP = C(205, 190, 170);
   ligne(g, x + d * 5.0f * s, by + 1.5f * s, x + d * (5.0f + gait) * s, y0, cD); ligne(g, x - d * 5.0f * s, by + 1.5f * s, x - d * (5.0f + gait) * s, y0, cD);
   if (!dgE()) { ligne(g, x + d * 3.0f * s, by + 1.5f * s, x + d * (3.0f - gait) * s, y0, cD); ligne(g, x - d * 3.0f * s, by + 1.5f * s, x - d * (3.0f - gait) * s, y0, cD); }
   ell(g, x, by, 8.0f * s, 3.4f * s, cB);      // corps
-  tri(g, x - d * 7.0f * s, by - 0.5f * s, x - d * 18.0f * s, by + (1.5f + gait * 0.4f) * s, x - d * 7.0f * s, by + 3.0f * s, cB);      // queue
-  tri(g, x - d * 15.0f * s, by + (1.0f + gait * 0.3f) * s, x - d * 18.0f * s, by + (1.5f + gait * 0.4f) * s, x - d * 14.0f * s, by + 2.6f * s, cP);      // bout blanc
+  tri(g, x - d * 6.0f * s, by - 1.8f * s, x - d * 19.0f * s, by + (1.2f + gait * 0.4f) * s, x - d * 6.0f * s, by + 3.4f * s, cB);      // queue touffue
+  tri(g, x - d * 15.0f * s, by + (0.6f + gait * 0.3f) * s, x - d * 19.5f * s, by + (1.2f + gait * 0.4f) * s, x - d * 14.5f * s, by + 2.4f * s, cP);      // bout blanc
   disque(g, x + d * 9.0f * s, by - 0.5f * s, 2.9f * s, cB); tri(g, x + d * 10.0f * s, by - 1.6f * s, x + d * 16.0f * s, by + 1.0f * s, x + d * 10.0f * s, by + 2.6f * s, cB);      // tete et museau
-  tri(g, x + d * 8.0f * s, by - 2.2f * s, x + d * 9.8f * s, by - 2.8f * s, x + d * 8.8f * s, by - 6.4f * s, cB);      // oreille
+  tri(g, x + d * 8.0f * s, by - 2.2f * s, x + d * 9.8f * s, by - 2.8f * s, x + d * 8.6f * s, by - 7.0f * s, cB); tri(g, x + d * 10.2f * s, by - 2.4f * s, x + d * 11.8f * s, by - 2.0f * s, x + d * 11.4f * s, by - 6.6f * s, cB);      // oreilles
   disque(g, x + d * 10.4f * s, by - 0.9f * s, 0.8f * s, C(245, 205, 60));
   if (PD.porte) ell(g, x + d * 15.0f * s, by + 2.0f * s, 2.6f * s, 1.5f * s, C(8, 5, 10));
 }
@@ -474,10 +474,10 @@ static void dessinerSteles(M5Canvas& g) {      // les steles des disparus : peti
   const int n = SV.nMort > 6 ? 6 : (int)SV.nMort;
   for (int i = 0; i < n; i++) {
     const float x = steleX(i); if (!mo::vis(x - 9.0f, x + 9.0f)) continue;
-    const float y0 = solHaut(x) + 0.6f, w = 3.3f, h = 9.0f + 2.0f * (float)(i % 3), lean = (float)((i * 37) % 5 - 2) * 0.35f;
+    const float y0 = solHaut(x) + 0.6f, w = 2.9f, h = 7.5f + 1.8f * (float)(i % 3), lean = (float)((i * 37) % 5 - 2) * 0.35f;
     ell(g, x, y0, 6.4f, 1.3f, C(24, 15, 20));
-    tri(g, x - w + lean, y0 - 0.4f, x + w + lean * 0.2f, y0 - 0.4f, x - w + lean * 1.4f, y0 - h, C(86, 80, 92)); tri(g, x + w + lean * 0.2f, y0 - 0.4f, x + w + lean * 1.4f, y0 - h, x - w + lean * 1.4f, y0 - h, C(86, 80, 92));
-    ell(g, x + lean * 1.4f, y0 - h, w, 2.5f, C(100, 94, 108));
+    tri(g, x - w + lean, y0 - 0.4f, x + w + lean * 0.2f, y0 - 0.4f, x - w + lean * 1.4f, y0 - h, C(64, 58, 70)); tri(g, x + w + lean * 0.2f, y0 - 0.4f, x + w + lean * 1.4f, y0 - h, x - w + lean * 1.4f, y0 - h, C(64, 58, 70));
+    ell(g, x + lean * 1.4f, y0 - h, w, 2.5f, C(76, 70, 84));
     if (!dgE()) { ligne(g, x + lean * 1.2f, y0 - h + 1.6f, x + lean * 1.2f, y0 - h + 6.0f, C(44, 38, 50)); ligne(g, x + 4.5f, y0 - 0.8f, x + 9.0f, y0 - 1.5f, C(10, 7, 12)); }
   }
 }
