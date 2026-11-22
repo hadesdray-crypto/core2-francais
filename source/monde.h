@@ -89,18 +89,18 @@ static void bakeCiel() {
     int v = (int)((seed >> 4) % 100);
     float sk = (OP.hor == 2) ? 0.50f : ((OP.hor == 1) ? 0.75f : 1.0f); g.drawPixel(sx, sy, v < 70 ? CF(150 * sk, 62 * sk, 74 * sk) : CF(205 * sk, 112 * sk, 120 * sk));
   }
-  brume(g, 110, 100, 100, 3, 0.35f); brume(g, 210, 128, 110, 3, 0.35f); brume(g, 90, 150, 100, 3, 0.35f);
+  bkN = 0; brumeD(g, 110, 100, 100, 3, 0.35f); brumeD(g, 210, 128, 110, 3, 0.35f); brumeD(g, 90, 150, 100, 3, 0.35f);
   if (OP.hor) {
     for (int i = 0; i < (OP.hor == 2 ? 4 : 2); i++) {
       float oy = -9.0f + i * 7.0f + 1.5f * sinf(i * 2.1f), ox = 16.0f * sinf(i * 2.3f + 0.6f), rx = (30.0f + 9.0f * ((i * 5) % 3)) * zs, ry = (2.2f + 0.7f * (i % 3)) * zs;
       g.fillEllipse((int)(mxs + ox * zs), (int)(mys + oy * zs), (int)rx, (int)(ry + 0.5f), CF(15 + 4 * (i % 2), 1, 3));
       g.fillEllipse((int)(mxs + (ox + 14.0f) * zs), (int)(mys + (oy + 1.5f) * zs), (int)(rx * 0.5f), (int)(ry * 0.8f + 0.5f), CF(11, 0, 2));
     }
-    brume(g, 70, 200, 150, 8, 0.85f); brume(g, 250, 204, 150, 7, 0.85f); brume(g, 160, 198, 120, 6, 0.80f);
+    brumeD(g, 70, 200, 150, 8, 0.85f); brumeD(g, 250, 204, 150, 7, 0.85f); brumeD(g, 160, 198, 120, 6, 0.80f);
   }
   float gy = solHaut(160.0f) * zs + zty;
   seed = 777;
-  for (int i = 0; i < 2600; i++) {
+  for (int i = 0; i < (2600 >> OP.dec); i++) {
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int gx = (int)((seed >> 8) % 320);
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int gyy = (int)((seed >> 8) % (uint32_t)((int)gy - 6 > 1 ? (int)gy - 6 : 1));
     if (hypotf(gx - mxs, gyy - mys) < (LUNE_R + 30) * zs) continue;
@@ -117,6 +117,7 @@ static void bakeLoin() {
   static const float LT[][4] = {{282, 78, 0, 0.30f}, {334, 56, 3, 0.42f}, {238, 46, 2, 0.50f}, {8, 62, 4, 0.45f}, {-62, 72, 1, 0.50f}, {-30, 44, 3, 0.55f},
     {-98, 56, 0, 0.58f}, {-150, 70, 2, 0.50f}, {-205, 60, 4, 0.55f}, {372, 58, 4, 0.55f}, {500, 66, 1, 0.45f}, {548, 52, 3, 0.50f}};
   for (unsigned i = 0; i < sizeof(LT) / sizeof(LT[0]); i++) {
+    if (!decOk((int)i)) continue;      // decor allege : un arbre lointain sur trois en moins ; minimal : un sur deux
     float sx = LT[i][0] * zs + ztx, sy = 197.0f * zs + zty;
     arbreLoin(g, (int)LT[i][2], sx, sy, LT[i][1] * zs * 1.3f, LT[i][3]);
   }

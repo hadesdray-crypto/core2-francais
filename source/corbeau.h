@@ -368,6 +368,9 @@ static void brume(M5Canvas& g, float cx, float cy, float w, float h, float a) {
     }
   }
 }
+static int bkN = 0;      // compteur des elements d'arriere-plan d'une cuisson (remis a zero au debut de chaque ciel)
+static inline bool decOk(int k) { return OP.dec == 0 || (OP.dec == 1 ? (k % 3 != 2) : ((k & 1) == 0)); }      // decor allege : deux elements sur trois ; minimal : un sur deux
+static inline void brumeD(M5Canvas& g, float cx, float cy, float w, float h, float a) { if (decOk(bkN++)) brume(g, cx, cy, w, h, a); }
 static float solHaut(float x) { return 202.0f + 1.2f * sinf(x / 37.0f) + 0.8f * sinf(x / 13.0f + 1.0f); }
 static void ciel(M5Canvas& g) {
   for (int y = 0; y < 240; y++) { float r, gg, b; cielRGB((float)y, r, gg, b); g.drawFastHLine(0, y, 320, CF(r, gg, b)); }
@@ -385,7 +388,7 @@ static void ciel(M5Canvas& g) {
     }
   }
   uint32_t seed = 12345;     // etoiles : toujours les memes
-  for (int i = 0; i < ambEt; i++) {
+  for (int i = 0; i < (ambEt * (3 - OP.dec)) / 3; i++) {      // etoiles : toutes (complet), les deux tiers (allege), le tiers (minimal)
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sx = 3 + (int)((seed >> 8) % 314);
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sy = 3 + (int)((seed >> 8) % 100);
     if (hypotf(sx - LUNE_X, sy - LUNE_Y) < LUNE_R + 30) continue;
@@ -394,9 +397,10 @@ static void ciel(M5Canvas& g) {
     else if (v < 93) g.drawPixel(sx, sy, C(205, 112, 120));
     else { g.drawPixel(sx, sy, C(240, 170, 170)); g.drawPixel(sx - 1, sy, C(150, 50, 60)); g.drawPixel(sx + 1, sy, C(150, 50, 60)); g.drawPixel(sx, sy - 1, C(150, 50, 60)); g.drawPixel(sx, sy + 1, C(150, 50, 60)); }
   }
-  brume(g, 230, 70, 100, 3, 0.40f); brume(g, 120, 34, 80, 2, 0.35f); brume(g, 236, 96, 120, 4, 0.40f);
-  brume(g, 90, 118, 110, 4, 0.40f); brume(g, 230, 160, 130, 5, 0.40f); brume(g, 60, 176, 110, 5, 0.40f);
-  if (OP.amb == 1) { brume(g, 160, 100, 170, 8, 0.7f); brume(g, 110, 150, 150, 9, 0.7f); }
+  bkN = 0;
+  brumeD(g, 230, 70, 100, 3, 0.40f); brumeD(g, 120, 34, 80, 2, 0.35f); brumeD(g, 236, 96, 120, 4, 0.40f);
+  brumeD(g, 90, 118, 110, 4, 0.40f); brumeD(g, 230, 160, 130, 5, 0.40f); brumeD(g, 60, 176, 110, 5, 0.40f);
+  if (OP.amb == 1) { brumeD(g, 160, 100, 170, 8, 0.7f); brumeD(g, 110, 150, 150, 9, 0.7f); }
   for (int x = 0; x < 320; x++) {
     float yl = 190.0f + 4.0f * sinf(x / 50.0f + 2.0f) + 3.0f * sinf(x / 21.0f);
     g.drawFastVLine(x, (int)yl, 240 - (int)yl, C(46, 6, 11));
@@ -3013,25 +3017,25 @@ static void cielLarge(M5Canvas& g) {      // ciel, lune, étoiles, collines et s
     }
   }
   uint32_t seed = 4242;
-  for (int i = 0; i < ambEt * 2; i++) {
+  for (int i = 0; i < (ambEt * 2 * (3 - OP.dec)) / 3; i++) {
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sx = 2 + (int)((seed >> 8) % 316);
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sy = 2 + (int)((seed >> 8) % 140);
     if (hypotf(sx - mxs, sy - mys) < (LUNE_R + 24) * zs) continue;
     int v = (int)((seed >> 4) % 100);
     float sk = (OP.hor == 2) ? 0.50f : ((OP.hor == 1) ? 0.75f : 1.0f); g.drawPixel(sx, sy, v < 70 ? CF(150 * sk, 62 * sk, 74 * sk) : CF(205 * sk, 112 * sk, 120 * sk));      // horreur : étoiles rares et ternes
   }
-  brume(g, 110, 100, 100, 3, 0.35f); brume(g, 210, 128, 110, 3, 0.35f); brume(g, 90, 150, 100, 3, 0.35f);
+  bkN = 0; brumeD(g, 110, 100, 100, 3, 0.35f); brumeD(g, 210, 128, 110, 3, 0.35f); brumeD(g, 90, 150, 100, 3, 0.35f);
   if (OP.hor) {      // horreur : nuages noirs en lambeaux devant la lune, longues brumes noires basses
     for (int i = 0; i < (OP.hor == 2 ? 4 : 2); i++) {
       float oy = -9.0f + i * 7.0f + 1.5f * sinf(i * 2.1f), ox = 16.0f * sinf(i * 2.3f + 0.6f), rx = (30.0f + 9.0f * ((i * 5) % 3)) * zs, ry = (2.2f + 0.7f * (i % 3)) * zs;
       g.fillEllipse((int)(mxs + ox * zs), (int)(mys + oy * zs), (int)rx, (int)(ry + 0.5f), CF(15 + 4 * (i % 2), 1, 3));
       g.fillEllipse((int)(mxs + (ox + 14.0f) * zs), (int)(mys + (oy + 1.5f) * zs), (int)(rx * 0.5f), (int)(ry * 0.8f + 0.5f), CF(11, 0, 2));
     }
-    brume(g, 70, 200, 150, 8, 0.85f); brume(g, 250, 204, 150, 7, 0.85f); brume(g, 160, 198, 120, 6, 0.80f);
+    brumeD(g, 70, 200, 150, 8, 0.85f); brumeD(g, 250, 204, 150, 7, 0.85f); brumeD(g, 160, 198, 120, 6, 0.80f);
   }
   float gy = solHaut(160.0f) * zs + zty;
   seed = 777;      // grain léger dans le ciel : plus de côté « papier lisse »
-  for (int i = 0; i < 2600; i++) {
+  for (int i = 0; i < (2600 >> OP.dec); i++) {      // grain du ciel : complet, moitie, quart
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int gx = (int)((seed >> 8) % 320);
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int gyy = (int)((seed >> 8) % (uint32_t)((int)gy - 6 > 1 ? (int)gy - 6 : 1));
     if (hypotf(gx - mxs, gyy - mys) < (LUNE_R + 30) * zs) continue;
@@ -3041,6 +3045,7 @@ static void cielLarge(M5Canvas& g) {      // ciel, lune, étoiles, collines et s
   { static const float LT[10][4] = {{282, 78, 0, 0.30f}, {334, 56, 3, 0.42f}, {238, 46, 2, 0.50f}, {8, 62, 4, 0.45f}, {-62, 72, 1, 0.50f}, {392, 66, 1, 0.52f}, {-30, 44, 3, 0.55f}, {372, 58, 4, 0.50f}, {430, 52, 2, 0.58f}, {-98, 56, 0, 0.58f}};
     for (int i = 0; i < 10; i++) {      // arbres lointains, tous différents de l'arbre du premier plan ; les derniers ne se voient que dans la vue large
       float sx = LT[i][0] * zs + ztx, sy = 197.0f * zs + zty; if (sx < -30 || sx > 350) continue;
+      if (!decOk(i)) continue;      // decor allege : un arbre lointain sur trois en moins ; minimal : un sur deux
       arbreLoin(g, (int)LT[i][2], sx, sy, LT[i][1] * zs * 1.3f, LT[i][3]);
     }
   }
