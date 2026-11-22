@@ -330,7 +330,7 @@ static void dirAile(float e, float sw, float& du, float& dv) {
 static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, float wl, uint16_t col) {
   if (wl < 0.12f) return;
   float dau, dav, dhu, dhv; dirAile(a.ea, a.sa, dau, dav); dirAile(a.eh, a.sh, dhu, dhv);
-  float la = 15.0f * wl, lh = 17.0f * wl;
+  float la = 19.0f * wl, lh = 24.0f * wl;
   float tau = -dav, tav = dau; if (tau > 0.05f || (fabsf(tau) <= 0.05f && tav < 0)) { tau = -tau; tav = -tav; }
   float thu = -dhv, thv = dhu; if (thu > 0.05f || (fabsf(thu) <= 0.05f && thv < 0)) { thu = -thu; thv = -thv; }
   float Eu = su + dau * la, Ev = sv + dav * la, Tu = Eu + dhu * lh, Tv = Ev + dhv * lh;
@@ -340,14 +340,14 @@ static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, 
   add(su, sv);                                                    // épaule
   add(Eu - tau * 1.6f, Ev - tav * 1.6f);                          // coude, bord d'attaque
   add(Tu, Tv);                                                    // bout de l'aile
-  add(Tu - dhu * 3.5f + thu * 3.8f, Tv - dhv * 3.5f + thv * 3.8f);
-  add(Tu - dhu * 6.5f + thu * 2.4f, Tv - dhv * 6.5f + thv * 2.4f);     // creux entre deux plumes
-  add(Tu - dhu * 8.0f + thu * 7.0f, Tv - dhv * 8.0f + thv * 7.0f);
-  add(Tu - dhu * 11.0f + thu * 5.0f, Tv - dhv * 11.0f + thv * 5.0f);
-  add(Tu - dhu * 13.0f + thu * 9.0f, Tv - dhv * 13.0f + thv * 9.0f);
-  add(Eu + tau * 9.5f * wl, Ev + tav * 9.5f * wl);
-  add(su + dau * la * 0.5f + tau * 8.5f * wl, sv + dav * la * 0.5f + tav * 8.5f * wl);
-  add(su + tau * 5.0f * wl, sv + tav * 5.0f * wl);
+  add(Tu - dhu * 4.0f + thu * 4.5f, Tv - dhv * 4.0f + thv * 4.5f);
+  add(Tu - dhu * 7.5f + thu * 2.6f, Tv - dhv * 7.5f + thv * 2.6f);     // creux entre deux plumes
+  add(Tu - dhu * 9.0f + thu * 8.5f, Tv - dhv * 9.0f + thv * 8.5f);
+  add(Tu - dhu * 12.5f + thu * 5.5f, Tv - dhv * 12.5f + thv * 5.5f);
+  add(Tu - dhu * 15.0f + thu * 11.0f, Tv - dhv * 15.0f + thv * 11.0f);
+  add(Eu + tau * 12.0f * wl, Ev + tav * 12.0f * wl);
+  add(su + dau * la * 0.5f + tau * 11.0f * wl, sv + dav * la * 0.5f + tav * 11.0f * wl);
+  add(su + tau * 6.5f * wl, sv + tav * 6.5f * wl);
   poly(g, L, n, col);
 }
 
@@ -392,7 +392,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   // bec lourd, qui s'ouvre quand il croasse
   { float o = c.bec; float ax, ay, mx, my, tx, ty, bx_, by_, lx, ly;
     P(hu + 2.0f, hv - 1.9f, ax, ay); P(hu + 2.2f, hv + 2.9f, bx_, by_); P(hu + 2.4f, hv + 0.2f, mx, my);
-    P(hu + 11.0f, hv + 0.8f - 3.0f * o, tx, ty); P(hu + 10.0f, hv + 1.4f + 3.2f * o, lx, ly);
+    P(hu + 12.0f, hv + 0.9f - 3.2f * o, tx, ty); P(hu + 11.0f, hv + 1.6f + 3.4f * o, lx, ly);
     tri(g, ax, ay, mx, my, tx, ty, NOIR); tri(g, mx, my, bx_, by_, lx, ly, NOIR); }
   // objet porté dans le bec
   if (c.objet) {
