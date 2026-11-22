@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.1"
+#define VERSION_PROGRAMME "3.1.2"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -1499,12 +1499,20 @@ void dessinerAccueil() {
 
 // ---------- Page de réglages à l'écran ----------
 static bool direct = false, changerDirect = false, eco = false;
+static bool wifiToujours = true;       // réglage Wi-Fi : toujours actif (par défaut, jamais coupé, jamais endormi) ou économie ; clé mémoire wifitj ; eco = !wifiToujours
+static uint32_t finMaj = 0;            // fin de la fenêtre « recevoir une mise à jour » (Wi-Fi éveillé 15 minutes)
+static bool wifiDort() { return !wifiToujours && (int32_t)(millis() - finMaj) >= 0 && (eco || veille || !brancheUsb); }
+void ouvrirRecevoir() {                // écran « Recevoir une mise à jour » : rallume le Wi-Fi tout de suite et le garde éveillé au moins 15 minutes
+  finMaj = millis() + 900000UL; if ((int32_t)(finMaj - finBesoinNet) > 0) finBesoinNet = finMaj;
+  WiFi.setSleep(false); changerDirect = true; page = 34;
+}
 void appliquerDirect() {
+  WiFi.setHostname("core2-francais");
   if (direct || modeAcces) { WiFi.mode(WIFI_AP_STA); WiFi.softAP("Core2-francais", "core2fran"); }
   else { WiFi.softAPdisconnect(true); WiFi.mode(WIFI_STA); }
   esp_wifi_set_country_code("FR", true);      // canaux 1 à 13 comme en France (certains téléphones utilisent le 12 ou le 13)
   if (nbConnus()) WiFi.begin(connuN[0].c_str(), connuM[0].c_str());
-  WiFi.setSleep(eco || veille || !brancheUsb);     // économie : le Wi-Fi dort entre deux échanges
+  WiFi.setSleep(wifiDort());     // économie : le Wi-Fi dort entre deux échanges (jamais si « Wi-Fi : actif »)
 }
 static const char* LIB_COURTS[M_NB] = {"Météo", "Wi-Fi", "Son", "Batterie", "Heure", "Gravité", "Messages"};
 void dessinerReglages() {
@@ -1516,16 +1524,19 @@ void dessinerReglages() {
     cv.fillRoundRect(bx, by, 152, 26, 8, R.actif[i] ? C(50, 130, 80) : C(120, 50, 60));
     cv.setTextDatum(middle_left); cv.setTextColor(C(255, 255, 255)); cv.drawString(String(LIB_COURTS[i]) + (R.actif[i] ? " : oui" : " : non"), bx + 8, by + 13);
   }
-  cv.fillRoundRect(164, 114, 152, 26, 8, C(50, 100, 150)); cv.setTextDatum(middle_left); cv.setTextColor(C(255, 255, 255)); cv.drawString("Matériel, mise à jour", 170, 127);
+  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255));
+  cv.fillRoundRect(164, 114, 74, 26, 8, C(50, 100, 150)); cv.drawString("Matériel", 201, 127);
+  cv.fillRoundRect(242, 114, 74, 26, 8, C(50, 130, 80)); cv.drawString("Mise à jour", 279, 127);
+  cv.fillCircle(306, 11, 5, (WiFi.status() == WL_CONNECTED) ? C(60, 220, 110) : C(230, 70, 60));      // état du Wi-Fi : vert = connecté, rouge = déconnecté
   cv.setTextDatum(top_left); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(190, 195, 230));
   String ip = (modeAcces || WiFi.status() != WL_CONNECTED) ? "192.168.4.1" : WiFi.localIP().toString();
   cv.drawString("Adresse : http://" + ip, 8, 148);
   cv.drawString("Version " VERSION_PROGRAMME "   Code maj : " + prefs.getString("code", "666666"), 8, 164);
   cv.drawString(W.wifiOk ? "Wi-Fi connecté : " + WiFi.SSID() : ((direct || modeAcces) ? "Direct : Core2-francais" : "Pas de Wi-Fi"), 8, 180);
   cv.drawString("Pile " + String(W.batterie) + " %  " + String((int)M5.Power.getBatteryVoltage()) + " mV  " + String((int)M5.Power.getBatteryCurrent()) + " mA", 8, 192);
-  cv.fillRoundRect(236, 144, 80, 18, 7, C(50, 100, 150)); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString("Wi-Fi...", 276, 153);
-  cv.fillRoundRect(236, 165, 80, 18, 7, eco ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString(eco ? "Éco : oui" : "Éco : non", 276, 174);
-  cv.fillRoundRect(236, 186, 80, 17, 7, vueDessusOn ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString(vueDessusOn ? "Dessus : oui" : "Dessus : non", 276, 194); cv.setTextDatum(top_left);
+  cv.fillRoundRect(226, 144, 90, 18, 7, C(50, 100, 150)); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString("Réseaux...", 271, 153);
+  cv.fillRoundRect(226, 165, 90, 18, 7, wifiToujours ? C(50, 130, 80) : C(120, 90, 40)); cv.drawString(wifiToujours ? "Wi-Fi : actif" : "Wi-Fi : éco", 271, 174);
+  cv.fillRoundRect(226, 186, 90, 17, 7, vueDessusOn ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString(vueDessusOn ? "Dessus : oui" : "Dessus : non", 271, 194); cv.setTextDatum(top_left);
   cv.setFont(&fonts::lgfxJapanGothic_16);
   cv.fillRoundRect(4, 204, 102, 32, 8, C(52, 56, 96)); cv.setTextDatum(middle_center); cv.setTextColor(C(240, 240, 255)); cv.drawString("Retour", 55, 220);
   cv.fillRoundRect(112, 204, 98, 32, 8, (direct || modeAcces) ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString((direct || modeAcces) ? "Direct : oui" : "Direct : non", 161, 220);
@@ -1713,6 +1724,25 @@ void cadrePage(const char* titre) {
 }
 void boutonBas(int x, int w, const char* lib, uint16_t coul) {
   cv.fillRoundRect(x, 206, w, 30, 8, coul); cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString(lib, x + w / 2, 221); cv.setTextDatum(top_left);
+}
+void dessinerRecevoir() {      // page 34 : tout ce qu'il faut pour envoyer une mise à jour depuis le PC, en grand
+  cadrePage("Recevoir une mise à jour");
+  const bool co = (WiFi.status() == WL_CONNECTED); const uint32_t m = millis();
+  long reste = ((int32_t)(finMaj - m) > 0) ? (long)((finMaj - m) / 1000UL) : 0;
+  cv.setTextDatum(top_left); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(150, 160, 210));
+  cv.drawString("Réseau Wi-Fi", 10, 27); cv.drawString("Adresse (sur le même réseau que le PC)", 10, 69); cv.drawString("Code de mise à jour", 10, 119);
+  cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(co ? C(255, 255, 255) : C(255, 160, 120));
+  cv.drawString(co ? WiFi.SSID() : String("connexion en cours..."), 10, 42);
+  cv.setFont(&fonts::lgfxJapanGothic_24); cv.setTextColor(co ? C(0, 230, 255) : C(110, 110, 130));
+  cv.drawString(co ? WiFi.localIP().toString() : String("pas encore d'adresse"), 10, 83);
+  cv.setTextColor(C(255, 220, 120)); cv.drawString(prefs.getString("code", "666666"), 10, 133);
+  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(150, 160, 210)); cv.drawString("ou  http://core2-francais.local", 10, 168);
+  cv.setFont(&fonts::lgfxJapanGothic_16);
+  if (co) { cv.setTextColor(C(120, 255, 150)); cv.drawString("Prêt : le Core2 répond", 10, 184); } else { cv.setTextColor(C(255, 190, 110)); cv.drawString("Connexion au Wi-Fi...", 10, 184); }
+  char b[20]; snprintf(b, sizeof(b), "reste %ld:%02ld", reste / 60, reste % 60); cv.setTextDatum(top_right); cv.setTextColor(C(190, 195, 230)); cv.drawString(b, 312, 184);
+  cv.setTextDatum(top_left);
+  boutonBas(4, 150, "Retour", C(52, 56, 96)); boutonBas(160, 156, "Reconnecter", C(50, 130, 80));
+  cv.pushSprite(0, 0);
 }
 struct Tuile { const char* nom; int page; uint16_t coul; };
 static const Tuile TUILES[] = {
@@ -2526,7 +2556,7 @@ void tacheMatinale(void*) {
   auto arreter = [&]() {
     if (gen) { if (gen->isRunning()) gen->stop(); delete gen; gen = nullptr; }
     if (tamp) { delete tamp; tamp = nullptr; } if (src) { src->close(); delete src; src = nullptr; }
-    if (lectureEnCours) { lectureEnCours = false; M5.Speaker.end(); M5.Mic.begin(); WiFi.setSleep(eco || veille || !brancheUsb); }
+    if (lectureEnCours) { lectureEnCours = false; M5.Speaker.end(); M5.Mic.begin(); WiFi.setSleep(wifiDort()); }
     matJouant = -1;
   };
   for (;;) {
@@ -2621,6 +2651,7 @@ void dessinerPage() {
     case 0: dessinerAccueil(); break;
     case 1: dessinerReglages(); break;
     case 5: dessinerMateriel(); break;
+    case 34: dessinerRecevoir(); break;
     case 6: dessinerMenu(); break;
     case 7: dessinerRadarWifi(); break;
     case 8: dessinerAnalyseur(); break;
@@ -2677,7 +2708,7 @@ void gererTactilePages(const m5::touch_detail_t& t) {
 
 // ---------- Veille de l'écran ----------
 // Économie de pile : sur pile, le Wi-Fi dort entre deux échanges ; écran éteint, le processeur ralentit aussi.
-void appliquerEconomie() { WiFi.setSleep(eco || veille || !brancheUsb); setCpuFrequencyMhz(veille ? 80 : 240); }
+void appliquerEconomie() { WiFi.setSleep(wifiDort()); setCpuFrequencyMhz(veille ? 80 : 240); }
 void dessinerGriffes(int px, int py) { for (int i = 0; i < 3; i++) { int x = px - 36 + i * 24; cv.drawLine(x, py - 45, x + 14, py + 12, C(255, 60, 60)); cv.drawLine(x + 1, py - 45, x + 15, py + 12, C(255, 60, 60)); } }
 void dessinerPerso1() { int px, py; float e; positionEcran(px, py, e); dessinerPersonnage(px, py, e); if (millis() < finGriffe) dessinerGriffes(px, py); }
 // Bulle fait un petit salut de la main avant de s'endormir.
@@ -2756,7 +2787,7 @@ void gererBoutons() {
   if (veille) { reveillerEcran(); return; }
   if (page == 0) { actionBarre(b); return; }
   bip(700, 40);        // sur les autres pages : gauche = retour, milieu = accueil, droite = réglages
-  if (b == 0) page = (page >= 7) ? 6 : ((page == 3) ? 2 : ((page == 1 || page == 5 || page == 6) ? 0 : 1));
+  if (b == 0) page = (page == 34) ? 1 : (page >= 7) ? 6 : ((page == 3) ? 2 : ((page == 1 || page == 5 || page == 6) ? 0 : 1));
   else if (b == 1) page = 0;
   else page = 1;
 }
@@ -2777,16 +2808,21 @@ void gererTactile() {
     }
     return;
   }
+  if (page == 34) {      // Recevoir une mise à jour : Retour, ou Reconnecter (relance le Wi-Fi tout de suite et repart pour 15 minutes)
+    if (t.wasPressed() && t.y >= 204) { if (t.x < 156) page = 1; else ouvrirRecevoir(); bip(700, 40); }
+    return;
+  }
   if (page >= 6) { gererTactilePages(t); return; }
   if (page >= 2) { gererTactileWifi(t.wasPressed(), t.x, t.y); return; }
   if (page == 1) {
     if (t.wasPressed()) {
       int x = t.x, y = t.y;
       for (int i = 0; i < M_NB; i++) { int bx = 6 + (i % 2) * 158, by = 24 + (i / 2) * 30; if (x >= bx && x < bx + 152 && y >= by && y < by + 26) { R.actif[i] = !R.actif[i]; sauverReglages(); bip(R.actif[i] ? 880 : 440, 60); } }
-      if (x >= 164 && y >= 114 && y < 140) { page = 5; bip(700, 60); }
-      else if (x >= 236 && y >= 142 && y < 164) { page = 2; lancerScan(); bip(700, 60); }
-      else if (x >= 236 && y >= 164 && y < 185) { eco = !eco; prefs.putBool("eco", eco); changerDirect = true; bip(700, 60); }
-      else if (x >= 236 && y >= 185 && y < 203) { vueDessusOn = !vueDessusOn; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } bip(vueDessusOn ? 880 : 440, 60); }      // interrupteur de la vue de dessus
+      if (x >= 164 && x < 240 && y >= 114 && y < 140) { page = 5; bip(700, 60); }
+      else if (x >= 240 && y >= 114 && y < 140) { ouvrirRecevoir(); bip(880, 60); }
+      else if (x >= 226 && y >= 142 && y < 164) { page = 2; lancerScan(); bip(700, 60); }
+      else if (x >= 226 && y >= 164 && y < 185) { wifiToujours = !wifiToujours; eco = !wifiToujours; prefs.putBool("wifitj", wifiToujours); prefs.putBool("eco", eco); changerDirect = true; bip(wifiToujours ? 880 : 440, 60); }
+      else if (x >= 226 && y >= 185 && y < 203) { vueDessusOn = !vueDessusOn; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } bip(vueDessusOn ? 880 : 440, 60); }      // interrupteur de la vue de dessus
       else if (y >= 204 && x < 108) { page = 0; }
       else if (y >= 204 && x < 212) { direct = !direct; prefs.putBool("direct", direct); changerDirect = true; bip(700, 60); }
       else if (y >= 204) { sauverPerso(); esp_restart(); }
@@ -2877,7 +2913,7 @@ String jsonEtat() {
   d["batterie"] = W.batterie; d["charge"] = W.charge; d["wifi"] = W.wifiOk; d["rssi"] = W.rssi;
   d["temperature"] = W.temperature; d["meteo"] = W.codeMeteo; d["gravite"] = W.gravite;
   d["message"] = W.message; d["lat"] = R.lat; d["lon"] = R.lon; d["luminosite"] = R.luminosite; d["volume"] = R.volume;
-  d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = eco; d["dessus"] = vueDessusOn;
+  d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = !wifiToujours; d["wifiToujours"] = wifiToujours; d["dessus"] = vueDessusOn;
   d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo;
   JsonObject m = d["modules"].to<JsonObject>();
   for (int i = 0; i < M_NB; i++) m[CLES_MODULES[i]] = R.actif[i];
@@ -2914,7 +2950,7 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("message")) { W.message = serveur.arg("message"); W.finMessage = serveur.hasArg("duree") ? millis() + serveur.arg("duree").toInt() * 1000UL : 0; }
   if (serveur.hasArg("nouveaucode") && serveur.arg("nouveaucode").length() >= 3) prefs.putString("code", serveur.arg("nouveaucode"));
   if (serveur.hasArg("direct")) { direct = serveur.arg("direct") == "1"; prefs.putBool("direct", direct); changerDirect = true; }
-  if (serveur.hasArg("eco")) { eco = serveur.arg("eco") == "1"; prefs.putBool("eco", eco); changerDirect = true; }
+  if (serveur.hasArg("eco")) { eco = serveur.arg("eco") == "1"; wifiToujours = !eco; prefs.putBool("eco", eco); prefs.putBool("wifitj", wifiToujours); changerDirect = true; }
   if (serveur.hasArg("dessus")) { vueDessusOn = serveur.arg("dessus") == "1"; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } }
   if (serveur.hasArg("perso")) R.perso = constrain(serveur.arg("perso").toInt(), 0, NB_PERSOS - 1);
   { Fiche& f = FA; bool mf = false;
@@ -3024,7 +3060,7 @@ void demarrerServeur() {
 }
 
 void demarrerReseau() {
-  direct = prefs.getBool("direct", false); eco = prefs.getBool("eco", false); vueDessusOn = prefs.getBool("vdessus", false);
+  direct = prefs.getBool("direct", false); wifiToujours = prefs.getBool("wifitj", true); eco = !wifiToujours;      // Wi-Fi toujours actif par défaut vueDessusOn = prefs.getBool("vdessus", false);
   WiFi.setHostname("core2-francais");
   WiFi.setAutoReconnect(true); WiFi.persistent(false);
   if (!nbConnus()) modeAcces = true;
@@ -3112,7 +3148,7 @@ void loop() {
       histMvt[histMvtPos] = (uint8_t)h; histMvtPos = (histMvtPos + 1) % (int)sizeof(histMvt);
     }
     if (!veille && m - tDessin > ((page == 32 || page == 33) ? 18u : (brancheUsb ? 33u : 50u))) { tDessin = m; dessinerPage(); afficherVolume(); }
-    if (sniffActif || detection || page == 11 || page == 13 || (page >= 21 && page <= 32) || lectureEnCours) activite();
+    if (sniffActif || detection || page == 11 || page == 13 || page == 34 || (page >= 21 && page <= 32) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - derniereActivite) > 300000) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
   vieDuPerso();
@@ -3135,13 +3171,19 @@ void loop() {
       }
     }
   }
-  { static bool mdns = false; if (!mdns && WiFi.status() == WL_CONNECTED) { mdns = MDNS.begin("core2-francais"); if (mdns) MDNS.addService("http", "tcp", 80); } }
+  {   // plus de réseau depuis 1 min 30 (box redémarrée, signal tombé) : on relance toute la radio ; l'adresse « core2-francais.local » est réannoncée après chaque reconnexion
+    static uint32_t tPerdu = 0; static bool mdns = false, etaitCo = false; const bool co = (WiFi.status() == WL_CONNECTED);
+    if (co || !wifiToujours || modeAcces) tPerdu = m;
+    else if (nbConnus() && !wifiCoupe && !scanEnCours && !demandeMaj && !(page >= 2 && page <= 4) && m - tPerdu > 90000) { tPerdu = m; changerDirect = true; }
+    if (co && (!mdns || !etaitCo)) { if (mdns) MDNS.end(); mdns = MDNS.begin("core2-francais"); if (mdns) MDNS.addService("http", "tcp", 80); }
+    etaitCo = co;
+  }
   if (changerDirect) { changerDirect = false; appliquerDirect(); }
   if (demandeMaj) majDepuisInternet();
   {   // Internet seulement quand il sert : branché il reste connecté ; sur pile, le Wi-Fi s'éteint dès qu'on n'en a plus besoin
     static uint32_t debutAttente = 0, pauseMeteo = 0;
     bool meteoDue = R.actif[M_METEO] && (!W.meteoValide || m - W.derniereMeteo > (brancheUsb ? 30UL : 60UL) * 60000UL);
-    bool besoin = brancheUsb || direct || modeAcces || sniffActif || detection || (page >= 2 && page <= 5) || (page >= 7 && page <= 10) || page == 31 || lectureEnCours || matCommande || demandeMaj || majVoulue || m < finBesoinNet || (meteoDue && m > pauseMeteo);
+    bool besoin = brancheUsb || direct || modeAcces || sniffActif || detection || (page >= 2 && page <= 5) || (page >= 7 && page <= 10) || page == 31 || lectureEnCours || matCommande || demandeMaj || majVoulue || m < finBesoinNet || (meteoDue && m > pauseMeteo) || wifiToujours || m < finMaj || page == 34;      // Wi-Fi toujours actif : jamais coupé
     if (besoin) {
       if (wifiCoupe) { wifiCoupe = false; WiFi.mode(WIFI_STA); debutAttente = m; }
       if (meteoDue && !W.wifiOk && !brancheUsb && m - debutAttente > 120000 && m > finBesoinNet) pauseMeteo = m + 30UL * 60000UL;   // aucun réseau : on réessaiera dans 30 min

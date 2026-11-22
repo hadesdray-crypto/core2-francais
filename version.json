@@ -1,5 +1,5 @@
 {
-    "version": "3.1.1",
+    "version": "3.1.2",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -56,6 +56,9 @@
         "Le groupe bouge ensemble : un meneur part vers la maison, la mare ou le champ et d'autres le suivent ; la nuit, tout le groupe dort ensemble à ses places pendant qu'un sentinelle reste éveillé ; une alerte, une main, un visiteur, un objet lancé ou une secousse font réagir tout le groupe (têtes tournées, cris en chaîne, les plus audacieux foncent sur la main, retour dans l'ordre des rangs).",
         "Famille : le couple dominant se forme. Le mâle et la femelle se rapprochent sur la branche, se lissent les plumes à tour de rôle, le mâle lui passe un morceau de bec à bec, puis tous deux partent en vol de parade côte à côte.",
         "Un nid se construit petit à petit sur une fourche au bout de la petite branche du tronc : un parent va chercher une brindille par terre, la rapporte au bec, la glisse dans la coupe et le nid grandit (16 brindilles). Puis la femelle s'y installe et pond trois œufs pâles, un par un, avant de les couver pendant que le mâle veille sur sa branche. L'étape est gardée en mémoire d'une fois sur l'autre.",
+        "Wi-Fi fiable pour les mises à jour : le Wi-Fi reste toujours actif par défaut (jamais coupé, jamais endormi, même sur pile). Dans Réglages, le bouton « Wi-Fi : actif / éco » permet de revenir à l'économie de pile. Une pastille verte ou rouge en haut à droite de Réglages montre si le Wi-Fi est connecté.",
+        "Nouveau bouton « Mise à jour » dans Réglages : il rallume le Wi-Fi tout de suite, se reconnecte, et affiche en grand le nom du réseau, l'adresse IP, le code de mise à jour et « Prêt » quand le Core2 répond ; il reste éveillé au moins 15 minutes.",
+        "Reconnexion plus robuste : si la box redémarre ou si le signal tombe, le Core2 se reconnecte tout seul ; après 1 min 30 sans réseau, toute la radio est relancée, et l'adresse core2-francais.local est réannoncée après chaque reconnexion.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
