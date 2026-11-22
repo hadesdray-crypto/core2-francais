@@ -1,5 +1,5 @@
 {
-    "version": "3.1.3",
+    "version": "3.1.4",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -61,6 +61,9 @@
         "Reconnexion plus robuste : si la box redémarre ou si le signal tombe, le Core2 se reconnecte tout seul ; après 1 min 30 sans réseau, toute la radio est relancée, et l'adresse core2-francais.local est réannoncée après chaque reconnexion.",
         "Famille complète : quand les trois œufs ont été couvés (la femelle y reste, le mâle lui apporte à manger), ils éclosent : des poussins duveteux au bec rouge grand ouvert réclament, les parents leur rapportent de la nourriture tour à tour, les petits grandissent (duvet gris puis plumes noires, ailes qui battent) et quittent le nid l'un après l'autre. Le premier jeune rejoint le groupe de corbeaux quand il y a de la place. Le nid se vide, puis une nouvelle ponte recommence après un moment.",
         "Les parents protègent le nid : le visiteur, la main, un objet lancé tout près ou un corbeau étranger qui s'approche déclenchent l'alarme (cri, le groupe se fige et regarde l'intrus) ; la femelle ouvre les ailes, hérisse la gorge et ouvre le bec ; le mâle s'interpose ailes ouvertes devant le nid ou fonce sur le corbeau étranger pour le chasser. Les parents ne partent plus avec la nuée du visiteur. La nuit, quand le groupe dort, la femelle couvre les poussins.",
+        "Plus lisible et plus fluide : la scène est plus claire par défaut (réglage « Lumière » : Clair, Sombre par défaut, Horreur, dans Réglages des corbeaux), le zoom de base est plus serré (corbeaux et arbre plus gros) et le passage entre la vue normale et la vue large se fait par un fondu rapide, sans saccade.",
+        "Réglage « Qualité » (Fluide par défaut, Normal, Riche) : en Fluide, 20 images par seconde fixes, effets réduits (moins de plumes, plus d'ailes fantômes ni de lignes de vitesse), et réduction automatique si l'image prend trop de temps. Les mesures s'affichent en haut à droite quand « Mesures à l'écran » est activé, et sont dans /api/etat.",
+        "Le corbeau qui vient taper à la vitre est refait : il saute de sa branche, grossit en battant des ailes, s'arrête net devant la vitre, tourne de face puis de trois quarts, donne un à trois coups de bec marqués (éclair, fissures, tremblement), puis repart en rapetissant. La zone est redessinée par morceaux, comme le reste.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
