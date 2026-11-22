@@ -607,7 +607,7 @@ struct Main_ { bool actif, gauche; float x, y, ext, tx, ty, tPose, vit, tRec; fl
   float spv[5], cuv[5]; bool ctrl; float lx, ly; float pal, palV, dip, dipV, halo; };      // pal : la main se tourne paume vers le haut (0 à 1) ; dip : la paume cède quand les pattes se posent ; halo : intensité de l'effet d'offrande      // un ressort par articulation de doigt ; le doigt de l'utilisateur pilote la main      // la main tendue (mode Main)
 struct Trace { float x[48], y[48]; int n; float len; uint32_t t0; };      // tracé du doigt (reconnaissance de formes)
 static Main_ H;
-struct Braise { bool on; float x, y, vx, vy, t, dur; }; static Braise BR[6]; static float tBraise = 0.0f;      // braises qui montent de la paume
+struct Braise { bool on; float x, y, vx, vy, t, dur; }; static Braise BRAIS[6]; static float tBraise = 0.0f;      // braises qui montent de la paume
 static Trace TR; static uint32_t tLigne = 0; static float aLigne = 0;
 struct Proj { bool actif; uint8_t type; float x, y, vx, vy, rot, vr, t, ox; int8_t dern; };      // dern : dernier corbeau heurté (pour ne pas le frapper à chaque image)      // objet lancé (mode Lancer)
 static const int NPROJ = 3; static Proj proj[NPROJ];
@@ -635,9 +635,9 @@ static RepM repereMain() {      // repère de la main : le bras (manche et avant
 static inline void ptMain(const RepM& r, float u, float v, float& X, float& Y) {
   float X0 = r.hx + (u * r.ux - v * r.uy) * r.S; Y = r.hy + (u * r.uy + v * r.ux) * r.S; X = r.g ? X0 : 2.0f * r.mx - X0;
 }
-static const float PAUME_VK = 0.40f;      // la paume vue de profil : sa hauteur à l'écran est réduite à 40 %
+static const float PAUME_VK = 0.55f;      // la paume vue de profil : sa hauteur à l'écran est réduite à 55 %
 static inline void ptPaume(const RepM& r, float& X, float& Y) {      // le creux de la paume (main tournée vers le haut) : c'est là que les pattes se posent
-  ptMain(r, -0.85f, 0.5f, X, Y); Y += 0.9f + H.dip;
+  ptMain(r, -0.85f, 0.7f, X, Y); Y += 0.9f + H.dip;
 }
 static void ptVis(int k, float& x, float& y) {      // points d'appui des corbeaux : 0 épaule gauche, 1 épaule droite, 2 dessus de la tête, 3 main du bras tendu
   float y0 = visPiedsY();
@@ -1082,7 +1082,7 @@ static const float MP[8][5][2] = {      // [pose][doigt : pouce, index, majeur, 
   {{0.0f, 0.85f}, {0.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 1.0f}},      // poing
   {{0.10f, 0.10f}, {0.0f, 0.05f}, {0.0f, 0.0f}, {-0.10f, -0.12f}, {-0.26f, -0.18f}},      // vague : les doigts ondulent (calculée)
   {{0.0f, 0.62f}, {-0.04f, 0.55f}, {0.0f, 0.62f}, {-0.05f, 0.58f}, {-0.10f, 0.52f}}};      // enveloppe : les doigts se courbent doucement autour de l'oiseau, sans l'écraser
-static const float MPAUME[5][2] = {{0.0f, 0.12f}, {0.03f, -0.40f}, {0.0f, -0.46f}, {-0.03f, -0.42f}, {-0.07f, -0.36f}};      // paume vers le haut : [doigt][écart, flexion] ; flexion négative = doigts relevés en coupe, pouce dressé
+static const float MPAUME[5][2] = {{0.0f, 0.18f}, {0.03f, -0.30f}, {0.0f, -0.36f}, {-0.03f, -0.32f}, {-0.07f, -0.26f}};      // paume vers le haut : [doigt][écart, flexion] ; flexion négative = doigts relevés en coupe, pouce dressé
 static const float DG[5][7] = {      // u0, v0, angle de base, 3 phalanges, largeur
   {0.0f, 7.4f, 1.00f, 4.6f, 3.6f, 3.2f, 3.6f}, {7.0f, 5.2f, 0.12f, 6.2f, 4.4f, 3.6f, 3.0f}, {7.0f, 1.9f, 0.02f, 6.8f, 4.8f, 3.8f, 3.1f},
   {7.0f, -1.5f, -0.08f, 6.2f, 4.4f, 3.5f, 2.9f}, {7.0f, -4.6f, -0.20f, 4.6f, 3.4f, 3.0f, 2.6f}};
@@ -1107,14 +1107,6 @@ static void dessinerMain(M5Canvas& g) {
   const float ax = ddx / ll, ay = ddy / ll, nx = -ay, ny = ax, sd = (ny >= 0.0f) ? 1.0f : -1.0f;      // sd : le côté bas (ombre)
   const float FL = 13.0f * S, w0 = 12.5f * S, w1 = 8.4f * S, wH = 4.9f * S, cH = 5.7f * S;
   const float c0x = wx - ax * FL, c0y = wy - ay * FL;      // bord de la manche (manchette)
-  if (H.pal > 0.5f && H.halo > 0.05f) {      // effet d'offrande : deux ondulations sombres-rouges qui s'étalent depuis la paume (deux anneaux de lignes, rien de plein écran)
-    float hx, hy; ptPaume(R_, hx, hy); const int ns = (OP.q == 0) ? 10 : 14; const float hk = H.halo * pas((H.pal - 0.5f) * 2.0f);
-    for (int k = 0; k < 2; k++) {
-      const float ph = fmodf(tAnim * 0.55f + k * 0.5f, 1.0f), rx = 5.0f + 22.0f * ph, fa = (1.0f - ph) * hk;
-      if (fa < 0.12f) continue;
-      anneauPaume(g, hx, hy + 1.0f, rx, rx * 0.34f, CF(40.0f + 190.0f * fa, 6.0f + 54.0f * fa, 10.0f + 44.0f * fa), ns);
-    }
-  }
   // manche : du bord de l'écran jusqu'à la manchette, avec plis, côté bas plus sombre et liseré clair en haut
   tri(g, R_.ex + nx * w0, R_.ey + ny * w0, R_.ex - nx * w0, R_.ey - ny * w0, c0x + nx * w1, c0y + ny * w1, MAN); tri(g, R_.ex - nx * w0, R_.ey - ny * w0, c0x - nx * w1, c0y - ny * w1, c0x + nx * w1, c0y + ny * w1, MAN);
   tri(g, R_.ex, R_.ey, R_.ex + sd * nx * w0, R_.ey + sd * ny * w0, c0x + sd * nx * w1, c0y + sd * ny * w1, MAN2); tri(g, R_.ex, R_.ey, c0x + sd * nx * w1, c0y + sd * ny * w1, c0x, c0y, MAN2);
@@ -1138,7 +1130,7 @@ static void dessinerMain(M5Canvas& g) {
     ligne(g, wx - sd * nx * wH * 0.5f, wy - sd * ny * wH * 0.5f, f0x - sd * nx * cH * 0.5f, f0y - sd * ny * cH * 0.5f, C(214, 160, 138));      // reflet sur le dessus du bras
     disque(g, wx, wy, wH + 1.4f, CONTOUR); disque(g, wx, wy, wH, PEAU); }      // le poignet
   // paume : contour net, peau, ombrage. pal = 0 : main de face ; pal = 1 : paume tournée vers le haut, vue de profil (aplatie, creusée, doigts relevés en coupe, pouce dressé)
-  const float pal = lim(H.pal, 0.0f, 1.0f), palS = pas(pal), vk = lerpf(1.0f, PAUME_VK, palS), fvk = lerpf(1.0f, 0.62f, palS);
+  const float pal = lim(H.pal, 0.0f, 1.0f), palS = pas(pal), vk = lerpf(1.0f, PAUME_VK, palS), fvk = lerpf(1.0f, 0.78f, palS);
   const uint16_t PAUMEC = C(247, 210, 186), PAUMEO = C(212, 146, 130), PEAUX = (palS > 0.5f) ? PAUMEC : PEAU;
   auto Lv = [&](float u, float v, float& X, float& Y) { ptMain(R_, u, v * vk, X, Y); };
   { static const float palm[12] = {-8, -4.8f, 7, -7.4f, 7.4f, 7.0f, 1.5f, 10.0f, -5, 8.4f, -8, 4.8f}; float cu = 0, cv_ = 0; for (int i = 0; i < 6; i++) { cu += palm[i * 2]; cv_ += palm[i * 2 + 1]; } cu /= 6; cv_ /= 6;
@@ -1169,10 +1161,18 @@ static void dessinerMain(M5Canvas& g) {
       for (int q = 0; q < 2; q++) for (int k = 0; k < 3; k++) { float a1, b1, a2, b2; Lv(pc[q][k][0], pc[q][k][1], a1, b1); Lv(pc[q][k + 1][0], pc[q][k + 1][1], a2, b2); ligne(g, a1, b1, a2, b2, PAUMEO); }
     }
   }
+  if (H.pal > 0.5f && H.halo > 0.05f) {      // effet d'offrande : deux ondulations sombres-rouges qui s'étalent depuis la paume (deux anneaux de lignes, rien de plein écran)
+    float hx, hy; ptPaume(R_, hx, hy); const int ns = (OP.q == 0) ? 10 : 14; const float hk = H.halo * pas((H.pal - 0.5f) * 2.0f);
+    for (int k = 0; k < 2; k++) {
+      const float ph = fmodf(tAnim * 0.55f + k * 0.5f, 1.0f), rx = 6.0f + 24.0f * ph, fa = (1.0f - ph) * hk;
+      if (fa < 0.12f) continue;
+      anneauPaume(g, hx, hy + 1.0f, rx, rx * 0.34f, CF(40.0f + 190.0f * fa, 6.0f + 54.0f * fa, 10.0f + 44.0f * fa), ns);
+    }
+  }
   // doigts (l'index passe par-dessus le majeur quand ils se croisent) ; paume vers le haut : ils se relèvent en coupe et le pouce se dresse
   int ordre[5] = {4, 3, 2, 1, 0}; if (H.sp[1] < -0.2f && H.sp[2] > 0.15f) { ordre[0] = 4; ordre[1] = 3; ordre[2] = 0; ordre[3] = 2; ordre[4] = 1; }
   for (int oi = 0; oi < 5; oi++) {
-    int d = ordre[oi]; const float* f = DG[d]; float a = f[2] + H.sp[d] - ((d == 0) ? 1.30f * palS : 0.0f), fl = H.cu[d], px[4], py[4], rs[4], cu = f[0], cv_ = f[1] * fvk;
+    int d = ordre[oi]; const float* f = DG[d]; float a = f[2] + H.sp[d] - ((d == 0) ? 0.78f * palS : 0.0f), fl = H.cu[d], px[4], py[4], rs[4], cu = f[0], cv_ = f[1] * fvk;
     L(cu, cv_, px[0], py[0]); rs[0] = f[6] * 0.5f * S;
     static const float KF[3] = {0.8f, 1.0f, 0.8f};
     for (int k = 0; k < 3; k++) { a += fl * KF[k] * (d == 0 ? -1.0f : 1.0f); float c25 = cosf(fl * 0.25f); cu += cosf(a) * f[3 + k] * c25; cv_ += sinf(a) * f[3 + k] * c25; L(cu, cv_, px[k + 1], py[k + 1]); rs[k + 1] = f[6] * 0.5f * S * (0.9f - 0.18f * (k + 1)); }
@@ -1183,7 +1183,7 @@ static void dessinerMain(M5Canvas& g) {
   // objets posés dans la paume
   for (int i = 0; i < 3; i++) { ObjM& o = H.om[i]; if (!o.actif) continue; float ox, oy; if (palS > 0.5f) { ptPaume(R_, ox, oy); ox += o.u * 0.8f; oy -= 2.5f; } else { L(o.u * 0.8f, -2.0f, ox, oy); oy -= 5.0f; } dessinerObjet(g, o.type, ox, oy, 4.2f, o.u * 0.2f, 0.0f); }
   // braises qui montent de la paume (l'effet d'offrande)
-  for (int q = 0; q < 6; q++) { const Braise& b = BR[q]; if (!b.on) continue; const float u = lim(b.t / b.dur, 0.0f, 1.0f); disque(g, b.x, b.y, (u < 0.7f) ? 1.2f : 0.8f, CF(255.0f - 135.0f * u, 150.0f - 130.0f * u, 110.0f - 80.0f * u)); }
+  for (int q = 0; q < 6; q++) { const Braise& b = BRAIS[q]; if (!b.on) continue; const float u = lim(b.t / b.dur, 0.0f, 1.0f); disque(g, b.x, b.y, (u < 0.7f) ? 1.2f : 0.8f, CF(255.0f - 135.0f * u, 150.0f - 130.0f * u, 110.0f - 80.0f * u)); }
 }
 static void dessinerVisee(M5Canvas& g) {
   float dx = VS.x - VS.x0, dy = VS.y - VS.y0, l = sqrtf(dx * dx + dy * dy);
@@ -1453,7 +1453,7 @@ static void attribuer(int iO, int force) {       // un corbeau libre vient cherc
 
 static void braise() {      // une braise sombre-rouge monte de la paume (4 au plus en qualité Fluide)
   const int nmax = (OP.q == 0) ? 4 : 6; RepM r_ = repereMain(); float px, py; ptPaume(r_, px, py);
-  for (int q = 0; q < nmax; q++) if (!BR[q].on) { Braise& b = BR[q]; b.on = true; b.x = px + rnd(-9.0f, 9.0f); b.y = py - 2.0f; b.vx = rnd(-8.0f, 8.0f); b.vy = -rnd(14.0f, 32.0f); b.t = 0.0f; b.dur = rnd(0.9f, 1.5f); break; }
+  for (int q = 0; q < nmax; q++) if (!BRAIS[q].on) { Braise& b = BRAIS[q]; b.on = true; b.x = px + rnd(-9.0f, 9.0f); b.y = py - 2.0f; b.vx = rnd(-8.0f, 8.0f); b.vy = -rnd(14.0f, 32.0f); b.t = 0.0f; b.dur = rnd(0.9f, 1.5f); break; }
 }
 static void mainRecoit() {      // le corbeau pose ses pattes dans la paume : elle cède un peu, une gerbe de braises
   H.dipV += 46.0f; H.halo = 1.0f; for (int i = 0; i < 4; i++) braise();
@@ -2007,7 +2007,7 @@ static void envoyerMain();
 static void tendreMain(float x, float y) {      // la main sort à une place fixe : le bras ne bouge plus ensuite (le toucher n'a plus d'effet sur lui)
   if (V.ph != V_RIEN || H.actif) return;
   (void)x; (void)y; const float FX = 205.0f, FY = 128.0f;
-  H.actif = true; H.x = H.tx = FX; H.y = H.ty = FY; H.ext = 0; H.gauche = false; H.pose = PS_REPOS; H.tPose = 0; H.vit = 1.0f; H.tRec = OP.paume ? ((OP.pvis > 0) ? rnd(1.8f, 3.2f) : 1e9f) : 0.9f; H.pal = H.palV = H.dip = H.dipV = H.halo = 0.0f; memset(BR, 0, sizeof(BR));
+  H.actif = true; H.x = H.tx = FX; H.y = H.ty = FY; H.ext = 0; H.gauche = false; H.pose = PS_REPOS; H.tPose = 0; H.vit = 1.0f; H.tRec = OP.paume ? ((OP.pvis > 0) ? rnd(1.8f, 3.2f) : 1e9f) : 0.9f; H.pal = H.palV = H.dip = H.dipV = H.halo = 0.0f; memset(BRAIS, 0, sizeof(BRAIS));
   H.vx = H.vy = H.tilt = H.tiltV = H.resp = 0; H.exs = FX + 118.0f; H.ouv = H.ouvV = H.esp = H.espV = H.clos = H.closV = H.circ = 0; H.ctrl = false; H.lx = FX; H.ly = FY; H.tHold = 0; H.lok = false;
   for (int i = 0; i < 5; i++) { H.sp[i] = MP[PS_REPOS][i][0]; H.cu[i] = MP[PS_REPOS][i][1]; H.spv[i] = H.cuv[i] = 0; }
   for (int i = 0; i < 3; i++) H.om[i].actif = false;
@@ -2359,7 +2359,7 @@ static void majMainPose(float dt) {
     if (!(H.dip == H.dip) || !(H.dipV == H.dipV)) { H.dip = H.dipV = 0.0f; }
     H.dip = lim(H.dip, -2.0f, 4.0f);
     H.halo += (((H.pal > 0.6f) ? (mainOccupee() ? 1.0f : 0.3f) : 0.0f) - H.halo) * mnf(1.0f, dt * 2.5f);
-    for (int q = 0; q < 6; q++) { Braise& b = BR[q]; if (!b.on) continue; b.t += dt; b.x += (b.vx + 5.0f * sinf(b.t * 5.0f + q)) * dt; b.y += b.vy * dt; if (b.t >= b.dur || !(b.x == b.x) || !(b.y == b.y)) b.on = false; }
+    for (int q = 0; q < 6; q++) { Braise& b = BRAIS[q]; if (!b.on) continue; b.t += dt; b.x += (b.vx + 5.0f * sinf(b.t * 5.0f + q)) * dt; b.y += b.vy * dt; if (b.t >= b.dur || !(b.x == b.x) || !(b.y == b.y)) b.on = false; }
     if (H.actif && H.pal > 0.85f && H.halo > 0.55f) { tBraise -= dt; if (tBraise <= 0.0f) { tBraise = rnd(0.16f, 0.32f) * ((OP.q == 0) ? 1.6f : 1.0f); braise(); } }
     if (OP.paume && H.actif && geste && H.pal < 0.8f) {      // un geste de l'utilisateur : le corbeau qui venait ou qui était dans la paume s'en va
       for (int k = 0; k < NCB; k++) { Corbeau& c = cr[k]; if (c.perch != 14) continue;
@@ -2982,7 +2982,7 @@ static void ouvrir() {
   for (int k = 0; k < 3; k++) cr[k].tfin = rnd(3, 8);
   fam::init();      // famille.h : la colonie (traits, rôles, rangs, perchoirs attitrés) est relue de la mémoire
   chargerNoms(); FI.k = -1; tapK = -1; pendOn = false; visType = -1;
-  gCalme = 0; memset(&V, 0, sizeof(V)); memset(mini, 0, sizeof(mini)); memset(proj, 0, sizeof(proj)); memset(&H, 0, sizeof(H)); memset(BR, 0, sizeof(BR)); tBraise = 0.0f; memset(&VS, 0, sizeof(VS)); memset(&FR, 0, sizeof(FR)); memset(&D, 0, sizeof(D));
+  gCalme = 0; memset(&V, 0, sizeof(V)); memset(mini, 0, sizeof(mini)); memset(proj, 0, sizeof(proj)); memset(&H, 0, sizeof(H)); memset(BRAIS, 0, sizeof(BRAIS)); tBraise = 0.0f; memset(&VS, 0, sizeof(VS)); memset(&FR, 0, sizeof(FR)); memset(&D, 0, sizeof(D));
   appelOn = false; modeCb = 0; choixL = 0; appelSub = 0; tpCible = 0; gVisite = delaiVisite(true); tAnim = millis() * 0.001f;
   for (int k = 3; k < NAD; k++) { cr[k].etat = E_DEHORS; cr[k].visible = false; cr[k].t = 0; cr[k].tfin = (k == 3) ? 1.2f : 3.0f + 3.0f * (k - 3); }
   cr[PC].etat = E_OFF; cr[PC].visible = false;
