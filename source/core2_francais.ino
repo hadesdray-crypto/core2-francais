@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.5"
+#define VERSION_PROGRAMME "3.1.6"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -205,6 +205,12 @@ String versionDispo, urlBinDispo, infoMaj; volatile int matCommande = 0; volatil
 bool demandeMaj = false; volatile bool majVoulue = false; volatile uint32_t prochaineVerif = 0xFFFFFFFFUL; bool wifiCoupe = false; uint32_t finBesoinNet = 120000; uint32_t finGriffe = 0;
 int essaiReseau = 0;
 void activite() { derniereActivite = millis(); }
+uint32_t derniereVraie = 0;      // dernier vrai geste de l'utilisateur (toucher, secousse, bouton, branchement) ; activite() est aussi forcée par des pages qui restent éveillées
+void activiteReelle() { derniereVraie = millis(); activite(); }
+bool ecoForte = true;            // réglage « Économie de batterie : normale / forte » (clé econiv), forte par défaut ; sans effet quand le Core2 est branché
+int palierEco = 0;               // 0 plein régime, 1 puis 2 = inactivité de plus en plus longue (écran qui baisse, moins d'images)
+bool matVisible = false;         // réglage « Afficher la Matinale » (clé matvis), masquée par défaut
+float consoMa = 0;               // courant moyen tiré sur la pile (mA, lissé) pour estimer l'autonomie
 
 // ---------- Protection contre les plantages ----------
 // Chaque module est exécuté entouré de debut()/fin() : si le Core2 plante, on sait lequel.
@@ -415,7 +421,7 @@ void moduleHeure() {
     if (R.reveil.length() == 5) {      // réveil du matin : il danse
       static int jourFait = -1;
       if (t.tm_yday != jourFait && t.tm_hour == R.reveil.substring(0, 2).toInt() && t.tm_min == R.reveil.substring(3, 5).toInt()) {
-        jourFait = t.tm_yday; if (veille) reveillerEcran(); activite();
+        jourFait = t.tm_yday; if (veille) reveillerEcran(); activiteReelle();
         attitude(CONTENT, 12000); finDanse = millis() + 12000; dire(phrase(4), 12000);
       }
     }
@@ -689,7 +695,7 @@ void physique(float dt) {
       } else { debutRenverse = 0; renverseDit = false; }
     }
     if (sec > seuilSecousse && m - dernierSecouement > 1200) {
-      dernierSecouement = m; activite();
+      dernierSecouement = m; activiteReelle();
       attitude(ETOURDI, 3500); P.joie = max(0.0f, P.joie - 4);
       float force = (pesanteur ? 25.0f : 60.0f) * ms;     // avec la gravité il est projeté bien plus fort ; un lourd bouge moins
       P.vx += (random(-100, 100) / force); P.vy += (random(-100, 100) / force);
@@ -1499,7 +1505,7 @@ void dessinerAccueil() {
 
 // ---------- Page de réglages à l'écran ----------
 static bool direct = false, changerDirect = false, eco = false;
-static bool wifiToujours = true;       // réglage Wi-Fi : toujours actif (par défaut, jamais coupé, jamais endormi) ou économie ; clé mémoire wifitj ; eco = !wifiToujours
+static bool wifiToujours = false;      // réglage Wi-Fi : économie (par défaut : Wi-Fi endormi ou coupé quand rien n'en a besoin ; la tuile « Mise à jour » le rallume 15 min) ou toujours actif ; clé mémoire wifitj ; eco = !wifiToujours
 static uint32_t finMaj = 0;            // fin de la fenêtre « recevoir une mise à jour » (Wi-Fi éveillé 15 minutes)
 static bool wifiDort() { return !wifiToujours && (int32_t)(millis() - finMaj) >= 0 && (eco || veille || !brancheUsb); }
 void ouvrirRecevoir() {                // écran « Recevoir une mise à jour » : rallume le Wi-Fi tout de suite et le garde éveillé au moins 15 minutes
@@ -1514,10 +1520,17 @@ void appliquerDirect() {
   if (nbConnus()) WiFi.begin(connuN[0].c_str(), connuM[0].c_str());
   WiFi.setSleep(wifiDort());     // économie : le Wi-Fi dort entre deux échanges (jamais si « Wi-Fi : actif »)
 }
+void reglerMatinale(bool v);
+static String autonomieTexte() {      // autonomie estimée sur pile : capacité restante (500 mAh) / courant moyen tiré
+  if (brancheUsb || consoMa < 8.0f || W.batterie < 0) return String("");
+  float h = min(99.0f, (500.0f * constrain(W.batterie, 0, 100) / 100.0f) / consoMa); int hh = (int)h, mm = (int)((h - hh) * 60.0f);
+  char b[24]; snprintf(b, sizeof(b), "  ~%d h %02d", hh, mm); return String(b);
+}
 static const char* LIB_COURTS[M_NB] = {"Météo", "Wi-Fi", "Son", "Batterie", "Heure", "Gravité", "Messages"};
 void dessinerReglages() {
   cv.fillScreen(C(18, 20, 34)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left); cv.setTextColor(C(255, 255, 255));
-  cv.drawString("Modules : touche pour activer ou couper", 8, 6);
+  cv.drawString("Modules : touche = changer", 8, 6);
+  cv.fillRoundRect(178, 3, 120, 17, 7, matVisible ? C(50, 130, 80) : C(90, 70, 110)); cv.setTextDatum(middle_center); cv.drawString(matVisible ? "Matinale : oui" : "Matinale : non", 238, 12); cv.setTextDatum(top_left);
   cv.setFont(&fonts::lgfxJapanGothic_16);
   for (int i = 0; i < M_NB; i++) {
     int bx = 6 + (i % 2) * 158, by = 24 + (i / 2) * 30;
@@ -1533,10 +1546,12 @@ void dessinerReglages() {
   cv.drawString("Adresse : http://" + ip, 8, 148);
   cv.drawString("Version " VERSION_PROGRAMME "   Code maj : " + prefs.getString("code", "666666"), 8, 164);
   cv.drawString(W.wifiOk ? "Wi-Fi connecté : " + WiFi.SSID() : ((direct || modeAcces) ? "Direct : Core2-francais" : "Pas de Wi-Fi"), 8, 180);
-  cv.drawString("Pile " + String(W.batterie) + " %  " + String((int)M5.Power.getBatteryVoltage()) + " mV  " + String((int)M5.Power.getBatteryCurrent()) + " mA", 8, 192);
-  cv.fillRoundRect(226, 144, 90, 18, 7, C(50, 100, 150)); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString("Réseaux...", 271, 153);
-  cv.fillRoundRect(226, 165, 90, 18, 7, wifiToujours ? C(50, 130, 80) : C(120, 90, 40)); cv.drawString(wifiToujours ? "Wi-Fi : actif" : "Wi-Fi : éco", 271, 174);
-  cv.fillRoundRect(226, 186, 90, 17, 7, vueDessusOn ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString(vueDessusOn ? "Dessus : oui" : "Dessus : non", 271, 194); cv.setTextDatum(top_left);
+  cv.drawString("Pile " + String(W.batterie) + " %" + (brancheUsb ? String("  (branché)") : autonomieTexte()) + "  " + String((int)M5.Power.getBatteryCurrent()) + " mA", 8, 192);
+  cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255));
+  cv.fillRoundRect(218, 142, 98, 14, 6, C(50, 100, 150)); cv.drawString("Réseaux...", 267, 149);
+  cv.fillRoundRect(218, 158, 98, 14, 6, wifiToujours ? C(50, 130, 80) : C(120, 90, 40)); cv.drawString(wifiToujours ? "Wi-Fi : actif" : "Wi-Fi : éco", 267, 165);
+  cv.fillRoundRect(218, 174, 98, 14, 6, vueDessusOn ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString(vueDessusOn ? "Dessus : oui" : "Dessus : non", 267, 181);
+  cv.fillRoundRect(218, 190, 98, 13, 6, ecoForte ? C(50, 130, 80) : C(90, 90, 40)); cv.drawString(ecoForte ? "Économie forte" : "Économie normale", 267, 196); cv.setTextDatum(top_left);
   cv.setFont(&fonts::lgfxJapanGothic_16);
   cv.fillRoundRect(4, 204, 102, 32, 8, C(52, 56, 96)); cv.setTextDatum(middle_center); cv.setTextColor(C(240, 240, 255)); cv.drawString("Retour", 55, 220);
   cv.fillRoundRect(112, 204, 98, 32, 8, (direct || modeAcces) ? C(50, 130, 80) : C(90, 70, 110)); cv.drawString((direct || modeAcces) ? "Direct : oui" : "Direct : non", 161, 220);
@@ -1753,10 +1768,13 @@ static const Tuile TUILES[] = {
   {"Corbeaux", 32, 0x7000}, {"Dex", 33, 0x9000},
 };
 static const int NB_TUILES = sizeof(TUILES) / sizeof(TUILES[0]);
+static int tuilesVis[24], nbVis = 0;
+static void listerTuiles() { nbVis = 0; for (int i = 0; i < NB_TUILES && nbVis < 24; i++) if (matVisible || TUILES[i].page != 31) tuilesVis[nbVis++] = i; }      // la Matinale est masquée tant que le réglage est coupé
 void dessinerMenu() {
   cadrePage("Menu - tout ce que je sais faire");
-  for (int i = 0; i < NB_TUILES; i++) {
-    int c = i % 3, r = i / 3; int x = 6 + c * 104, y = 26 + r * 35;
+  listerTuiles();
+  for (int k = 0; k < nbVis; k++) {
+    int i = tuilesVis[k]; int c = k % 3, r = k / 3; int x = 6 + c * 104, y = 26 + r * 35;
     cv.fillRoundRect(x, y, 100, 32, 8, TUILES[i].coul); cv.drawRoundRect(x, y, 100, 32, 8, C(120, 160, 220));
     cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString(TUILES[i].nom, x + 50, y + 16);
   }
@@ -2551,6 +2569,14 @@ static void chargerMatinale(bool liste) {
   }
   matEtat = 2;
 }
+static TaskHandle_t hTacheMat = nullptr; static volatile bool matArret = false;
+static void libererString(String& s) { s.~String(); new (&s) String(); }      // rend vraiment la mémoire (affecter "" garde le tampon)
+static void effacerDonneesMat() {      // efface tout ce que la Matinale gardait (listes de jours et de sujets, adresses, textes) et rend la mémoire
+  matNb = 0; matNbJours = 0; matJour = 0; matDecal = 0; matFlashD = 0; matFullD = 0; matJouant = -1; matDuree = 0; matCommande = 0; matEtat = 0;
+  for (int i = 0; i < 30; i++) { libererString(matSujets[i].t); libererString(matSujets[i].s); matSujets[i].d = 0; }
+  for (int i = 0; i < 14; i++) libererString(matJours[i]);
+  libererString(matFlash); libererString(matFull); libererString(matErreur); libererString(matUrl);
+}
 void tacheMatinale(void*) {
   AudioGeneratorMP3* gen = nullptr; SourceFlux* src = nullptr; AudioFileSourceBuffer* tamp = nullptr; SortieM5* sortie = nullptr;
   auto arreter = [&]() {
@@ -2560,6 +2586,7 @@ void tacheMatinale(void*) {
     matJouant = -1;
   };
   for (;;) {
+    if (matArret) { arreter(); if (sortie) { delete sortie; sortie = nullptr; } effacerDonneesMat(); hTacheMat = nullptr; vTaskDelete(NULL); }      // Matinale mise de côté : la tâche et ses données disparaissent
     int c = matCommande;
     if (c == 3 || c == 4) { arreter(); if (c == 4) matCommande = 0; }
     if (c == 3) {
@@ -2581,6 +2608,11 @@ void tacheMatinale(void*) {
     if (gen && gen->isRunning()) { if (!gen->loop()) arreter(); vTaskDelay(1); }
     else { if (gen) arreter(); vTaskDelay(pdMS_TO_TICKS(30)); }
   }
+}
+static void demarrerMatinale() { matArret = false; if (!hTacheMat) xTaskCreatePinnedToCore(tacheMatinale, "matinale", 16384, NULL, 2, &hTacheMat, 0); }
+void reglerMatinale(bool v) {      // réglage « Afficher la Matinale » : coupé = tuile masquée, plus rien de téléchargé, données effacées, tâche arrêtée ; remis = elle redémarre et se met à jour à l'ouverture
+  matVisible = v; prefs.putBool("matvis", v);
+  if (v) demarrerMatinale(); else { matCommande = 4; if (hTacheMat) matArret = true; else effacerDonneesMat(); if (page == 31) page = 6; }
 }
 static String jourEnClair(const String& j) {
   static const char* JS[7] = {"dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"};
@@ -2690,7 +2722,8 @@ void gererTactilePages(const m5::touch_detail_t& t) {
   if (page == 33) { dexToucher(t); return; }
   if (page == 6) {
     if (!clic) return;
-    for (int i = 0; i < NB_TUILES; i++) { int c = i % 3, r = i / 3; int tx = 6 + c * 104, ty = 26 + r * 35; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 32) { page = TUILES[i].page; pageRetourPerso = 6; retourSous = 15; if (page == 2) lancerScan(); if (page == 31 && matEtat != 2) matCommande = 1; bip(700, 40); return; } }
+    listerTuiles();
+    for (int k = 0; k < nbVis; k++) { int i = tuilesVis[k]; int c = k % 3, r = k / 3; int tx = 6 + c * 104, ty = 26 + r * 35; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 32) { page = TUILES[i].page; pageRetourPerso = 6; retourSous = 15; if (page == 2) lancerScan(); if (page == 31 && matEtat != 2) matCommande = 1; bip(700, 40); return; } }
     return;
   }
   if (page == 14) { if (clic && y >= 180 && y < 206 && x < 100) { page = 6; bip(700, 40); } else if (t.isPressed()) lampeNiveau = constrain((int)(255.0f * x / 320.0f), 10, 255); return; }
@@ -2708,7 +2741,12 @@ void gererTactilePages(const m5::touch_detail_t& t) {
 
 // ---------- Veille de l'écran ----------
 // Économie de pile : sur pile, le Wi-Fi dort entre deux échanges ; écran éteint, le processeur ralentit aussi.
-void appliquerEconomie() { WiFi.setSleep(wifiDort()); setCpuFrequencyMhz(veille ? 80 : 240); }
+void appliquerEconomie() { WiFi.setSleep(wifiDort()); setCpuFrequencyMhz(veille ? 80 : ((palierEco >= 2 && ecoForte && !brancheUsb) ? 160 : 240)); }
+static void appliquerPalier() {      // sur pile : la luminosité baisse par paliers quand personne ne touche (le toucher ou la secousse la rendent tout de suite)
+  if (veille) return;
+  int f = (palierEco == 0) ? 100 : (palierEco == 1 ? (ecoForte ? 55 : 75) : (ecoForte ? 25 : 45));
+  M5.Display.setBrightness((uint8_t)max(8, (int)R.luminosite * f / 100)); appliquerEconomie();
+}
 void dessinerGriffes(int px, int py) { for (int i = 0; i < 3; i++) { int x = px - 36 + i * 24; cv.drawLine(x, py - 45, x + 14, py + 12, C(255, 60, 60)); cv.drawLine(x + 1, py - 45, x + 15, py + 12, C(255, 60, 60)); } }
 void dessinerPerso1() { int px, py; float e; positionEcran(px, py, e); dessinerPersonnage(px, py, e); if (millis() < finGriffe) dessinerGriffes(px, py); }
 // Bulle fait un petit salut de la main avant de s'endormir.
@@ -2732,12 +2770,13 @@ void saluerAuRevoir() {
   bip(700, 80); bip(500, 130);
 }
 void endormirEcran() {
-  if (!veille) saluerAuRevoir();
+  if (!veille && page != 32 && page != 33) saluerAuRevoir();
   veille = true; M5.Display.setBrightness(0); M5.Display.sleep(); appliquerEconomie();
+  if (!brancheUsb && !lectureEnCours) { if (M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); } M5.Mic.end(); }      // écran éteint sur pile : micro et haut-parleur arrêtés (ils redémarrent à la demande)
 }
 void reveillerEcran() {
-  veille = false; appliquerEconomie(); M5.Display.wakeup(); M5.Display.setBrightness(R.luminosite); activite();
-  for (int f = 0; f < 8; f++) {
+  veille = false; appliquerEconomie(); M5.Display.wakeup(); M5.Display.setBrightness(R.luminosite); activiteReelle();
+  for (int f = 0; f < 8 && page != 32 && page != 33; f++) {
     dessinerBoite(); dessinerPerso1();
     int px, py; float e; positionEcran(px, py, e);
     int r = 64 - f * 8; if (r > 0) { cv.drawCircle(px, py, r, C(0, 230, 255)); cv.drawCircle(px, py, r + 3, C(255, 40, 170)); }
@@ -2777,13 +2816,13 @@ void gererBoutons() {
   {   // appui long : régler le son (gauche moins fort, droite plus fort), sans déclencher l'autre action
     static uint32_t tRep = 0; static bool reglage = false; uint32_t m = millis();
     bool g = M5.BtnA.pressedFor(500), d = M5.BtnC.pressedFor(500);
-    if ((g || d) && m - tRep > 120) { tRep = m; reglage = true; activite(); if (veille) reveillerEcran(); changerVolume(d ? 12 : -12); }
+    if ((g || d) && m - tRep > 120) { tRep = m; reglage = true; activiteReelle(); if (veille) reveillerEcran(); changerVolume(d ? 12 : -12); }
     if (reglage && !M5.BtnA.isPressed() && !M5.BtnC.isPressed()) { reglage = false; sauverReglages(); M5.BtnA.wasClicked(); M5.BtnC.wasClicked(); return; }
     if (reglage) return;
   }
   int b = M5.BtnA.wasClicked() ? 0 : (M5.BtnB.wasPressed() ? 1 : (M5.BtnC.wasClicked() ? 2 : -1));
   if (b < 0) return;
-  activite();
+  activiteReelle();
   if (veille) { reveillerEcran(); return; }
   if (page == 0) { actionBarre(b); return; }
   bip(700, 40);        // sur les autres pages : gauche = retour, milieu = accueil, droite = réglages
@@ -2796,7 +2835,7 @@ void gererBoutons() {
 bool touchePerso = false; int xPrec = 0, yPrec = 0; uint32_t debutToucher = 0;
 void gererTactile() {
   auto t = M5.Touch.getDetail();
-  if (t.wasPressed() || t.isPressed()) { activite(); nbTouch++; }
+  if (t.wasPressed() || t.isPressed()) { activiteReelle(); nbTouch++; }
   if (t.y >= 240) { if (t.wasReleased()) { P.porte = false; touchePerso = false; } return; }   // zone des boutons ronds : gérée par gererBoutons()
   if (page == 5) {
     if (t.wasPressed() && t.y >= 204) {
@@ -2818,11 +2857,13 @@ void gererTactile() {
     if (t.wasPressed()) {
       int x = t.x, y = t.y;
       for (int i = 0; i < M_NB; i++) { int bx = 6 + (i % 2) * 158, by = 24 + (i / 2) * 30; if (x >= bx && x < bx + 152 && y >= by && y < by + 26) { R.actif[i] = !R.actif[i]; sauverReglages(); bip(R.actif[i] ? 880 : 440, 60); } }
-      if (x >= 164 && x < 240 && y >= 114 && y < 140) { page = 5; bip(700, 60); }
+      if (y < 22 && x >= 178 && x < 299) { reglerMatinale(!matVisible); bip(matVisible ? 880 : 440, 60); }
+      else if (x >= 164 && x < 240 && y >= 114 && y < 140) { page = 5; bip(700, 60); }
       else if (x >= 240 && y >= 114 && y < 140) { ouvrirRecevoir(); bip(880, 60); }
-      else if (x >= 226 && y >= 142 && y < 164) { page = 2; lancerScan(); bip(700, 60); }
-      else if (x >= 226 && y >= 164 && y < 185) { wifiToujours = !wifiToujours; eco = !wifiToujours; prefs.putBool("wifitj", wifiToujours); prefs.putBool("eco", eco); changerDirect = true; bip(wifiToujours ? 880 : 440, 60); }
-      else if (x >= 226 && y >= 185 && y < 203) { vueDessusOn = !vueDessusOn; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } bip(vueDessusOn ? 880 : 440, 60); }      // interrupteur de la vue de dessus
+      else if (x >= 218 && y >= 142 && y < 158) { page = 2; lancerScan(); bip(700, 60); }
+      else if (x >= 218 && y >= 158 && y < 174) { wifiToujours = !wifiToujours; eco = !wifiToujours; prefs.putBool("wifitj", wifiToujours); prefs.putBool("eco", eco); changerDirect = true; bip(wifiToujours ? 880 : 440, 60); }
+      else if (x >= 218 && y >= 190 && y < 204) { ecoForte = !ecoForte; prefs.putUChar("econiv", ecoForte ? 1 : 0); appliquerPalier(); bip(ecoForte ? 880 : 440, 60); }      // Économie de batterie : normale / forte
+      else if (x >= 218 && y >= 174 && y < 190) { vueDessusOn = !vueDessusOn; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } bip(vueDessusOn ? 880 : 440, 60); }      // interrupteur de la vue de dessus
       else if (y >= 204 && x < 108) { page = 0; }
       else if (y >= 204 && x < 212) { direct = !direct; prefs.putBool("direct", direct); changerDirect = true; bip(700, 60); }
       else if (y >= 204) { sauverPerso(); esp_restart(); }
@@ -2913,7 +2954,7 @@ String jsonEtat() {
   d["batterie"] = W.batterie; d["charge"] = W.charge; d["wifi"] = W.wifiOk; d["rssi"] = W.rssi;
   d["temperature"] = W.temperature; d["meteo"] = W.codeMeteo; d["gravite"] = W.gravite;
   d["message"] = W.message; d["lat"] = R.lat; d["lon"] = R.lon; d["luminosite"] = R.luminosite; d["volume"] = R.volume;
-  d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = !wifiToujours; d["wifiToujours"] = wifiToujours; d["dessus"] = vueDessusOn;
+  d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = !wifiToujours; d["wifiToujours"] = wifiToujours; d["dessus"] = vueDessusOn; d["econf"] = ecoForte; d["matvis"] = matVisible;
   d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo;
   JsonObject m = d["modules"].to<JsonObject>();
   for (int i = 0; i < M_NB; i++) m[CLES_MODULES[i]] = R.actif[i];
@@ -2941,7 +2982,7 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("ssid2") && serveur.arg("ssid2").length()) R.ssid2 = serveur.arg("ssid2");
   if (serveur.hasArg("mdp2") && serveur.arg("mdp2").length()) R.mdp2 = serveur.arg("mdp2");
   if (serveur.hasArg("oublier2")) { oublierConnu(R.ssid2); R.ssid2 = ""; R.mdp2 = ""; }
-  if (serveur.hasArg("reveil")) { if (veille) reveillerEcran(); activite(); }
+  if (serveur.hasArg("reveil")) { if (veille) reveillerEcran(); activiteReelle(); }
   if (serveur.hasArg("lat")) R.lat = serveur.arg("lat").toFloat();
   if (serveur.hasArg("lon")) R.lon = serveur.arg("lon").toFloat();
   if (serveur.hasArg("lum")) { R.luminosite = constrain(serveur.arg("lum").toInt(), 10, 255); if (!veille) M5.Display.setBrightness(R.luminosite); }
@@ -2951,6 +2992,8 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("nouveaucode") && serveur.arg("nouveaucode").length() >= 3) prefs.putString("code", serveur.arg("nouveaucode"));
   if (serveur.hasArg("direct")) { direct = serveur.arg("direct") == "1"; prefs.putBool("direct", direct); changerDirect = true; }
   if (serveur.hasArg("eco")) { eco = serveur.arg("eco") == "1"; wifiToujours = !eco; prefs.putBool("eco", eco); prefs.putBool("wifitj", wifiToujours); changerDirect = true; }
+  if (serveur.hasArg("econf")) { ecoForte = serveur.arg("econf") == "1"; prefs.putUChar("econiv", ecoForte ? 1 : 0); appliquerPalier(); }
+  if (serveur.hasArg("matinale")) reglerMatinale(serveur.arg("matinale") == "1");
   if (serveur.hasArg("dessus")) { vueDessusOn = serveur.arg("dessus") == "1"; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } }
   if (serveur.hasArg("perso")) R.perso = constrain(serveur.arg("perso").toInt(), 0, NB_PERSOS - 1);
   { Fiche& f = FA; bool mf = false;
@@ -3046,7 +3089,7 @@ void demarrerServeur() {
     d["version"] = VERSION_PROGRAMME; d["wifiMaison"] = (WiFi.status() == WL_CONNECTED); d["reseau"] = WiFi.SSID(); d["reseau1"] = R.ssid; d["reseau2"] = R.ssid2;
     d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["ip"] = WiFi.localIP().toString();
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
-    d["secondesDepuisDemarrage"] = millis() / 1000;
+    d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
     d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
     d["uptimeMs"] = millis(); d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
     d["pileMv"] = M5.Power.getBatteryVoltage(); d["usbMv"] = M5.Power.getVBUSVoltage(); d["courantMa"] = M5.Power.getBatteryCurrent(); d["niveau"] = M5.Power.getBatteryLevel(); d["etatCharge"] = (int)M5.Power.isCharging(); d["puce"] = (int)M5.Power.getType();
@@ -3061,7 +3104,9 @@ void demarrerServeur() {
 }
 
 void demarrerReseau() {
-  direct = prefs.getBool("direct", false); wifiToujours = prefs.getBool("wifitj", true); eco = !wifiToujours;      // Wi-Fi toujours actif par défaut vueDessusOn = prefs.getBool("vdessus", false);
+  direct = prefs.getBool("direct", false); wifiToujours = prefs.getBool("wifitj", false); eco = !wifiToujours;      // Wi-Fi à la demande (économie) par défaut
+  vueDessusOn = prefs.getBool("vdessus", false);
+  ecoForte = prefs.getUChar("econiv", 1) != 0; matVisible = prefs.getBool("matvis", false);
   WiFi.setHostname("core2-francais");
   WiFi.setAutoReconnect(true); WiFi.persistent(false);
   if (!nbConnus()) modeAcces = true;
@@ -3090,7 +3135,13 @@ void setup() {
   M5.Mic.begin();
   demarrerReseau(); demarrerServeur();
   xTaskCreatePinnedToCore(tacheMeteo, "meteo", 8192, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(tacheMatinale, "matinale", 16384, NULL, 2, NULL, 0);
+  if (matVisible) demarrerMatinale(); else effacerDonneesMat();      // Matinale mise de côté : aucune tâche (16 Ko de pile gardés libres), aucune donnée
+}
+
+static int ecoPalier() {      // 0 plein régime ; 1 : 30 s sans toucher (60 s en mode normal) ; 2 : 60 s (120 s) ; seulement sur pile
+  if (brancheUsb || veille || sniffActif || detection || page == 34 || page == 11 || page == 13 || lectureEnCours) return 0;
+  uint32_t d = millis() - derniereVraie, a = ecoForte ? 30000u : 60000u, b = ecoForte ? 60000u : 120000u;
+  return d > b ? 2 : (d > a ? 1 : 0);
 }
 
 void loop() {
@@ -3104,9 +3155,10 @@ void loop() {
     bool avantUsb = brancheUsb; brancheUsb = M5.Power.getVBUSVoltage() > 4000;
     Serial.printf("[energie] pourcent=%d pile=%dmV usb=%dmV courant=%dmA charge=%d veille=%d\n", W.batterie, (int)M5.Power.getBatteryVoltage(), (int)M5.Power.getVBUSVoltage(), (int)M5.Power.getBatteryCurrent(), (int)W.charge, (int)veille);
     moduleBatterie();
+    { float ma = -M5.Power.getBatteryCurrent(); if (brancheUsb) consoMa = 0; else { if (ma < 0) ma = 0; consoMa = (consoMa == 0) ? ma : consoMa * 0.85f + ma * 0.15f; } }
     if (M5.In_I2C.readRegister8(0x34, 0x62, 400000) != 8) { M5.In_I2C.writeRegister8(0x34, 0x61, 4, 400000); M5.In_I2C.writeRegister8(0x34, 0x62, 8, 400000); }
     if (brancheUsb != avantUsb) appliquerEconomie();
-    if (brancheUsb && !avantUsb) { if (veille) reveillerEcran(); activite(); if (FA.aime[EV_COURANT] < 0) reagir(EV_COURANT); else dire(phrase(6), 3500); }       // on le branche : l'écran se rallume
+    if (brancheUsb && !avantUsb) { if (veille) reveillerEcran(); activiteReelle(); if (FA.aime[EV_COURANT] < 0) reagir(EV_COURANT); else dire(phrase(6), 3500); }       // on le branche : l'écran se rallume
     if (!veille && brancheUsb && M5.Display.getBrightness() < R.luminosite) M5.Display.setBrightness(R.luminosite);
     { static bool alerte = false;
       if (!brancheUsb && W.batterie < 15) { if (!alerte) { alerte = true; if (!veille) jouer(S_PILE); } } else if (brancheUsb || W.batterie > 20) alerte = false; }
@@ -3117,17 +3169,20 @@ void loop() {
     if (R.actif[M_HEURE]) moduleHeure();
   }
   bool clicMarche = M5.BtnPWR.wasClicked();
-  if (clicMarche) { nbClicPwr++; activite(); }
+  if (clicMarche) { nbClicPwr++; activiteReelle(); }
   gererBoutons();
   if (veille) {
     // écran éteint : deux appuis rapprochés sur l'écran, ou un appui court sur le bouton marche/arrêt, le rallument
     auto t = M5.Touch.getDetail();
     if (t.wasPressed() && t.y < 240) reveillerEcran();   // un simple toucher reveille l ecran
     if (clicMarche && veille) reveillerEcran();
+    palierEco = 0;
+    { static float iaX = 0, iaY = 0, iaZ = 0; static uint32_t tImu = 0; if (m - tImu > 60 && M5.Imu.isEnabled()) { tImu = m; float x, y, z; M5.Imu.getAccel(&x, &y, &z); if (veille && iaX != 0 && fabsf(x - iaX) + fabsf(y - iaY) + fabsf(z - iaZ) > seuilSecousse * 1.5f && m - dernierSecouement > 1500) { reveillerEcran(); } iaX = x; iaY = y; iaZ = z; } }      // une vraie secousse réveille aussi l'écran
     tPhysique = m;
   } else {
     if (clicMarche && (int32_t)(millis() - derniereActivite) > 1500) { nbSommeilClic++; endormirEcran(); }   // le toucher n'eteint jamais l'ecran : seul le bouton power, et seulement sans toucher en cours
-    if (R.actif[M_SON] && m - tSon > 250) { tSon = m; moduleSon(); }
+    if (R.actif[M_SON] && (palierEco < 2 || !ecoForte) && m - tSon > (palierEco ? 1000u : 250u)) { tSon = m; moduleSon(); }
+    else if (!brancheUsb && ecoForte && palierEco >= 2 && M5.Mic.isEnabled() && !M5.Speaker.isRunning() && !lectureEnCours) M5.Mic.end();      // longue inactivité sur pile : le micro s'arrête
     debutModule(M_GRAVITE);
     float dt = (m - tPhysique) / 1000.0f; tPhysique = m; if (dt > 0.1f) dt = 0.1f;
     physique(dt); objetsPhysique(dt);
@@ -3148,10 +3203,14 @@ void loop() {
       int h = (int)constrain(dev * 14.0f, 0.0f, 86.0f);
       histMvt[histMvtPos] = (uint8_t)h; histMvtPos = (histMvtPos + 1) % (int)sizeof(histMvt);
     }
-    if (!veille && m - tDessin > (page == 32 ? cb::periodeMs() : (page == 33 ? 18u : (brancheUsb ? 33u : 50u)))) { tDessin = m; dessinerPage(); afficherVolume(); }
-    if (sniffActif || detection || page == 11 || page == 13 || page == 34 || (page >= 21 && page <= 32) || lectureEnCours) activite();
-    if (!veille && !brancheUsb && (int32_t)(millis() - derniereActivite) > 300000) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
+    { int p = ecoPalier(); if (p != palierEco) { palierEco = p; appliquerPalier(); } }
+    uint32_t periode = (page == 32 ? cb::periodeMs() : (page == 33 ? 18u : (brancheUsb ? 33u : 50u)));
+    if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;      // personne ne touche : 15 images/s, puis 8
+    if (!veille && m - tDessin > periode) { tDessin = m; dessinerPage(); afficherVolume(); }
+    if (sniffActif || detection || page == 11 || page == 13 || (page == 34 && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
+    if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (ecoForte ? 150000 : 300000)) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
+  if (page == 31 && !matVisible) page = 6;
   vieDuPerso();
   {   // reconnexion automatique : toutes les 12 s sans Wi-Fi, on cherche les réseaux et on prend le réseau connu qui capte le mieux
     static uint32_t tWifi = 0; static bool rechFond = false; static uint32_t debFond = 0;
@@ -3183,8 +3242,8 @@ void loop() {
   if (demandeMaj) majDepuisInternet();
   {   // Internet seulement quand il sert : branché il reste connecté ; sur pile, le Wi-Fi s'éteint dès qu'on n'en a plus besoin
     static uint32_t debutAttente = 0, pauseMeteo = 0;
-    bool meteoDue = R.actif[M_METEO] && (!W.meteoValide || m - W.derniereMeteo > (brancheUsb ? 30UL : 60UL) * 60000UL);
-    bool besoin = brancheUsb || direct || modeAcces || sniffActif || detection || (page >= 2 && page <= 5) || (page >= 7 && page <= 10) || page == 31 || lectureEnCours || matCommande || demandeMaj || majVoulue || m < finBesoinNet || (meteoDue && m > pauseMeteo) || wifiToujours || m < finMaj || page == 34;      // Wi-Fi toujours actif : jamais coupé
+    bool meteoDue = R.actif[M_METEO] && (!W.meteoValide || m - W.derniereMeteo > (brancheUsb ? 30UL : (ecoForte ? 180UL : 60UL)) * 60000UL);
+    bool besoin = brancheUsb || direct || modeAcces || sniffActif || detection || (page >= 2 && page <= 5) || (page >= 7 && page <= 10) || page == 31 || lectureEnCours || matCommande || demandeMaj || majVoulue || m < finBesoinNet || (meteoDue && m > pauseMeteo) || wifiToujours || m < finMaj;      // Wi-Fi toujours actif : jamais coupé
     if (besoin) {
       if (wifiCoupe) { wifiCoupe = false; WiFi.mode(WIFI_STA); debutAttente = m; }
       if (meteoDue && !W.wifiOk && !brancheUsb && m - debutAttente > 120000 && m > finBesoinNet) pauseMeteo = m + 30UL * 60000UL;   // aucun réseau : on réessaiera dans 30 min
@@ -3192,5 +3251,5 @@ void loop() {
   }
   serveur.handleClient();
   validerSiStable();
-  delay(veille ? 20 : (brancheUsb ? 1 : 4));
+  delay(veille ? 40 : (brancheUsb ? 1 : (palierEco >= 2 ? 25 : (palierEco == 1 ? 12 : 4))));
 }
