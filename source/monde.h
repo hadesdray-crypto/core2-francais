@@ -47,7 +47,10 @@ static void epais(M5Canvas& g, float x0, float y0, float x1, float y1, float w, 
   tri(g, x0 + nx, y0 + ny, x0 - nx, y0 - ny, x1 + nx, y1 + ny, c); tri(g, x0 - nx, y0 - ny, x1 - nx, y1 - ny, x1 + nx, y1 + ny, c);
 }
 static void ellO(M5Canvas& g, float x, float y, float rx, float ry, uint16_t c) {      // contour d'ellipse
-  int a = ar(rx * zs), b = ar(ry * zs); if (a < 1) a = 1; if (b < 1) b = 1; g.drawEllipse(ar(TX(x)), ar(TY(y)), a, b, c);
+  int a = ar(rx * zs), b = ar(ry * zs); if (a < 1) a = 1; if (b < 1) b = 1; const float X = TX(x), Y = TY(y); if (!coordOk(X, Y)) return;
+  bbPt(X - a, Y - b); bbPt(X + a, Y + b);
+  if (sec) { hmix(0x500000u | (uint16_t)ar(X)); hmix(((uint32_t)(uint16_t)ar(Y) << 16) | (uint16_t)a); hmix(((uint32_t)(uint16_t)b << 16) | c); return; }
+  g.drawEllipse(ar(X), ar(Y), a, b, c);
 }
 static float echelleX(float x) {      // perspective : les oiseaux rapetissent vers la tour, grossissent vers la mare
   if (x > 350.0f) return lerpf(1.0f, 0.72f, lim((x - 350.0f) / 60.0f, 0.0f, 1.0f));
@@ -240,10 +243,11 @@ static void bakeVig() {
     }
   }
 }
-static void vigAppliquer() {      // bords noirs de l'ambiance Horreur, appliqués sur le paysage recomposé
+static void vigAppliquer(M5Canvas& d, int y0, int y1) {      // bords noirs de l'ambiance Horreur, appliqués sur le paysage recomposé (rangées y0 à y1)
   if (!vigK) return;
-  uint8_t* b = (uint8_t*)cv.getBuffer(); if (!b) return;
-  for (int y = 24; y < H_SCENE; y++) {
+  uint8_t* b = (uint8_t*)d.getBuffer(); if (!b) return;
+  if (y0 < 24) y0 = 24; if (y1 > H_SCENE) y1 = H_SCENE;
+  for (int y = y0; y < y1; y++) {
     const uint8_t* kk = vigK + y * 320; uint8_t* p = b + (size_t)y * 640;
     for (int x = 0; x < 320; x++, p += 2) {
       int k = kk[x]; if (k >= 254) continue;
@@ -286,46 +290,48 @@ static Goutte gout[14];
 static void spawnOnde(float x, float y) { for (int i = 0; i < 4; i++) if (!onde[i].on) { onde[i].on = true; onde[i].x = x; onde[i].y = y; onde[i].t = 0; return; } }
 static void spawnGoutte(float x, float y, float vx, float vy) { for (int i = 0; i < 14; i++) if (!gout[i].on) { gout[i].on = true; gout[i].x = x; gout[i].y = y; gout[i].vx = vx; gout[i].vy = vy; gout[i].t = 0; return; } }
 static bool vis(float x0, float x1) { return TX(x1) > -12.0f && TX(x0) < 332.0f; }
-static void dyn() {
-  M5Canvas& g = cv; const float t = tAnim; sec = false;
-  if (RGM.tour && vis(TRX - 26, TRX + 26)) {      // lanterne rouge dans la fenêtre de la tour : faible, qui vacille, parfois presque éteinte
+static void dynPart(int kp) {      // morceau kp du décor animé (0 lanterne de la tour, 1 lanterne du portique, 2 brume, 3 halos sonores, 4 eau, 5 gouttes) : chacun a son propre rectangle, dessiné après les couches du paysage
+  M5Canvas& g = cv; const float t = tAnim;
+  if (kp == 0 && RGM.tour && vis(TRX - 26, TRX + 26)) {      // lanterne rouge dans la fenêtre de la tour : faible, qui vacille, parfois presque éteinte
     float f = 0.70f + 0.25f * sinf(t * 7.0f) * sinf(t * 2.1f + 1.0f); if (fmodf(t, 37.0f) < 0.30f) f = 0.10f;
     const float b = TRB();
     disque(g, TRX, b - 55.0f, 8.0f, CF(30 * f, 3 * f, 4 * f)); rect(g, TRX - 4, b - 62, TRX + 4, b - 50, CF(46 * f, 5 * f, 6 * f));
     rect(g, TRX - 2.2f, b - 59, TRX + 2.2f, b - 52, CF(220 * f, 34 * f, 24 * f));
     rect(g, TRX - 0.5f, b - 62, TRX + 0.5f, b - 50, C(3, 1, 2));
   }
-  if (RGM.tour && vis(PQX - 12, PQX + 4)) {      // lanterne du portique
+  if (kp == 1 && RGM.tour && vis(PQX - 12, PQX + 4)) {      // lanterne du portique
     float f = 0.55f + 0.30f * sinf(t * 5.3f + 2.0f) * sinf(t * 1.7f); const float b = PQB();
     disque(g, PQX - 7.0f, b - 40.5f, 5.5f, CF(24 * f, 3 * f, 4 * f)); disque(g, PQX - 7.0f, b - 40.5f, 1.9f, CF(210 * f, 36 * f, 26 * f));
   }
-  if (RGM.tour) {      // brume basse qui dérive lentement
+  if (kp == 2 && RGM.tour && !qMin) {      // brume basse qui dérive lentement (allègement maximal : supprimée le temps que l'image rattrape son retard)
     for (int i = 0; i < 3; i++) {
       float x = fmodf(t * (5.0f + 2.0f * i) + i * 230.0f, 800.0f) + MX0, y = solHaut(x) - 2.5f - 2.0f * i;
       if (vis(x, x + 44.0f)) { float k = ambCol; ligne(g, x, y, x + 44.0f, y, CF(34 * k, 10 * k, 18 * k)); ligne(g, x + 8.0f, y - 1.2f, x + 36.0f, y - 1.2f, CF(24 * k, 7 * k, 13 * k)); }
     }
   }
-  for (int i = 0; i < NHALO; i++) if (halo[i].on) {      // halo sonore : trois petits arcs qui s'éloignent de la tête, dans le sens du regard
+  if (kp == 3) for (int i = 0; i < NHALO; i++) if (halo[i].on) {      // halo sonore : trois petits arcs qui s'éloignent de la tête, dans le sens du regard
     Halo& q = halo[i]; if (!vis(q.x - 30.0f, q.x + 30.0f)) continue;
     for (int j = 0; j < 3; j++) {
       float u = (q.t - 0.16f * j) / 0.9f; if (u <= 0.0f || u >= 1.0f) continue;
       float r = 4.0f + 20.0f * u * q.amp, fa = (1.0f - u) * q.amp, px = 0, py = 0;
-      for (int sgm = 0; sgm <= 4; sgm++) {
-        float a = -0.75f + 0.375f * sgm, X = q.x + q.d * r * cosf(a), Y = q.y + r * 0.85f * sinf(a);
+      const int SG = qDeg ? 2 : 4;      // allègement : trois segments au lieu de cinq pour l'arc
+      for (int sgm = 0; sgm <= SG; sgm++) {
+        float a = -0.75f + (1.5f / (float)SG) * sgm, X = q.x + q.d * r * cosf(a), Y = q.y + r * 0.85f * sinf(a);
         if (sgm) ligne(g, px, py, X, Y, CF(230 * fa, 70 * fa, 60 * fa)); px = X; py = Y;
       }
     }
   }
-  if (vis(PX - PRX - 4, PX + PRX + 4)) {
-    for (int i = 0; i < 4; i++) {      // reflets sur l'eau
+  if (kp == 4 && vis(PX - PRX - 4, PX + PRX + 4)) {
+    if (!qDeg) for (int i = 0; i < 4; i++) {      // reflets sur l'eau (supprimés pendant un allègement)
       float a = 0.5f + 0.5f * sinf(t * 1.7f + i * 2.1f), x = PX + 12.0f * sinf(t * 0.6f + i * 1.9f) - 6.0f, y = PY + (i - 1.5f) * 2.0f, l = 5.0f + 5.0f * a;
       if (fabsf(x - PX) + l > PRX * (1.0f - fabsf(y - PY) / PRY * 0.5f)) continue;
       ligne(g, x - l, y, x + l, y, CF(40 + 40 * a, 8 + 6 * a, 20 + 12 * a));
     }
     for (int i = 0; i < 4; i++) if (onde[i].on) { float u = onde[i].t / 1.3f, r = 2.0f + 9.0f * u; ellO(g, onde[i].x, onde[i].y, r, r * 0.32f, CF(120 * (1 - u), 40 * (1 - u), 60 * (1 - u))); }
   }
-  for (int i = 0; i < 14; i++) if (gout[i].on) disque(g, gout[i].x, gout[i].y, 0.9f, C(150, 70, 90));
+  if (kp == 5) for (int i = 0; i < 14; i++) if (gout[i].on) disque(g, gout[i].x, gout[i].y, 0.9f, C(150, 70, 90));
 }
+static void dyn() { for (int k = 0; k < 6; k++) dynPart(k); }
 
 // ---------- caméra ----------
 static uint8_t cm = CM_NON; static bool cmAuto = false, cmFin = false;
@@ -925,25 +931,28 @@ static bool camPilote(float dt) {
   zs = cz; ztx = 160.0f - cxx * cz; zty = 128.0f - cyy * cz;
   return true;
 }
-static void afficher(M5Canvas& s, int w, int h, float ox, float oy, float f) {
+static void afficher(M5Canvas& d, M5Canvas& s, int w, int h, float ox, float oy, float f) {
   if (ox >= 320.0f || oy >= (float)H_SCENE || ox + w * f <= 0.0f || oy + h * f <= 24.0f) return;
-  if (fabsf(f - 1.0f) < 0.004f) s.pushSprite(&cv, (int)lroundf(ox), (int)lroundf(oy), CLE_TR);
-  else s.pushRotateZoom(&cv, ox, oy, 0.0f, f, f, CLE_TR);
+  if (fabsf(f - 1.0f) < 0.004f) s.pushSprite(&d, (int)lroundf(ox), (int)lroundf(oy), CLE_TR);
+  else s.pushRotateZoom(&d, ox, oy, 0.0f, f, f, CLE_TR);
 }
-static void composer() {      // le paysage vu par la caméra : ciel fixe, plan lointain (parallaxe), plan proche, arbre, effets
-  const float f = cz / ZN;
-  memcpy(cv.getBuffer(), sCiel.getBuffer(), (size_t)H_SCENE * 320 * 2);
-  { float zl = ZN + (cz - ZN) * 0.45f, cxl = 160.0f + (cxx - 160.0f) * 0.55f, cyl = 128.0f + (cyy - 128.0f) * 0.70f;
-    afficher(sFar, WL, HF, 160.0f + (MX0 - cxl) * zl, 128.0f + (FY0 - cyl) * zl, zl / ZN);
+static void composerPar(M5Canvas& d, int y0, int y1, float czS, float cxS, float cyS) {      // le paysage vu par la caméra (rangées y0 à y1 de d) : ciel fixe, plan lointain (parallaxe), plan proche, arbre ; la caméra est donnée par (czS, cxS, cyS)
+  const float zsS = czS, ztxS = 160.0f - cxS * czS, ztyS = 128.0f - cyS * czS, f = czS / ZN;
+  const bool bande = !(y0 <= 0 && y1 >= H_SCENE);
+  if (bande) d.setClipRect(0, y0, 320, y1 - y0);
+  memcpy((uint8_t*)d.getBuffer() + (size_t)y0 * 640, (const uint8_t*)sCiel.getBuffer() + (size_t)y0 * 640, (size_t)(y1 - y0) * 640);
+  { float zl = ZN + (czS - ZN) * 0.45f, cxl = 160.0f + (cxS - 160.0f) * 0.55f, cyl = 128.0f + (cyS - 128.0f) * 0.70f;
+    afficher(d, sFar, WL, HF, 160.0f + (MX0 - cxl) * zl, 128.0f + (FY0 - cyl) * zl, zl / ZN);
     int yfb = (int)(128.0f + (FY1 - cyl) * zl) - 1;      // sous les collines lointaines : la lande, jusqu'au sol noir de la bande proche
-    if (yfb < H_SCENE) cv.fillRect(0, yfb, 320, H_SCENE - yfb, CF(46 * ambCol, 6 * ambCol, 11 * ambCol)); }
-  afficher(sNear, WL, HN, ztx + MX0 * zs, zty + NY0 * zs, f);
-  { int yb = (int)floorf(zty + NY1 * zs) - 1; if (yb < H_SCENE) cv.fillRect(0, yb, 320, H_SCENE - yb, C(5, 2, 4)); }
-  afficher(sArbre, WA, HA, ztx + AX0 * zs, zty + AY0 * zs, f);
-  dyn();
-  vigAppliquer();
-  memcpy(cv.getBuffer(), fond.getBuffer(), (size_t)24 * 320 * 2);
+    if (yfb < H_SCENE) d.fillRect(0, yfb, 320, H_SCENE - yfb, CF(46 * ambCol, 6 * ambCol, 11 * ambCol)); }
+  afficher(d, sNear, WL, HN, ztxS + MX0 * zsS, ztyS + NY0 * zsS, f);
+  { int yb = (int)floorf(ztyS + NY1 * zsS) - 1; if (yb < H_SCENE) d.fillRect(0, yb, 320, H_SCENE - yb, C(5, 2, 4)); }
+  afficher(d, sArbre, WA, HA, ztxS + AX0 * zsS, ztyS + AY0 * zsS, f);
+  if (bande) d.clearClipRect();
+  vigAppliquer(d, y0, y1);      // le décor animé (lanterne, brume, halos, eau) est dessiné ensuite par dessinerEntites, par petits rectangles
+  if (y0 <= 0) memcpy(d.getBuffer(), fond.getBuffer(), (size_t)24 * 320 * 2);
 }
+static void composer() { composerPar(cv, 0, H_SCENE, cz, cxx, cyy); }
 
 // ---------- mise à jour générale (appelée par majGlobal) ----------
 static void maj(float dt) {
