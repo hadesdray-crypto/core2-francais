@@ -882,7 +882,7 @@ static void init() {
   if (sale) sauver(true);
 }
 static void maj(float dt) {
-  if (!pret || nAct < 2) return;      // seul, un corbeau n'a ni couple ni famille : comportements solitaires
+  if (!pret || (nAct < 2 && !soinOn())) return;      // seul, un corbeau n'a ni couple ni famille : comportements solitaires (sauf le soin du petit : adoption seule)
   tDepl -= dt; tSauv += dt; tMob -= dt;
   majFam(dt);
   for (int i = 0; i < 2; i++) if (pend[i].k >= 0) { pend[i].t -= dt; if (pend[i].t <= 0.0f) { suivreChef(pend[i]); pend[i].k = -1; } }
