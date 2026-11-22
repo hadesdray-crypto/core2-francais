@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.5.2"
+#define VERSION_PROGRAMME "2.6.0"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -554,7 +554,7 @@ void vieDuPerso() {
 
 // ---------- Mouvement dans la boîte : poids, inertie, milieu, chocs ----------
 float ax = 0, ay = 0, az = 1, axPrec = 0, ayPrec = 0, azPrec = 1;
-uint32_t dernierSecouement = 0;
+uint32_t dernierSecouement = 0; float seuilSecousse = 2.2f;
 float gSceneX = 0, gSceneY = 0;      // gravité et mouvement de la main vus par les objets de la pièce
 float sqY = 0, sqYv = 0, sqX = 0, sqXv = 0, tremble = 0, gxL = 0, gyL = 1;   // écrasement (ressorts), tremblement, gravité filtrée
 bool modeApercu = false;
@@ -686,7 +686,7 @@ void physique(float dt) {
         if (m - debutRenverse > 1200 && !renverseDit) { renverseDit = true; attitude(SURPRIS, 3000); dire(phrase(5), 3500); reagir(EV_RENVERSE); }
       } else { debutRenverse = 0; renverseDit = false; }
     }
-    if (sec > 2.2f && m - dernierSecouement > 1200) {
+    if (sec > seuilSecousse && m - dernierSecouement > 1200) {
       dernierSecouement = m; activite();
       attitude(ETOURDI, 3500); P.joie = max(0.0f, P.joie - 4);
       float force = (pesanteur ? 25.0f : 60.0f) * ms;     // avec la gravité il est projeté bien plus fort ; un lourd bouge moins
