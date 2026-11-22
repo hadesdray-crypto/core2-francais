@@ -1,5 +1,5 @@
 {
-    "version": "3.1.12",
+    "version": "3.1.13",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -75,6 +75,9 @@
         "Barre de métal : quand un corbeau vient vers l'écran, une barre très noire et angulaire (liseré rouge sombre) glisse depuis le bas ; il s'y pose, tourne la tête, donne ses coups de bec dans la vitre, puis repart en rapetissant pendant que la barre se retire. Elle donne l'échelle et la distance exacte.",
         "Noms et fiches : chaque corbeau a un nom (5 à 8 lettres, tous différents, mémorisés). Un double toucher sur un corbeau affiche sa fiche pendant 5 secondes : nom, trait dominant, humeur et énergie, rang, lien (couple, ami, rival). Le double toucher ne le fait pas s'envoler.",
         "Nourriture : choisis une nourriture puis touche la scène pour la poser à cet endroit, ou glisse pour la lancer en arc (les corbeaux se précipitent). Tout est réglable dans Réglages des corbeaux, page « Fonctions » (barre de métal, fiche, nourriture posée ou lancée), activé par défaut.",
+        "De 1 à 8 corbeaux (4 par défaut ; la tuile « Corbeaux » des réglages fait défiler de 1 à 8) : avec un ou deux corbeaux, la colonie s'adapte (pas de famille à un seul, comportements solitaires). Les anciens réglages et la colonie mémorisée sont conservés ou recréés sans erreur ; les noms sont retirés au sort une fois.",
+        "Taille des corbeaux : Petit (comme avant), Normal (un peu plus gros, par défaut) ou Grand, dans Réglages des corbeaux, page « Fonctions » ; la taille change tout de suite, en gardant les proportions entre corbeaux et avec l'arbre.",
+        "Cibler un corbeau par son nom : le double toucher affiche sa fiche avec deux boutons, « Lui donner » (la nourriture choisie tombe à ses pieds et c'est lui qui la prend) et « Lui lancer » (le prochain œuf, objet ou nourriture lancé est pour lui ; une pastille « > Nom » le montre) ; les autres peuvent le disputer.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
