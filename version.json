@@ -1,5 +1,5 @@
 {
-    "version": "3.0.1",
+    "version": "3.0.2",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -47,6 +47,8 @@
         "Les corbeaux partent en excursion : l'un va se poser sur le toit de la maison et observe, un autre va boire ? la mare (la t?te plonge, remonte et avale, parfois un bain avec ?claboussures), un autre picore dans le champ ; puis ils reviennent ? l'arbre. Ils rapetissent vers la maison et grossissent vers la mare (perspective).",
         "Nouvelle cam?ra : le bouton ? Vue ? en haut change de vue : ? Large ? (vue d'ensemble en zoom arri?re, avec perspective) puis ? Suivi ? (la cam?ra suit un oiseau dans sa vie, zoome quand il boit ou picore) puis retour. Un toucher long sur un corbeau le suit aussi. Parfois la vue d'ensemble appara?t toute seule quelques secondes.",
         "Vue de dessus réglable : dans Réglages, le bouton « Dessus : oui/non » (en bas à droite, sous « Éco ») active ou coupe la vue de dessus quand le Core2 est posé à plat. Par défaut elle est coupée : le Core2 reste toujours en vue de face, sans aucune bascule automatique ni clignotement quand on change de position. Le réglage est aussi dans la page web (case « Vue de dessus (Core2 à plat) »).",
+        "Vie sociale beaucoup plus riche dans le mode Corbeaux : chaque corbeau a un rang (dominant ou dominé) et des liens d'amitié ou de rivalité qui changent avec ce qui se passe. Toutes les quelques secondes : chamaillerie (le dominant crie et bouscule, le dominé cède sa place), toilettage mutuel (l'un lisse la tête de l'autre qui ferme les yeux), parade (ailes ouvertes et petits sauts), brève bagarre (cris, choc, plumes, le perdant s'enfuit), appels à trois, poursuites et vols en groupe plus fréquents. Le réglage Activité les rend plus ou moins fréquents.",
+        "Nouveau lieu : l'épouvantail du champ, sur les bras duquel les corbeaux aiment se percher. De retour de leur excursion, ils se posent de préférence près d'un ami. En vue Suivi, la caméra se rapproche quand l'oiseau suivi se dispute ou se fait lisser. Si la vue recomposée devient trop lente, la caméra se referme toute seule.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",

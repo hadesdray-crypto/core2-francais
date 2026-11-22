@@ -4,6 +4,12 @@
 // Le paysage (ciel, collines et arbres lointains, sol, maison, mare, champ, arbre) est dessiné une seule fois en quatre
 // bandes de pixels ; la caméra (vue d'ensemble, suivi d'un oiseau) les recompose à chaque image avec de la parallaxe.
 // Les corbeaux partent en excursion (maison, mare, champ) puis reviennent : ils utilisent le même code de vol que sur l'arbre.
+static void chasser(Corbeau& c);
+static void choc(float x, float y, Corbeau* a, Corbeau* b, float force);
+static void chamaille();
+static void volGroupe();
+static void appelMutuel();
+
 namespace mo {
 
 // ---------- étendue du monde (l'arbre est entre x = 20 et 250, le sol vers y = 202) ----------
@@ -17,7 +23,7 @@ static const float PX = -70.0f, PY = 205.0f, PRX = 34.0f, PRY = 5.5f;      // ma
 static const float CH0 = -176.0f, CH1 = -112.0f;           // champ : bords gauche et droit
 static const uint16_t CLE_TR = 0x1818;                        // couleur transparente (identique dans les deux ordres d'octets)
 
-enum { D_MAISON = 0, D_MARE, D_CHAMP, D_NB };
+enum { D_MAISON = 0, D_MARE, D_CHAMP, D_EPOUV, D_NB };
 enum { CM_NON = 0, CM_LARGE, CM_SUIVI };
 
 static M5Canvas sCiel(&M5.Display), sFar(&M5.Display), sNear(&M5.Display), sArbre(&M5.Display);
@@ -274,25 +280,30 @@ static void demandeLarge(bool on) { if (!pret) return; if (on && cm == CM_NON) d
 // ---------- excursions : maison, mare, champ ----------
 struct Rt { uint8_t dest, ph, spot, n, hops; float t, dur, tx, sB, tw; bool away; };
 static Rt rt[NCB];
+static int8_t rang[NAD];
+static int8_t lien[NAD][NAD];
 static float gTrip = 20.0f;
 static int nbAilleurs() { int n = 0; for (int k = 0; k < NAD; k++) if (rt[k].away && cr[k].etat != E_DEHORS && cr[k].etat != E_OFF) n++; return n; }
 static int spotsPris(int d, int sp) { for (int k = 0; k < NAD; k++) if (rt[k].away && rt[k].dest == d && rt[k].spot == sp) return 1; return 0; }
-static void spotMaison(int sp, float& x, float& y, float& pente, int& d) {
+static void spotMaison(int dest, int sp, float& x, float& y, float& pente, int& d) {
+  if (dest == D_EPOUV) { float cx = (CH0 + CH1) * 0.5f; x = cx + ((sp == 0) ? -13.0f : 13.0f); y = solHaut(cx) - 36.6f; pente = 0.0f; d = (sp == 0) ? -1 : 1; return; }      // sur les bras de l'épouvantail
   static const float OFS[4] = {-20.0f, 14.0f, 0.0f, 26.5f};
   x = HX + OFS[sp]; y = (sp == 3) ? HB - 84.0f : roofY(x); pente = (sp == 3 || sp == 2) ? 0.0f : ((x < HX) ? -0.85f : 0.85f); d = (sp == 1) ? 1 : -1;
 }
 static int choisirDest(int idx) {
-  float w[D_NB] = {30.0f, 36.0f, 26.0f};
+  float w[D_NB] = {30.0f, 36.0f, 26.0f, 16.0f};
   if (rt[idx].away) w[rt[idx].dest] = 0.0f;
   bool m = false; for (int s = 0; s < 4; s++) if (!spotsPris(D_MAISON, s)) m = true; if (!m) w[D_MAISON] = 0.0f;
   if (spotsPris(D_MARE, 0) && spotsPris(D_MARE, 1)) w[D_MARE] = 0.0f;
-  float tot = w[0] + w[1] + w[2]; if (tot <= 0.0f) return -1;
+  if (spotsPris(D_EPOUV, 0) && spotsPris(D_EPOUV, 1)) w[D_EPOUV] = 0.0f;
+  float tot = w[0] + w[1] + w[2] + w[3]; if (tot <= 0.0f) return -1;
   float r = rnd01() * tot; for (int i = 0; i < D_NB; i++) { if (r < w[i]) return i; r -= w[i]; } return D_CHAMP;
 }
 static bool excursion(Corbeau& c, int idx, int dest) {
   Rt& r = rt[idx]; float tx = 0, ty = 0; int sp = 0;
-  if (dest == D_MAISON) { do { sp = random(4); } while (spotsPris(D_MAISON, sp) && random(30) != 0); if (spotsPris(D_MAISON, sp)) return false; float pe; int dd; spotMaison(sp, tx, ty, pe, dd); }
+  if (dest == D_MAISON) { do { sp = random(4); } while (spotsPris(D_MAISON, sp) && random(30) != 0); if (spotsPris(D_MAISON, sp)) return false; float pe; int dd; spotMaison(D_MAISON, sp, tx, ty, pe, dd); }
   else if (dest == D_MARE) { sp = spotsPris(D_MARE, 0) ? 1 : (spotsPris(D_MARE, 1) ? 0 : (int)random(2)); tx = (sp == 0) ? PX + PRX + 5.0f : PX - PRX - 5.0f; ty = solHaut(tx); }
+  else if (dest == D_EPOUV) { sp = spotsPris(D_EPOUV, 0) ? 1 : (spotsPris(D_EPOUV, 1) ? 0 : (int)random(2)); float pe; int dd; spotMaison(D_EPOUV, sp, tx, ty, pe, dd); }
   else { sp = 0; tx = rnd(CH0 + 8.0f, CH1 - 8.0f); ty = solHaut(tx); }
   if (!r.away) { r.sB = c.s; r.hops = 0; }
   r.away = true; r.dest = (uint8_t)dest; r.spot = (uint8_t)sp; r.ph = 0; r.t = 0; r.tx = tx; r.n = 0; r.dur = 0; r.tw = 0;
@@ -308,7 +319,12 @@ static bool partir(Corbeau& c) {      // appelé par sortir() : une sortie devie
   return excursion(c, idx, d);
 }
 static void retour(Corbeau& c, int idx) {      // retour vers un perchoir libre de l'arbre
-  Rt& r = rt[idx]; int i = perchLibre();
+  Rt& r = rt[idx]; int i = -1;
+  if (random(100) < 65) {      // il préfère se poser près d'un ami déjà perché sur l'arbre
+    int ami = -1, best = 0; for (int k = 0; k < NAD; k++) if (k != idx && cr[k].etat == E_PERCHE && cr[k].perch >= 0 && cr[k].perch < NPE && lien[idx][k] > best) { best = lien[idx][k]; ami = k; }
+    if (ami >= 0) { float bd = 1e9f; for (int pp = 0; pp < NPE; pp++) if (!perchOccupe(pp)) { float d = fabsf(PERCH[pp][0] - cr[ami].x); if (d < bd) { bd = d; i = pp; } } }
+  }
+  if (i < 0) i = perchLibre();
   if (i < 0) { r.ph = 9; r.t = 0; return; }
   r.ph = 8; c.perch = i; c.item = -1; decoller(c, PERCH[i][0], perchY(i), B_PERCHOIR);
 }
@@ -320,8 +336,8 @@ static void apres(Corbeau& c, int idx) {      // fin de la routine : une autre d
 static void arrivee(Corbeau& c) {      // fin de l'atterrissage sur un site de l'excursion
   int idx = (int)(&c - cr); if (idx < 0 || idx >= NAD) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = 4; return; }
   Rt& r = rt[idx]; r.t = 0; r.ph = 0; r.n = 0; c.ox = c.oy = 0; c.t = 0; c.act = A_IMMO; c.tAct = 0; c.dAct = rnd(1.5f, 3.5f); c.sub = 0; c.peck = 0; c.om = 0;
-  if (r.dest == D_MAISON) {
-    float x, y, pe; int d; spotMaison(r.spot, x, y, pe, d); c.fx = x; c.fy = y; c.fp = pe; c.d = (int8_t)d;
+  if (r.dest == D_MAISON || r.dest == D_EPOUV) {
+    float x, y, pe; int d; spotMaison(r.dest, r.spot, x, y, pe, d); c.fx = x; c.fy = y; c.fp = pe; c.d = (int8_t)d;
     c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); r.dur = rnd(11.0f, 19.0f);
   } else {
     c.etat = E_SOL; r.dur = 0;
@@ -369,6 +385,98 @@ static void sol(Corbeau& c, int idx, float dt) {      // au sol : boire à la ma
   }
 }
 
+// ---------- vie sociale : rangs, liens d'amitié ou de rivalité (mémorisés pendant la session), interactions ----------
+// rang[k] : 0 = le plus dominant ; lien[a][b] : de -3 (rivaux) à +3 (amis). Le groupe plus complet (rôles, mémoire NVS) peut s'y brancher : rangDe() et lienDe().
+static int rangDe(int k) { return (k >= 0 && k < NAD) ? rang[k] : 0; }
+static int lienDe(int a, int b) { return (a >= 0 && b >= 0 && a < NAD && b < NAD) ? lien[a][b] : 0; }
+static void lienAj(int a, int b, int d) {
+  int v = lien[a][b] + d; if (v > 3) v = 3; if (v < -3) v = -3; lien[a][b] = lien[b][a] = (int8_t)v;
+}
+enum { S_CHAM = 0, S_TOIL, S_PARADE, S_BAGARRE, S_APPELS, S_NB };
+struct Soc { bool on; uint8_t type, step; int8_t a, b, c3; };
+static Soc S; static float tS = 0.0f, gSoc = 8.0f;
+static bool libreSoc(int k) {
+  Corbeau& c = cr[k];
+  return c.visible && c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f && !rt[k].away;
+}
+static void vers(Corbeau& c, const Corbeau& o) { c.d = (o.x >= c.x) ? 1 : -1; }
+static void figer(Corbeau& c, float dur) { c.act = A_IMMO; c.tAct = 0.0f; c.dAct = dur; c.hum = 1.0f; }
+static bool choisirPaire(int& a, int& b) {
+  int l[NAD], n = 0; for (int k = 0; k < NAD; k++) if (libreSoc(k)) l[n++] = k;
+  if (n < 2) return false;
+  a = l[random(n)]; int best = -1; float bd = 1e9f;
+  for (int i = 0; i < n; i++) { int k = l[i]; if (k == a) continue; float d = fabsf(cr[k].x - cr[a].x) + rnd(0.0f, 30.0f); if (d < bd) { bd = d; best = k; } }
+  if (best < 0 || bd > 150.0f) return false;
+  b = best; return true;
+}
+static void debutSoc() {
+  int a, b; if (!choisirPaire(a, b)) return;
+  if (rang[a] > rang[b]) { int t = a; a = b; b = t; }      // a = le plus dominant des deux
+  int li = lien[a][b]; float amis = (li > 0) ? (float)li : 0.0f, rivaux = (li < 0) ? (float)(-li) : 0.0f;
+  float w[S_NB] = {12.0f + 10.0f * rivaux, 8.0f + 10.0f * amis, 6.0f + 6.0f * amis, 3.0f + 7.0f * rivaux, 7.0f};
+  int c3 = -1; { int n = 0, l[NAD]; for (int k = 0; k < NAD; k++) if (k != a && k != b && libreSoc(k)) l[n++] = k; if (n) c3 = l[random(n)]; }
+  if (c3 < 0) w[S_APPELS] = 0.0f;
+  float tot = 0.0f; for (int i = 0; i < S_NB; i++) tot += w[i];
+  float r = rnd01() * tot; int ty = 0; for (; ty < S_NB - 1; ty++) { if (r < w[ty]) break; r -= w[ty]; }
+  memset(&S, 0, sizeof(S)); S.on = true; S.type = (uint8_t)ty; S.a = (int8_t)a; S.b = (int8_t)b; S.c3 = (int8_t)c3; tS = 0.0f;
+}
+static void majSoc(float dt) {
+  gSoc -= dt;
+  if (!S.on) {
+    if (gSoc <= 0.0f) {
+      gSoc = rnd(4.5f, 9.5f) / actFreq;
+      if (V.ph == V_RIEN && !GP.ph && !appelOn && !panneau && tAlerte <= 0.0f && AP.n == 0) {
+        if (random(100) < 22) { int r = random(3); if (r == 0) chamaille(); else if (r == 1) volGroupe(); else appelMutuel(); }
+        else debutSoc();
+      }
+    }
+    return;
+  }
+  Corbeau& A = cr[S.a]; Corbeau& B = cr[S.b];
+  bool ok = A.etat == E_PERCHE && B.etat == E_PERCHE && A.perch >= 0 && B.perch >= 0 && V.ph == V_RIEN && !appelOn && tAlerte <= 0.0f && !GP.ph;
+  if (S.type == S_BAGARRE && S.step >= 3) ok = (V.ph == V_RIEN);
+  if (!ok) { S.on = false; return; }
+  tS += dt; const float T = tS;
+  switch (S.type) {
+    case S_CHAM:      // le dominant fait face au dominé, crie, le bouscule ; le dominé cède sa place
+      if (S.step == 0) { vers(A, B); vers(B, A); A.act = A_APPEL; A.tAct = 0.0f; A.dAct = 1.3f; figer(B, 4.0f); A.hum = 1.0f; S.step = 1; }
+      else if (S.step == 1 && T > 1.3f) { A.surs = 0.32f; A.bec = 1.0f; son(SN_CROASSE1, 190); B.surs = 0.4f; B.flash = 0.6f; plumes(B.x, B.y - 2.0f * B.s, 3); vib(25); S.step = 2; }
+      else if (S.step == 2 && T > 1.9f) {
+        A.act = A_SECOUE; A.tAct = 0.0f; A.dAct = 0.9f; lienAj(S.a, S.b, -1); S.step = 3;
+        if (random(100) < 65) versPerchoir(B);
+      } else if (S.step == 3 && T > 3.1f) S.on = false;
+      break;
+    case S_TOIL:      // toilettage mutuel : l'un lisse la tête de l'autre, qui ferme les yeux
+      if (S.step == 0) { vers(A, B); vers(B, A); figer(A, 5.5f); figer(B, 5.5f); S.step = 1; }
+      A.look = A.ha0 + 0.12f + 0.20f * sinf(T * 8.0f); A.tLook = 0.3f; B.look = B.ha0 + 0.30f; B.tLook = 0.3f; B.clin = 1.0f;
+      if (((int)(T * 3.0f)) != ((int)((T - dt) * 3.0f))) A.bec = 0.45f;
+      if (T > 4.8f) { lienAj(S.a, S.b, 1); S.on = false; }
+      break;
+    case S_PARADE:      // parade : ailes ouvertes, petits sauts devant l'autre, qui répond
+      if (S.step == 0) { vers(A, B); vers(B, A); A.act = A_ETIRE; A.tAct = 0.0f; A.dAct = 3.6f; A.hum = 1.0f; figer(B, 4.0f); S.step = 1; }
+      A.d = (B.x >= A.x) ? 1 : -1; B.look = B.ha0 - 0.1f; B.tLook = 0.3f;
+      if (S.step <= 4 && T > 0.7f + 0.8f * (S.step - 1)) { A.surs = 0.3f; A.bec = 0.6f; S.step++; }
+      if (T > 3.9f) { B.bec = 1.0f; sonCri(); lienAj(S.a, S.b, 1); S.on = false; }
+      break;
+    case S_BAGARRE:      // brève bagarre : ailes ouvertes, cris, choc, plumes ; le perdant s'enfuit
+      if (S.step == 0) { vers(A, B); vers(B, A); A.act = B.act = A_ETIRE; A.tAct = B.tAct = 0.0f; A.dAct = B.dAct = 1.8f; A.bec = B.bec = 1.0f; A.hum = B.hum = 1.0f; son(SN_CROASSE2, 200); sonCri(); S.step = 1; }
+      else if (S.step == 1 && T > 0.9f) { choc((A.x + B.x) * 0.5f, (A.y + B.y) * 0.5f - 2.0f, &A, &B, 150.0f); plumes((A.x + B.x) * 0.5f, (A.y + B.y) * 0.5f, 6); A.surs = B.surs = 0.35f; S.step = 2; }
+      else if (S.step == 2 && T > 1.5f) {
+        bool aGagne = (rang[S.a] < rang[S.b]) ? (random(100) < 75) : (random(100) < 35);
+        Corbeau& Gw = aGagne ? A : B; Corbeau& Lz = aGagne ? B : A;
+        Gw.act = A_SECOUE; Gw.tAct = 0.0f; Gw.dAct = 0.9f; sonCri(); lienAj(S.a, S.b, -2); S.step = 3; chasser(Lz);
+      } else if (S.step == 3 && T > 2.5f) S.on = false;
+      break;
+    default: {      // appels à trois : chacun répond à tour de rôle
+      Corbeau& C3 = cr[S.c3 < 0 ? S.a : S.c3];
+      if (S.step == 0) { vers(A, B); A.act = A_APPEL; A.tAct = 0.0f; A.dAct = 1.2f; A.hum = 1.0f; S.step = 1; }
+      else if (S.step == 1 && T > 0.9f) { vers(B, A); B.act = A_APPEL; B.tAct = 0.0f; B.dAct = 1.2f; B.hum = 1.0f; S.step = 2; }
+      else if (S.step == 2 && T > 1.8f) { vers(C3, B); C3.act = A_APPEL; C3.tAct = 0.0f; C3.dAct = 1.2f; C3.hum = 1.0f; S.step = 3; }
+      else if (S.step == 3 && T > 3.3f) { lienAj(S.a, S.b, 1); S.on = false; }
+    } break;
+  }
+}
+
 // ---------- suivi d'un oiseau ----------
 static int choisirSuivi() {
   int l[NAD], n = 0;
@@ -397,6 +505,8 @@ static bool camPilote(float dt) {
     if (cm == CM_NON) return false;
   }
   cmT += dt;
+  { static int lent = 0;      // si l'image prend trop de temps (vue recomposée), on referme la caméra et on arrête les vues spontanées
+    if (msDessin > 110) { if (++lent > 30 && cmT > 2.0f && !cmFin) { fermer(); gLarge = 1e8f; lent = 0; } } else if (lent > 0) lent--; }
   if (bloque && !cmFin) fermer();
   float tz = ZN, tx = 160.0f, ty = 128.0f;
   if (!cmFin) {
@@ -414,6 +524,7 @@ static bool camPilote(float dt) {
           case E_VOL: case E_DECOLLE: tz = 0.88f; break;
           default: tz = 1.1f; break;
         }
+        if (S.on && (S.a == suivi || S.b == suivi)) tz = 1.3f;      // une interaction entre oiseaux : on se rapproche
         tx = c.x + c.vx * 0.30f; ty = c.y + c.bob - 8.0f; if (c.etat == E_SOL) ty = c.y - 12.0f;
         if (!r.away && c.etat == E_PERCHE && c.perch >= 0) {      // encore (ou de nouveau) sur l'arbre
           tRetour += dt;
@@ -470,6 +581,7 @@ static void maj(float dt) {
       else if (r.ph == 0 && r.t > r.dur * 0.5f && r.n == 0) { r.n = 1; c.bec = 1; sonCri(); }
     }
   }
+  majSoc(dt);
   gTrip -= dt;
   if (gTrip <= 0.0f) {      // de temps en temps, un corbeau de l'arbre part vivre sa vie ailleurs
     gTrip = rnd(16.0f, 32.0f) / actFreq;
@@ -481,7 +593,10 @@ static void maj(float dt) {
   }
 }
 static void reinit() {
-  memset(rt, 0, sizeof(rt)); memset(onde, 0, sizeof(onde)); memset(gout, 0, sizeof(gout));
+  memset(rt, 0, sizeof(rt)); memset(onde, 0, sizeof(onde)); memset(gout, 0, sizeof(gout)); memset(&S, 0, sizeof(S)); gSoc = rnd(5.0f, 9.0f);
+  for (int k = 0; k < NAD; k++) rang[k] = (int8_t)k;
+  for (int k = NAD - 1; k > 0; k--) { int j = random(k + 1); int8_t q = rang[k]; rang[k] = rang[j]; rang[j] = q; }
+  for (int i = 0; i < NAD; i++) for (int j = i; j < NAD; j++) lien[i][j] = lien[j][i] = (i == j) ? 0 : (int8_t)(random(5) - 2);
   cm = CM_NON; cmFin = false; suivi = -1; lpBird = -1; cz = ZN; cxx = 160.0f; cyy = 128.0f; czv = cxv = cyv = 0.0f;
   gLarge = rnd(40.0f, 70.0f); gTrip = rnd(10.0f, 20.0f); tMonde = 0.0f;
 }
