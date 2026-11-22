@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.7.6"
+#define VERSION_PROGRAMME "2.7.7"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -394,7 +394,7 @@ void moduleWifi() {
 void moduleSon() {
   debutModule(M_SON);
   static int16_t tampon[256];
-  if (lectureEnCours || page == 32) { finModule(); return; }      // le haut-parleur joue la Matinale (ou les corbeaux) : le micro attend
+  if (lectureEnCours || page == 32 || page == 33 || M5.Speaker.isRunning()) { finModule(); return; }      // le haut-parleur joue la Matinale, les corbeaux ou le Dex : le micro attend (sinon il reprend la sortie audio et coupe le son)
   if (!M5.Mic.isEnabled()) { M5.Mic.begin(); }
   if (M5.Mic.record(tampon, 256, 16000)) {
     long somme = 0; for (int i = 0; i < 256; i++) somme += abs(tampon[i]);

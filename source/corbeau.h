@@ -604,8 +604,11 @@ static void son(int id, int vol = 200) {
   M5.Speaker.setChannelVolume(canal, vol * 5 / 4 > 255 ? 255 : vol * 5 / 4);
   M5.Speaker.playRaw(d, n, rate, false, 1, canal, true);
 }
+static String diagSon; static uint32_t tDiagSon = 0;      // résultat du dernier test, affiché dans le panneau de réglages
 static void testerSon() {      // bip fort puis cri : pour vérifier que le haut-parleur répond
-  if (!lectureEnCours && !M5.Speaker.isRunning()) { M5.Mic.end(); M5.Speaker.begin(); }
+  bool ouvert_ = M5.Speaker.isRunning();
+  if (!lectureEnCours && !ouvert_) { M5.Mic.end(); ouvert_ = M5.Speaker.begin(); }
+  diagSon = String(ouvert_ ? "Haut-parleur actif, volume " : "Haut-parleur ABSENT, volume ") + String((int)R.volume); if (lectureEnCours) diagSon = "Matinale en cours : coupe-la d'abord"; tDiagSon = millis() + 5000; panSale = true;
   M5.Speaker.setVolume(255); tTestSon = millis() + 1800; if (!tTestSon) tTestSon = 1;
   M5.Speaker.tone(1000.0f, 160);
   dernierSon[SN_CROA1] = 0; son(SN_CROA1, 255);
@@ -2099,7 +2102,8 @@ static void dessinerPanneau() {
   M5Canvas& g = cv;
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
-  g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225)); g.drawString("Réglages des corbeaux", 8, 13);
+  g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString("Réglages des corbeaux", 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   // volume : - barre + et TEST SON
   g.fillRoundRect(4, 30, 312, 32, 8, C(44, 9, 18)); g.drawRoundRect(4, 30, 312, 32, 8, C(160, 40, 48));
@@ -2131,6 +2135,7 @@ static void touchPanneau(int x, int y) {
   if (y >= 30 && y < 62) {
     if (x >= 40 && x < 90) { R.volume = constrain((int)R.volume - 24, 0, 255); M5.Speaker.setVolume(R.volume); sauverReglages(); panSale = true; sonCri(); }
     else if (x >= 238) { testerSon(); }
+    else if (x >= 90 && x < 186) { R.volume = (uint8_t)constrain((x - 92) * 255 / 91, 0, 255); if (x >= 178) R.volume = 255; M5.Speaker.setVolume(R.volume); sauverReglages(); panSale = true; sonCri(); }      // toucher la barre : volume direct, jusqu'au maximum
     else if (x >= 186) { R.volume = constrain((int)R.volume + 24, 0, 255); M5.Speaker.setVolume(R.volume); sauverReglages(); panSale = true; sonCri(); }
     return;
   }

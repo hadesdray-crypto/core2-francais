@@ -364,7 +364,7 @@ static void dessiner() {
 static void aller(int sens) {      // fiche suivante (+1) ou précédente (-1), avec glissement
   int v = suivant(sel, sens); if (v == sel) return;
   if (ecran == 1) { animDe = sel; animVers = v; animSens = sens; animT0 = millis(); }
-  sel = v; scP = scB = 0; majApercuOeil(); sale = true;
+  sel = v; scP = scB = 0; majApercuOeil(); sale = true; ecouter(v);      // le cri du pouvoir joue à chaque nouvelle fiche
 }
 static void creerGlisser(int x, int y) {
   if (y >= 44 && y < 68 && x >= 8 && x < 176) { cb::oCu.teinte = (uint8_t)cb::lim((x - 12) * 255 / 159, 0, 255); sale = true; }
