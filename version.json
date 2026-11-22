@@ -1,6 +1,6 @@
 {
-    "version": "3.1.22",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=159223c37ac1",
+    "version": "3.1.23",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=fb91d7fb4325",
     "changes": [
         "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -115,17 +115,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "159223c37ac12e7dc34323509c8c7b0c055923208758ed3e7679736d63e5a9ae",
-    "size": 5147024,
+    "sha256": "fb91d7fb432571530f0c7931427129cc95c42117d3340f841566f5cfaa022f8e",
+    "size": 5146976,
     "canal": "test",
     "notes": [
-        "3.1.22 : numero de version (3.1.21 pris par les petites betes) : decor allege / minimal",
+        "3.1.23 : les petites betes suivent le reglage Decor : allege = 2 au plus, minimal ou allegement automatique = aucune",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.22",
-        "run": "45054842076",
-        "commit": "eaa4919c3f07"
+        "version": "3.1.23",
+        "run": "45055482873",
+        "commit": "1fd0911aef1f"
     }
 }
