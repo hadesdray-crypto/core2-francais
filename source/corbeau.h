@@ -5,6 +5,7 @@
 // Les sons des corbeaux se mélangent au son déjà en cours (Matinale) sur des canaux libres du haut-parleur.
 #include <stdint.h>
 #include <pgmspace.h>
+#include "oeil_pal.h"
 // Deux jeux de sons, chacun dans son espace de noms (les tableaux portent les memes noms) :
 //   cbs = sons synthetiques (sons_corbeau.h), cbr = vrais cris (sons_corbeau_reel.h, facultatif).
 #if __has_include("sons_corbeau.h")
@@ -596,27 +597,31 @@ static void chargerSons() {
 // ---------- œil du corbeau : choisi dans le Dex (clés mémoire nouvelles : « cbeil » et « dexcr ») ----------
 struct OeilCu { uint8_t ok, teinte, marques, motif; };      // l'œil que l'on crée soi-même
 static OeilCu oCu = {0, 0, 3, 0};
-static uint8_t oeilActif = 0;                               // 0 = œil rouge normal ; 1 à 7 = œil du Dex ; 8 = ton œil
+static uint8_t oeilActif = 0;                               // 0 = œil rouge normal ; 1 à 26 = œil du Dex ; 27 = ton œil
 static uint16_t oeilAnn = 0, oeilCoeur = 0;
 static void teinteRVB(float h, float& r, float& g, float& b) {      // teinte 0..255 -> couleur vive
   float x = h * 6.0f / 256.0f; int i = (int)x; float f = x - i, q = 1.0f - f;
   switch (i % 6) { case 0: r = 1; g = f; b = 0; break; case 1: r = q; g = 1; b = 0; break; case 2: r = 0; g = 1; b = f; break; case 3: r = 0; g = q; b = 1; break; case 4: r = f; g = 0; b = 1; break; default: r = 1; g = 0; b = q; break; }
   r *= 255; g *= 255; b *= 255;
 }
-static void oeilRVB(int idx, float* c) {      // c = anneau r,g,b puis cœur r,g,b
-  static const float T[9][6] = {{130, 8, 12, 255, 58, 40}, {130, 8, 12, 255, 58, 40}, {100, 4, 10, 255, 40, 44}, {150, 50, 0, 255, 130, 30}, {70, 40, 120, 190, 150, 255}, {140, 140, 170, 245, 245, 255}, {40, 90, 160, 170, 215, 255}, {20, 0, 0, 255, 20, 30}, {0, 0, 0, 0, 0, 0}};
-  if (idx < 0 || idx > 8) idx = 0;
-  for (int i = 0; i < 6; i++) c[i] = T[idx][i];
-  if (idx == 8) { float r, g, b; teinteRVB(oCu.teinte, r, g, b); c[3] = r; c[4] = g; c[5] = b; c[0] = r * 0.45f; c[1] = g * 0.45f; c[2] = b * 0.45f; }
+static void oeilRVB(int idx, float* c) {      // c = anneau r,g,b puis cœur r,g,b (table PALOEIL : oeil_pal.h)
+  if (idx < 0 || idx > NB_OEILS) idx = 0;
+  for (int i = 0; i < 6; i++) c[i] = PALOEIL[idx][i];
+  if (idx == NB_OEILS) { float r, g, b; teinteRVB(oCu.teinte, r, g, b); c[3] = r; c[4] = g; c[5] = b; c[0] = r * 0.45f; c[1] = g * 0.45f; c[2] = b * 0.45f; }
 }
 static void appliquerOeil() { float c[6]; oeilRVB(oeilActif, c); oeilAnn = CF(c[0], c[1], c[2]); oeilCoeur = CF(c[3], c[4], c[5]); }
 static void chargerOeil() {
-  oeilActif = prefs.getUChar("cbeil", 0); if (oeilActif > 8) oeilActif = 0;
+  oeilActif = prefs.getUChar("cbeil2", 255);
+  if (oeilActif == 255) {      // première fois avec le Dex complet : on convertit l'ancien choix (1..8) vers les nouveaux numéros
+    static const uint8_t ANC[9] = {0, 3, 5, 6, 18, 23, 25, 10, NB_OEILS};
+    uint8_t v = prefs.getUChar("cbeil", 0); oeilActif = ANC[v > 8 ? 0 : v]; prefs.putUChar("cbeil2", oeilActif);
+  }
+  if (oeilActif > NB_OEILS) oeilActif = 0;
   if (prefs.getBytesLength("dexcr") == sizeof(OeilCu)) prefs.getBytes("dexcr", &oCu, sizeof(OeilCu));
-  if (oeilActif == 8 && !oCu.ok) oeilActif = 0;
+  if (oeilActif == NB_OEILS && !oCu.ok) oeilActif = 0;
   appliquerOeil();
 }
-static void choisirOeil(int a) { oeilActif = (uint8_t)a; prefs.putUChar("cbeil", oeilActif); appliquerOeil(); }
+static void choisirOeil(int a) { oeilActif = (uint8_t)a; prefs.putUChar("cbeil2", oeilActif); appliquerOeil(); }
 static void sauverOeilCu() { prefs.putBytes("dexcr", &oCu, sizeof(OeilCu)); }
 
 static void son(int id, int vol = 200) {
