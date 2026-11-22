@@ -1,4 +1,4 @@
-// Core2 français — programme du M5Stack Core2 v1.1, entièrement en français.
+// Core2 français - programme du M5Stack Core2 v1.1, entièrement en français.
 // Personnage : « Bulle », l'âme du boîtier. Naît œuf, grandit, vit dans une boîte en 3D.
 // Modules activables, protection contre les plantages, mise à jour sans câble avec retour arrière.
 #include <M5Unified.h>
@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.7.4"
+#define VERSION_PROGRAMME "2.7.5"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -192,7 +192,7 @@ struct Monde {
 WebServer serveur(80);
 bool modeAcces = false;     // le Core2 crée son propre Wi-Fi quand aucun réseau n'est réglé
 M5Canvas cv(&M5.Display);
-String infoDemarrage;       // message affiché au démarrage (module désactivé après plantage, retour arrière…)
+String infoDemarrage;       // message affiché au démarrage (module désactivé après plantage, retour arrière...)
 uint32_t debutDemarrage, tPage = 0;
 int page = 0;               // 0 = accueil, 1 = réglages
 uint32_t dernierBip = 0;
@@ -1403,7 +1403,7 @@ void dessinerBarre() {
 
 void dessinerInfos() {
   cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextColor(C(220, 225, 255));
-  String h = String(NOMS_PHASES[phase()]);
+  String h = String(NOMS_PHASES[phase()]); if (h.startsWith("Œ")) h = "Oeuf";
   if (phase() != OEUF) h = R.nom + " · " + h;
   cv.setTextDatum(top_left); cv.drawString(h, 4, 3);
   // jauges simples
@@ -1590,13 +1590,13 @@ void dessinerWifi() {
     cv.fillRoundRect(4, 1, 312, 19, 6, C(70, 76, 130));
     { static uint32_t tRech = 0; if (!scanEnCours && millis() - tRech > 15000) { tRech = millis(); if (nbR == 0 || millis() - debutScan > 15000) lancerScan(); } }
     cv.drawString(emplacement == 2 ? "Pour : le téléphone (touche ici pour changer)" : "Pour : la maison (touche ici pour changer)", 10, 4);
-    if (scanEnCours) cv.drawString("Recherche des réseaux… (2,4 GHz seulement)", 8, 60);
+    if (scanEnCours) cv.drawString("Recherche des réseaux... (2,4 GHz seulement)", 8, 60);
     else if (!nbR) cv.drawString("Aucun réseau trouvé : touche « Chercher »", 8, 60);
     for (int i = 0; i < 5; i++) {
       int k = decalR + i; if (k >= nbR) break; int y = 22 + i * 34;
       bool connu = indexConnu(listeR[k].nom) >= 0, actuel = WiFi.status() == WL_CONNECTED && WiFi.SSID() == listeR[k].nom;
       cv.fillRoundRect(4, y, 312, 30, 8, actuel ? C(30, 90, 60) : (connu ? C(40, 70, 110) : C(40, 46, 86)));
-      String n = listeR[k].nom; if (n.length() > 17) n = n.substring(0, 16) + "…";
+      String n = listeR[k].nom; if (n.length() > 17) n = n.substring(0, 16) + "...";
       cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_left); cv.setTextColor(C(255, 255, 255)); cv.drawString(n, 10, y + 15);
       int pc = constrain(2 * (listeR[k].dbm + 100), 0, 100);
       cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(middle_right);
@@ -1612,7 +1612,7 @@ void dessinerWifi() {
     cv.drawString("Réseau : " + nomChoisi, 6, 3);
     cv.fillRoundRect(4, 17, 312, 24, 6, C(10, 12, 26));
     String aff = voirMdp ? mdpSaisi : String(); if (!voirMdp) for (size_t i = 0; i < mdpSaisi.length(); i++) aff += "*";
-    if (aff.length() > 24) aff = "…" + aff.substring(aff.length() - 23);
+    if (aff.length() > 24) aff = "..." + aff.substring(aff.length() - 23);
     cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_left); cv.setTextColor(C(255, 255, 255)); cv.drawString(aff + ((millis() / 500) % 2 ? "_" : ""), 10, 29);
     Touche t[60]; int n = construireClavier(t);
     cv.setTextDatum(middle_center);
@@ -1721,7 +1721,7 @@ static const Tuile TUILES[] = {
 };
 static const int NB_TUILES = sizeof(TUILES) / sizeof(TUILES[0]);
 void dessinerMenu() {
-  cadrePage("Menu — tout ce que je sais faire");
+  cadrePage("Menu - tout ce que je sais faire");
   for (int i = 0; i < NB_TUILES; i++) {
     int c = i % 3, r = i / 3; int x = 6 + c * 104, y = 26 + r * 35;
     cv.fillRoundRect(x, y, 100, 32, 8, TUILES[i].coul); cv.drawRoundRect(x, y, 100, 32, 8, C(120, 160, 220));
@@ -1748,7 +1748,7 @@ void dessinerRadarWifi() {
     int tx = 206, ty = 28 + i * 15; cv.setTextColor(c); cv.drawString(n, tx, ty);
     cv.setTextColor(C(150, 160, 200)); cv.drawString(String(d, d < 10 ? 1 : 0) + " m", 290, ty);
   }
-  cv.setTextColor(C(150, 160, 200)); cv.drawString(String(nbR) + " réseaux — distance estimée", 6, 196);
+  cv.setTextColor(C(150, 160, 200)); cv.drawString(String(nbR) + " réseaux - distance estimée", 6, 196);
   boutonBas(4, 100, "Menu", C(52, 56, 96)); boutonBas(214, 102, scanEnCours ? "..." : "Chercher", C(50, 100, 150));
   cv.pushSprite(0, 0);
 }
@@ -1808,7 +1808,7 @@ void dessinerDetection() {
 void dessinerMeteoPage() {
   cadrePage("Météo");
   cv.setTextDatum(top_left);
-  if (!W.meteoValide) { cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(220, 225, 255)); cv.drawString(W.wifiOk ? "Récupération de la météo…" : "Pas de Wi-Fi : météo indisponible.", 10, 60); }
+  if (!W.meteoValide) { cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(220, 225, 255)); cv.drawString(W.wifiOk ? "Récupération de la météo..." : "Pas de Wi-Fi : météo indisponible.", 10, 60); }
   else {
     const char* desc = "Ciel clair"; int c = W.codeMeteo;
     if (c == 0) desc = "Ciel dégagé"; else if (c <= 2) desc = "Peu nuageux"; else if (c == 3) desc = "Couvert";
@@ -1833,7 +1833,7 @@ void dessinerHorloge() {
     static const char* J[] = {"dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"};
     char d[40]; snprintf(d, sizeof(d), "%s %02d/%02d/%04d", J[t.tm_wday], t.tm_mday, t.tm_mon + 1, t.tm_year + 1900);
     cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(240, 240, 255)); cv.drawString(d, 160, 92);
-  } else { cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(255, 160, 120)); cv.drawString("Heure en attente du Wi-Fi…", 160, 60); }
+  } else { cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextColor(C(255, 160, 120)); cv.drawString("Heure en attente du Wi-Fi...", 160, 60); }
   uint32_t ch = chronoMarche ? (millis() - chronoDebut) : chronoFige;
   char cbuf[20]; snprintf(cbuf, sizeof(cbuf), "%02lu:%02lu.%lu", (unsigned long)(ch / 60000), (unsigned long)((ch / 1000) % 60), (unsigned long)((ch / 100) % 10));
   cv.setFont(&fonts::lgfxJapanGothic_24); cv.setTextColor(C(255, 230, 90)); cv.drawString(String("Chrono ") + cbuf, 160, 128);
@@ -1869,14 +1869,14 @@ void dessinerSonometre() {
   cv.drawFastHLine(50, 190, 220, C(60, 70, 120));
   cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(top_left); cv.setTextColor(C(0, 230, 255));
   cv.drawString("Niveau : " + String((int)W.niveauSon), 8, 30);
-  cv.setTextColor(C(150, 160, 200)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.drawString("Micro — bruit autour", 8, 52);
+  cv.setTextColor(C(150, 160, 200)); cv.setFont(&fonts::lgfxJapanGothic_12); cv.drawString("Micro - bruit autour", 8, 52);
   boutonBas(4, 100, "Menu", C(52, 56, 96));
   cv.pushSprite(0, 0);
 }
 void dessinerLampe() {
   int niv = lampeNiveau;
   cv.fillScreen(C(niv, niv, niv > 240 ? niv - 10 : niv));
-  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left); cv.setTextColor(C(40, 40, 40)); cv.drawString("Lampe — glisse pour régler", 8, 6);
+  cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_left); cv.setTextColor(C(40, 40, 40)); cv.drawString("Lampe - glisse pour régler", 8, 6);
   int bw = (int)(300.0f * niv / 255.0f); cv.fillRoundRect(10, 206, 300, 16, 6, C(180, 180, 180)); cv.fillRoundRect(10, 206, bw, 16, 6, C(90, 90, 90));
   cv.fillRoundRect(4, 180, 90, 20, 6, C(60, 60, 60)); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.setFont(&fonts::lgfxJapanGothic_16); cv.drawString("Menu", 49, 190); cv.setTextDatum(top_left);
   cv.pushSprite(0, 0);
@@ -2485,7 +2485,7 @@ static String matFlash, matFull; static int matFlashD = 0, matFullD = 0;
 volatile int matEtat = 0;                   // 0 rien, 1 chargement, 2 prêt, 3 erreur
 static String matErreur, matUrl; static int matJouant = -1, matDuree = 0; static uint32_t matDebut = 0;
 static String couperTexte(const String& s, int n) {        // coupe sans casser une lettre accentuée
-  if ((int)s.length() <= n) return s; int i = n; while (i > 0 && (s[i] & 0xC0) == 0x80) i--; return s.substring(0, i) + "…";
+  if ((int)s.length() <= n) return s; int i = n; while (i > 0 && (s[i] & 0xC0) == 0x80) i--; return s.substring(0, i) + "...";
 }
 static bool lireJson(const String& url, JsonDocument& d, JsonDocument* filtre) {
   WiFiClientSecure c; c.setInsecure(); HTTPClient h; h.setTimeout(8000);
@@ -2769,7 +2769,7 @@ void gererTactile() {
       if (t.x < 96) page = 1;
       else if (t.x < 196) { jouer(S_MANGER); vibrer(200); }
       else if (versionDispo.length()) demandeMaj = true;
-      else { infoMaj = "Recherche d'une mise à jour…"; majVoulue = true; prochaineVerif = 0; }
+      else { infoMaj = "Recherche d'une mise à jour..."; majVoulue = true; prochaineVerif = 0; }
       bip(700, 40);
     }
     return;
@@ -2847,7 +2847,7 @@ void majDepuisInternet() {
   if (veille) reveillerEcran();
   sauverPerso();
   M5.Display.fillScreen(TFT_BLACK); M5.Display.setFont(&fonts::lgfxJapanGothic_16); M5.Display.setTextColor(TFT_WHITE); M5.Display.setTextDatum(middle_center);
-  M5.Display.drawString("Mise à jour " + versionDispo + " en cours…", 160, 90); M5.Display.drawRect(18, 128, 284, 24, TFT_WHITE);
+  M5.Display.drawString("Mise à jour " + versionDispo + " en cours...", 160, 90); M5.Display.drawRect(18, 128, 284, 24, TFT_WHITE);
   M5.Display.setTextDatum(top_left);
   esp_task_wdt_delete(NULL);
   WiFiClientSecure client; client.setInsecure();
@@ -2857,7 +2857,7 @@ void majDepuisInternet() {
   esp_task_wdt_add(NULL);
   if (r == HTTP_UPDATE_OK) {
     prefs.putInt("essais", 0);
-    M5.Display.fillScreen(TFT_BLACK); M5.Display.setTextDatum(middle_center); M5.Display.drawString("Mise à jour installée. Redémarrage…", 160, 110);
+    M5.Display.fillScreen(TFT_BLACK); M5.Display.setTextDatum(middle_center); M5.Display.drawString("Mise à jour installée. Redémarrage...", 160, 110);
     delay(1200); esp_restart();
   }
   infoMaj = "Échec de la mise à jour : " + httpUpdate.getLastErrorString();
@@ -2952,7 +2952,7 @@ void demarrerServeur() {
     if (u.status == UPLOAD_FILE_START) {
       codeOk = serveur.arg("code") == prefs.getString("code", "666666");
       majOk = codeOk; if (!codeOk) return;
-      M5.Display.fillScreen(TFT_BLACK); M5.Display.setFont(&fonts::lgfxJapanGothic_16); M5.Display.setTextColor(TFT_WHITE); M5.Display.drawString("Mise à jour en cours…", 20, 100);
+      M5.Display.fillScreen(TFT_BLACK); M5.Display.setFont(&fonts::lgfxJapanGothic_16); M5.Display.setTextColor(TFT_WHITE); M5.Display.drawString("Mise à jour en cours...", 20, 100);
       esp_task_wdt_reset();
       WiFi.setAutoReconnect(false); if (WiFi.status() != WL_CONNECTED) WiFi.disconnect(false, false); WiFi.setSleep(false); Update.abort();
       if (!Update.begin(UPDATE_SIZE_UNKNOWN)) majOk = false;
@@ -2966,7 +2966,7 @@ void demarrerServeur() {
     if (serveur.arg("code") != prefs.getString("code", "666666")) { serveur.send(403, "text/plain; charset=utf-8", "Code incorrect."); return; }
     const esp_partition_t* autre = esp_ota_get_next_update_partition(esp_ota_get_running_partition());
     uint8_t mg = 0;
-    if (autre && esp_partition_read(autre, 0, &mg, 1) == ESP_OK && mg == 0xE9) { serveur.send(200, "text/plain; charset=utf-8", "Retour à l'ancienne version…"); delay(300); esp_ota_set_boot_partition(autre); esp_restart(); }
+    if (autre && esp_partition_read(autre, 0, &mg, 1) == ESP_OK && mg == 0xE9) { serveur.send(200, "text/plain; charset=utf-8", "Retour à l'ancienne version..."); delay(300); esp_ota_set_boot_partition(autre); esp_restart(); }
     else serveur.send(409, "text/plain; charset=utf-8", "Il n'y a pas d'ancienne version.");
   });
   serveur.on("/api/majinternet", HTTP_POST, []() {      // le Core2 va chercher lui-même la nouvelle version sur Internet

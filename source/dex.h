@@ -32,10 +32,12 @@ static const OeilDef DEF[7] = {
    "Un corbeau peut vivre plus de 23 ans dans la nature.", "Ses yeux deviennent blancs et lumineux, sans pupille."},
   {"Pétales", "Œil à pétales", M_PET, 120, 176, 236, 5, 4, "Origine : fusion de deux lignées", "Éveil : après une greffe rare", "anime un géant de pierre", "boules de lumière", "permet de voler",
    "Des corneilles glissent sur une écorce, comme sur une planche à neige.", "Ses yeux deviennent bleu glace, en fleur blanche."},
-  {"Fleur", "Œil à fleur", M_FLEUR, 214, 24, 34, 5, 4, "Origine : version éternelle des yeux rouges", "Éveil : après avoir appris une vérité", "flammes noires des deux yeux", "vue qui ne baisse plus", "garde les pouvoirs de l'œil d'origine",
+  {"6 pétales", "Œil à six pétales", M_FLEUR, 214, 24, 34, 5, 4, "Origine : version éternelle des yeux rouges", "Éveil : après avoir appris une vérité", "flammes noires des deux yeux", "vue qui ne baisse plus", "garde les pouvoirs de l'œil d'origine",
    "Des corbeaux auraient guidé des loups vers leurs proies.", "Ses yeux deviennent noirs, avec six pétales rouges."},
 };
 
+static int scP = 0, scB = 0, scPmax = 0, scBmax = 0, hP = 0;      // défilement du cadre de droite et du « Le saviez-vous ? »
+static int zone = 0, sc0 = 0; static bool defile = false;
 static int ecran = 0;              // 0 liste, 1 fiche, 2 sur le corbeau, 3 création
 static int sel = 0;                // œil choisi (0..7)
 static bool ouvert = false, sale = true, volVu = false;
@@ -166,13 +168,29 @@ static void etoile(M5Canvas& g, float cx, float cy, float r, uint16_t c) {
   for (int i = 0; i < 10; i++) polaire(cx, cy, (i % 2 == 0) ? r : r * 0.45f, -90 + i * 36, p[i][0], p[i][1]);
   for (int i = 0; i < 10; i++) { int j = (i + 1) % 10; cb::tri(g, cx, cy, p[i][0], p[i][1], p[j][0], p[j][1], c); }
 }
+// La police de l'écran n'a ni « Œ/œ » ni la puce « • » (elles s'affichaient en carrés) : on les remplace avant de dessiner.
+// Seuls des caractères latins accentués (é è ê à â ç î ô û ù É À Ç « » °) restent : la police les dessine bien.
+static String fr(const char* s) {
+  String o; o.reserve(strlen(s) + 6);
+  const uint8_t* p = (const uint8_t*)s;
+  while (*p) {
+    if (p[0] == 0xC5 && p[1] == 0x92) { const uint8_t c = p[2]; o += ((c >= 'a' && c <= 'z') || c >= 0xC3) ? "Oe" : "OE"; p += 2; }
+    else if (p[0] == 0xC5 && p[1] == 0x93) { o += "oe"; p += 2; }
+    else if (p[0] == 0xE2 && p[1] == 0x80 && (p[2] == 0x98 || p[2] == 0x99)) { o += '\''; p += 3; }
+    else if (p[0] == 0xE2 && p[1] == 0x80 && p[2] == 0xA6) { o += "..."; p += 3; }
+    else if (p[0] == 0xE2 && p[1] == 0x80 && (p[2] == 0x93 || p[2] == 0x94 || p[2] == 0xA2)) { o += '-'; p += 3; }
+    else o += (char)*p++;
+  }
+  return o;
+}
+static void puce(M5Canvas& g, int x, int y, uint16_t c) { g.fillCircle(x + 3, y + 6, 2, c); }      // vraie puce ronde (x, y = coin haut-gauche de la ligne)
 static void texte(M5Canvas& g, int x, int y, const char* s, uint16_t col, int datum = 0, bool gros = false) {
   if (gros) g.setFont(&fonts::lgfxJapanGothic_16); else g.setFont(&fonts::lgfxJapanGothic_12);
-  g.setTextColor(col); g.setTextDatum(datum == 0 ? top_left : (datum == 1 ? middle_center : (datum == 2 ? middle_left : middle_right))); g.drawString(s, x, y); g.setTextDatum(top_left);
+  g.setTextColor(col); g.setTextDatum(datum == 0 ? top_left : (datum == 1 ? middle_center : (datum == 2 ? middle_left : middle_right))); g.drawString(fr(s), x, y); g.setTextDatum(top_left);
 }
 static int bloc(M5Canvas& g, int x, int y, int w, const char* s, int lh, uint16_t col, int maxL) {      // texte coupé aux espaces ; renvoie le nombre de lignes
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(col); g.setTextDatum(top_left);
-  String t(s), ligne = ""; int n = 0, i = 0, L = t.length();
+  String t = fr(s), ligne = ""; int n = 0, i = 0, L = t.length();
   while (i <= L) {
     int j = t.indexOf(' ', i); if (j < 0) j = L;
     String mot = t.substring(i, j), essai = ligne.length() ? ligne + " " + mot : mot;
@@ -228,28 +246,43 @@ static void fiche(M5Canvas& g, int idx, int ox) {
   texte(g, ox + 10, 121, "Rareté", C(120, 230, 240)); texte(g, ox + 10, 140, "Danger", C(120, 230, 240));
   for (int k = 0; k < 5; k++) etoile(g, ox + 78 + k * 15, 127, 6.0f, k < et ? C(255, 205, 80) : C(70, 50, 30));
   for (int k = 0; k < 5; k++) { uint16_t c = k < da ? CFl(255, 200 - k * 36, 30) : C(50, 14, 14); g.fillRect(ox + 72 + k * 15, 140, 12, 12, c); g.drawRect(ox + 72 + k * 15, 140, 12, 12, C(110, 30, 20)); }
-  g.fillRoundRect(ox + 126, 118, 24, 13, 4, C(20, 120, 130)); texte(g, ox + 138, 125, "JEU", C(255, 255, 255), 1);
-  // texte
+  g.fillRoundRect(ox + 6, 96, 28, 13, 4, C(20, 120, 130)); texte(g, ox + 20, 103, "JEU", C(255, 255, 255), 1);      // étiquette « JEU » dans le coin de l'œil, loin des étoiles
+  // texte (cadre de droite) : défile au doigt (haut/bas) quand il est plus long que le cadre
   g.fillRoundRect(ox + 156, 26, 160, 132, 6, C(12, 2, 6)); g.drawRoundRect(ox + 156, 26, 160, 132, 6, C(120, 22, 32));
-  int y = 31; const int X = ox + 162, Wd = 148;
+  const uint16_t BL = C(255, 236, 230), RS = C(255, 96, 100);
+  const int X = ox + 162, Wd = 140, y0 = 30, hv = 124;
+  g.setClipRect(ox + 158, 28, 156, 128);
+  int y = y0 - scP;
   if (idx < 7) {
-    y += bloc(g, X, y, Wd, DEF[idx].l1, 14, C(255, 236, 230), 2) * 14;
-    y += bloc(g, X, y, Wd, DEF[idx].l2, 14, C(255, 236, 230), 2) * 14 + 2;
-    texte(g, X, y, "Pouvoirs :", C(255, 96, 100)); y += 15;
+    y += bloc(g, X, y, Wd, DEF[idx].l1, 14, BL, 9) * 14 + 1;
+    y += bloc(g, X, y, Wd, DEF[idx].l2, 14, BL, 9) * 14 + 3;
+    texte(g, X, y, "Pouvoirs :", RS); y += 16;
     const char* P[3] = {DEF[idx].p1, DEF[idx].p2, DEF[idx].p3};
-    for (int k = 0; k < 3 && y < 148; k++) { texte(g, X, y, "•", C(255, 96, 100)); y += bloc(g, X + 9, y, Wd - 9, P[k], 14, C(255, 236, 230), 2) * 14; }
+    for (int k = 0; k < 3; k++) { puce(g, X, y, RS); y += bloc(g, X + 10, y, Wd - 10, P[k], 14, BL, 9) * 14 + 1; }
   } else {
-    y += bloc(g, X, y, Wd, "Origine : toi", 14, C(255, 236, 230), 2) * 14;
-    y += bloc(g, X, y, Wd, "Éveil : à ta façon", 14, C(255, 236, 230), 2) * 14 + 2;
-    texte(g, X, y, "Caractéristiques :", C(255, 96, 100)); y += 15;
-    char b[40]; snprintf(b, sizeof(b), "%d virgule%s", n, n > 1 ? "s" : ""); texte(g, X, y, "•", C(255, 96, 100)); texte(g, X + 9, y, b, C(255, 236, 230)); y += 14;
-    texte(g, X, y, "•", C(255, 96, 100)); texte(g, X + 9, y, "couleur de ton choix", C(255, 236, 230)); y += 14;
-    texte(g, X, y, "•", C(255, 96, 100)); texte(g, X + 9, y, "un œil unique", C(255, 236, 230));
+    y += bloc(g, X, y, Wd, "Origine : toi", 14, BL, 9) * 14 + 1;
+    y += bloc(g, X, y, Wd, "Éveil : à ta façon", 14, BL, 9) * 14 + 3;
+    texte(g, X, y, "Caractéristiques :", RS); y += 16;
+    char b[40]; snprintf(b, sizeof(b), "%d virgule%s", n, n > 1 ? "s" : ""); puce(g, X, y, RS); texte(g, X + 10, y, b, BL); y += 15;
+    puce(g, X, y, RS); texte(g, X + 10, y, "couleur de ton choix", BL); y += 15;
+    puce(g, X, y, RS); texte(g, X + 10, y, "un œil unique", BL); y += 15;
   }
-  // le saviez-vous ?
-  g.fillRoundRect(ox + 4, 162, 312, 42, 6, C(40, 28, 6)); g.drawRoundRect(ox + 4, 162, 312, 42, 6, C(200, 150, 40));
-  texte(g, ox + 10, 165, "LE SAVIEZ-VOUS ?", C(255, 205, 80));
-  bloc(g, ox + 10, 178, 300, idx < 7 ? DEF[idx].anec : "Les corneilles reconnaissent les visages humains.", 13, C(255, 236, 230), 2);
+  g.clearClipRect();
+  hP = y + scP - y0 + 2; { int mx = hP - hv; if (mx < 0) mx = 0; if (scP > mx) scP = mx; scPmax = mx; }
+  if (scPmax > 0) {      // barre de défilement + flèches
+    const int tx = ox + 311, th = 124; int bh = th * hv / hP; if (bh < 12) bh = 12; int by = 30 + (th - bh) * scP / scPmax;
+    g.fillRoundRect(tx, 30, 3, th, 1, C(50, 12, 18)); g.fillRoundRect(tx, by, 3, bh, 1, C(255, 96, 100));
+    if (scP < scPmax) g.fillTriangle(ox + 300, 150, ox + 308, 150, ox + 304, 155, C(255, 205, 80));
+    if (scP > 0) g.fillTriangle(ox + 300, 36, ox + 308, 36, ox + 304, 31, C(255, 205, 80));
+  }
+  // le saviez-vous ? (défile aussi si le texte est long)
+  g.fillRoundRect(ox + 4, 160, 312, 44, 6, C(40, 28, 6)); g.drawRoundRect(ox + 4, 160, 312, 44, 6, C(200, 150, 40));
+  texte(g, ox + 10, 162, "LE SAVIEZ-VOUS ?", C(255, 205, 80));
+  g.setClipRect(ox + 8, 175, 300, 27);
+  { int n = bloc(g, ox + 10, 176 - scB, 296, idx < 7 ? DEF[idx].anec : "Les corneilles reconnaissent les visages humains.", 13, BL, 9);
+    int mx = n * 13 - 26; if (mx < 0) mx = 0; if (scB > mx) scB = mx; scBmax = mx;
+    g.clearClipRect();
+    if (mx > 0) { g.fillRoundRect(ox + 310, 176, 3, 25, 1, C(80, 56, 14)); int bh = 25 * 26 / (n * 13); if (bh < 8) bh = 8; g.fillRoundRect(ox + 310, 176 + (25 - bh) * scB / mx, 3, bh, 1, C(255, 205, 80)); } }
   bouton(g, ox + 4, 74, "PRÉC"); bouton(g, ox + 82, 74, "LISTE"); bouton(g, ox + 160, 74, "SUIV"); bouton(g, ox + 238, 74, "CORBEAU");
 }
 
@@ -273,7 +306,7 @@ static void ecranCorbeau(M5Canvas& g) {
   texte(g, 210, 70, "SUR TON CORBEAU", C(120, 230, 240)); g.fillRoundRect(288, 84, 24, 13, 4, C(20, 120, 130)); texte(g, 300, 91, "JEU", C(255, 255, 255), 1);
   bloc(g, 210, 100, 100, sel < 7 ? DEF[sel].effet : "Ton œil prend ta couleur et brille la nuit.", 14, C(255, 236, 230), 6);
   bool actif = (cb::oeilActif == sel + 1 && cb::oeilActif != 0 && cb::oeilActif == (uint8_t)prefs.getUChar("cbeil", 0));
-  texte(g, 210, 186, actif ? "● Œil actif" : "○ Pas encore actif", actif ? C(120, 255, 150) : C(180, 150, 150));
+  { uint16_t ca = actif ? C(120, 255, 150) : C(180, 150, 150); if (actif) g.fillCircle(214, 192, 4, ca); else g.drawCircle(214, 192, 4, ca); texte(g, 222, 186, actif ? "Œil actif" : "Pas encore actif", ca); }
   bouton(g, 4, 102, "FICHE"); bouton(g, 108, 102, actif ? "RETIRER" : "ACTIVER", actif ? C(90, 20, 24) : C(20, 90, 50)); bouton(g, 212, 102, "CORBEAUX");
 }
 
@@ -306,7 +339,7 @@ static void ecranCreer(M5Canvas& g) {
 // ---------- mise en page générale ----------
 static void majApercuOeil() { if (ecran == 2) { cb::oeilActif = (uint8_t)(sel + 1); cb::appliquerOeil(); } }
 static void quitterApercu() { cb::chargerOeil(); }      // on revient à l'œil réellement choisi
-static void ouvrir() { ouvert = true; ecran = 0; sel = 0; sale = true; volVu = false; animSens = 0; cbxOk = false; bas = false; cb::chargerOeil(); }
+static void ouvrir() { ouvert = true; scP = scB = 0; defile = false; zone = 0; ecran = 0; sel = 0; sale = true; volVu = false; animSens = 0; cbxOk = false; bas = false; cb::chargerOeil(); }
 static void quitter() { if (!ouvert) return; ouvert = false; quitterApercu(); if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); } }
 static void pousser() { cv.pushSprite(0, 0); }
 static void dessiner() {
@@ -331,7 +364,7 @@ static void dessiner() {
 static void aller(int sens) {      // fiche suivante (+1) ou précédente (-1), avec glissement
   int v = suivant(sel, sens); if (v == sel) return;
   if (ecran == 1) { animDe = sel; animVers = v; animSens = sens; animT0 = millis(); }
-  sel = v; majApercuOeil(); sale = true;
+  sel = v; scP = scB = 0; majApercuOeil(); sale = true;
 }
 static void creerGlisser(int x, int y) {
   if (y >= 44 && y < 68 && x >= 8 && x < 176) { cb::oCu.teinte = (uint8_t)cb::lim((x - 12) * 255 / 159, 0, 255); sale = true; }
@@ -344,8 +377,9 @@ static void toucherBouton(int b) {
     else { page = 32; bip(700, 40); }
   } else if (ecran == 1) {
     if (b == 0) aller(-1); else if (b == 1) { ecran = 0; sale = true; } else if (b == 2) aller(1); else { ecran = 2; majApercuOeil(); sale = true; }
+    // (le défilement repart en haut à chaque changement de fiche)
   } else if (ecran == 2) {
-    if (b == 0) { quitterApercu(); ecran = 1; sale = true; }
+    if (b == 0) { quitterApercu(); ecran = 1; scP = scB = 0; sale = true; }
     else if (b == 1) { bool actif = (cb::oeilActif == sel + 1 && prefs.getUChar("cbeil", 0) == sel + 1); cb::choisirOeil(actif ? 0 : sel + 1); majApercuOeil(); if (actif) { ecran = 1; } sale = true; }
     else { page = 32; bip(700, 40); }
   } else {
@@ -361,7 +395,7 @@ static int boutonSous(int x) {
 static void toucherEcran(int x, int y) {
   if (y >= 206) { toucherBouton(boutonSous(x)); return; }
   if (ecran == 0) {
-    for (int i = 0; i < NE; i++) { int c = i % 4, r = i / 4, cx = 6 + c * 78, cy = 27 + r * 48; if (x >= cx && x < cx + 74 && y >= cy && y < cy + 44 && decouvert(i)) { sel = i; ecran = 1; sale = true; ecouter(i); return; } }
+    for (int i = 0; i < NE; i++) { int c = i % 4, r = i / 4, cx = 6 + c * 78, cy = 27 + r * 48; if (x >= cx && x < cx + 74 && y >= cy && y < cy + 44 && decouvert(i)) { sel = i; ecran = 1; scP = scB = 0; sale = true; ecouter(i); return; } }
   } else if (ecran == 1) {
     if (x < 152 && y >= 26 && y < 112) ecouter(sel);      // toucher l'œil : écouter le cri du pouvoir
   } else if (ecran == 3) {
@@ -372,10 +406,21 @@ static void toucherEcran(int x, int y) {
 static void toucher(const m5::touch_detail_t& t) {
   if (!ouvert) return;
   int x = t.x, y = t.y;
-  if (t.wasPressed()) { bas = true; sx = px = x; sy = py = y; if (ecran == 3) creerGlisser(x, y); }
-  else if (t.isPressed() && bas) { px = x; py = y; if (ecran == 3 && sy < 206) creerGlisser(x, y); }
+  if (t.wasPressed()) {
+    bas = true; sx = px = x; sy = py = y; defile = false; zone = 0;
+    if (ecran == 3) creerGlisser(x, y);
+    else if (ecran == 1 && animSens == 0) { if (x >= 156 && x < 316 && y >= 26 && y < 158) { zone = 1; sc0 = scP; } else if (y >= 160 && y < 205) { zone = 2; sc0 = scB; } }
+  }
+  else if (t.isPressed() && bas) {
+    px = x; py = y; if (ecran == 3 && sy < 206) creerGlisser(x, y);
+    if (zone && (defile || abs(py - sy) > 7) && abs(py - sy) >= abs(px - sx)) {      // glisser vers le haut / le bas : le texte défile
+      defile = true; int v = sc0 - (py - sy), mx = (zone == 1) ? scPmax : scBmax; v = v < 0 ? 0 : (v > mx ? mx : v);
+      if (zone == 1) { if (v != scP) { scP = v; sale = true; } } else if (v != scB) { scB = v; sale = true; }
+    }
+  }
   if (t.wasReleased() && bas) {
-    bas = false; int dx = px - sx, dy = py - sy;
+    bas = false; if (defile) { defile = false; zone = 0; return; }
+    int dx = px - sx, dy = py - sy;
     if ((ecran == 1 || ecran == 2) && abs(dx) > 40 && abs(dy) < 45 && sy < 206) { aller(dx < 0 ? 1 : -1); return; }
     if (abs(dx) < 14 && abs(dy) < 14) toucherEcran(sx, sy);
   }
