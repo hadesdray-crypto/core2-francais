@@ -52,14 +52,15 @@ static void ellO(M5Canvas& g, float x, float y, float rx, float ry, uint16_t c) 
   if (sec) { hmix(0x500000u | (uint16_t)ar(X)); hmix(((uint32_t)(uint16_t)ar(Y) << 16) | (uint16_t)a); hmix(((uint32_t)(uint16_t)b << 16) | c); cmdPush(5, c, ar(X), ar(Y), a, b); return; }
   g.drawEllipse(ar(X), ar(Y), a, b, c);
 }
-static float echelleX(float x) {      // perspective par lieu : la mare est tout près (grand), l'arbre et le champ à distance normale, le portique plus loin, les stèles et la tour tout au fond (petit)
-  if (x < -70.0f) return 1.12f;
-  if (x < 20.0f) return lerpf(1.12f, 1.0f, (x + 70.0f) / 90.0f);
-  if (x < 250.0f) return 1.0f;
-  if (x < 322.0f) return lerpf(1.0f, 0.88f, (x - 250.0f) / 72.0f);
-  if (x < 430.0f) return lerpf(0.88f, 0.70f, (x - 322.0f) / 108.0f);
-  return 0.70f;
+static float echelleX(float x) {      // 3.1.27 perspective par lieu (rapport a un oiseau de l'arbre = 1,0) : mare un peu plus petit, arbre 1,0, puis il RAPETISSE progressivement vers le fond : portique 0,48, steles 0,45 a 0,40, tour 0,40
+  if (x < -70.0f) return 0.95f;
+  if (x < 20.0f) return lerpf(0.95f, 1.0f, (x + 70.0f) / 90.0f);
+  if (x < 230.0f) return 1.0f;
+  if (x < 322.0f) return lerpf(1.0f, 0.48f, (x - 230.0f) / 92.0f);
+  if (x < 430.0f) return lerpf(0.48f, 0.40f, (x - 322.0f) / 108.0f);
+  return 0.40f;
 }
+
 
 // ---------- cuisson du ciel (même dessin que la vue normale, sans les arbres ni le sol) ----------
 static void fixerVue(float x0, float y0) { zs = ZN; ztx = -x0 * ZN; zty = -y0 * ZN; }
@@ -379,8 +380,8 @@ static int8_t suivi = -1;
 static bool reculLent = false; static float tReculRe = 0.0f; static int8_t suiviRet = -1;      // suiviRet : le corbeau suivi avant un événement (main, appel) : la vue suivie revient dessus      // recul de la vue : coupé si l'image devient trop lente ; délai avant de reculer de nouveau
 static int8_t lpBird = -1; static uint32_t lpT = 0; static float lpX = 0, lpY = 0;
 // vues choisies (OP.recul) : 0 normale, 1 arbre et rivière, 2 mare, 3 vieux bâtiments, 4 large ; le suivi d'un corbeau est un mode à part
-static const float VUE_Z[6] = {1.0f, 1.30f, 0.72f, 0.90f, 0.50f, 1.10f};      // échelle de la caméra
-static const float VUE_X[6] = {160.0f, 165.0f, -10.0f, 382.0f, 190.0f, 104.0f};      // centre (monde) : arbre + bord de la mare ; la mare a gauche avec le champ ; portique, stèles, tour
+static const float VUE_Z[6] = {1.0f, 1.30f, 0.72f, 1.0f, 0.50f, 1.10f};      // échelle de la caméra
+static const float VUE_X[6] = {160.0f, 165.0f, -10.0f, 394.0f, 190.0f, 104.0f};      // centre (monde) : arbre + bord de la mare ; la mare a gauche avec le champ ; portique, stèles, tour
 static const float VUE_Y[6] = {128.0f, 118.0f, 130.0f, 125.0f, 118.0f, 102.0f};      // 5 : le nid (branche secondaire, à gauche du tronc) et les branches de nuit
 static const char* const VUE_NOM[6] = {"Vue", "Arbre", "Mare", "Ruine", "Large", "Nid"};      // étiquette du bouton (32 px de large)
 static bool vueFixe() { return OP.recul > 0 || suiviRet >= 0 || (cm == CM_SUIVI && !cmFin); }      // une vue a été choisie : aucun événement spontané ne la quitte
@@ -1226,9 +1227,9 @@ static void maj(float dt) {
   for (int k = 0; k < NAD; k++) {
     Corbeau& c = cr[k]; Rt& r = rt[k]; if (!r.away) continue;
     if (c.etat == E_DEHORS || c.etat == E_POOF || c.etat == E_OFF || c.etat == E_TENU || c.etat == E_TIR) { finR(r); c.s = r.sB; continue; }
-    if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but != B_MONDE) { finR(r); c.s = r.sB; continue; }      // de retour sur l'arbre
+    if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but != B_MONDE) { finR(r); continue; }      // de retour sur l'arbre
     if (r.cop && r.tl > 0.0f) { r.tl -= dt; if (r.tl <= 0.0f) { r.tl = 0.0f; finDuo(c, k); } }      // le duo se sépare du site
-    float tgt = r.sB * echelleX(c.x); c.s += (tgt - c.s) * mnf(1.0f, dt * 3.0f);      // perspective : plus petit vers la maison, plus grand vers la mare
+    float tgt = r.sB * echelleX(c.x); c.s += (tgt - c.s) * mnf(1.0f, dt * 4.0f);      // perspective : plus petit vers la maison, plus grand vers la mare
     if (c.etat == E_PERCHE && c.but == B_MONDE) {      // sur le toit : il observe, puis repart
       r.t += dt;
       if (r.ph == 0 && r.t > r.dur) apres(c, k);

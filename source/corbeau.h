@@ -105,7 +105,7 @@ static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 
 // fps : 0 non, 1 images/s en petit coin, 2 mesures détaillées ; cad : cadence maximale 0 = 20, 1 = 25, 2 = 30 images/s (défaut) ; deg : allègement automatique des détails si l'image est trop lente ; ecr : écran rapide (80 MHz) gardé
 struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto, dec; };      // dec : decor 0 complet (defaut, s'allege seul si l'image ralentit), 1 allege, 2 minimal ;      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
 static Opt OP = {4, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0, 1, 1, 1, 1, 1, 2, 0, 2, 1, 0, 0};      // paume : main ouverte paume vers le haut (1 oui) ; pvis : visites dans la paume (0 jamais, 1 rare, 2 normales, 3 souvent) ; recul : vue reculée (0 normale, 1 reculée, 2 très reculée)
-static inline float tailleF() { static const float F[3] = {0.85f, 0.935f, 1.0625f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux (3.1.26 : tous 15 % plus petits qu'avant pour que l'arbre paraisse plus grand) : petit, normal, grand
+static inline float tailleF() { static const float F[3] = {0.744f, 0.818f, 0.930f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux (3.1.26 : tous 15 % plus petits qu'avant pour que l'arbre paraisse plus grand) : petit, normal, grand
 static uint32_t tQ = 0, tBon = 0;
 static bool qDeg = false, qMin = false;      // fluidité : quand l'image prend trop de temps, détails coûteux réduits (qDeg) puis encore plus (qMin), automatiquement ; rétablis quand ça repasse sous le seuil      // nombre de corbeaux (3 à 6), visiteur (0 jamais, 1 rare, 2 souvent), secousse, vibration, ambiance, images/s, activité (1 à 5), gros plan (0 jamais, 1 rare, 2 normale, 3 souvent), œufs (idem), horreur
 static bool panneau = false, panSale = true, ambChange = false, oeufsSale = false;
@@ -695,7 +695,7 @@ static const float VX = 166.0f;               // où il se tient sur la branche
 static inline float visPiedsY() { return ytop(VX) + 0.4f; }
 struct RepM { float hx, hy, ux, uy, S, ex, ey, mx; bool g; };
 static RepM repereMain() {      // repère de la main : le bras (manche et avant-bras) est FIXE ; la paume pivote autour du poignet ; calculée comme une main gauche puis retournée pour le côté droit
-  RepM r; r.g = H.gauche; r.S = 1.57f;      // 3.1.26 : la main suit les oiseaux (15 % plus petits)
+  RepM r; r.g = H.gauche; r.S = 1.37f;      // 3.1.26 : la main suit les oiseaux (15 % plus petits)
    float e = pas(H.ext);
   r.ex = H.exs; r.ey = 262.0f;
   const float hx0 = lerpf(r.ex, H.x, e), hy0 = lerpf(r.ey, H.y + 0.6f * H.resp, e);      // position de repos de la paume (la main sort du bas de l'écran)
@@ -954,7 +954,7 @@ static float tCs[15][14], tSn[15][14]; static bool tTrigOk = false;      // cosi
 static void initTrig() { for (int n = 6; n <= 14; n++) for (int i = 0; i < n; i++) { const float a = i * (6.2832f / (float)n); tCs[n][i] = cosf(a); tSn[n][i] = sinf(a); } tTrigOk = true; }
 static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   if (!tTrigOk) initTrig();
-  { const float sc = c.s * zs; lodG = (OP.q == 2 || c.duvet > 0.02f || sc >= 0.90f) ? 0 : (sc < 0.68f ? 2 : 1); }      // taille a l'ecran : moins de details quand le corbeau est petit
+  { const float sc = c.s * zs; lodG = (OP.q == 2 || c.duvet > 0.02f || sc >= 0.79f) ? 0 : (sc < 0.60f ? 2 : 1); }      // taille a l'ecran : moins de details quand le corbeau est petit
   const uint16_t NOIR = C(4, 3, 6);
   Rep R_; R_.cx = c.x; R_.cy = c.y + c.bob; R_.d = c.dv; R_.s = c.s; R_.ct = cosf(c.pitch); R_.st = sinf(c.pitch); { float sqv = c.sq > 0.2f ? c.sq : 1.0f; R_.sy = sqv; R_.sx = 1.0f / sqrtf(sqv); }
   R_.sn = sqrtf(mxf(0.0f, 1.0f - c.dv * c.dv)); if (c.ro != 0.0f) { R_.ro = c.ro; R_.cro = cosf(c.ro); R_.sro = sinf(c.ro); }
