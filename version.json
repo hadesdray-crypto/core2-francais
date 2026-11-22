@@ -1,6 +1,6 @@
 {
-    "version": "3.1.21",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=7da16322a6fc",
+    "version": "3.1.22",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=159223c37ac1",
     "changes": [
         "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -115,17 +115,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "7da16322a6fcaf96bbdad3fe10c96368d39c52f827af93b53286cd3db84c21cc",
-    "size": 5146864,
+    "sha256": "159223c37ac12e7dc34323509c8c7b0c055923208758ed3e7679736d63e5a9ae",
+    "size": 5147024,
     "canal": "test",
     "notes": [
-        "3.1.21 : mare a gauche plus grande, ruisseau et herbe sombre a droite, petites betes (escargot, lezard, scarabee) attrapees par les corbeaux, reglage ",
+        "3.1.22 : numero de version (3.1.21 pris par les petites betes) : decor allege / minimal",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.21",
-        "run": "45054678694",
-        "commit": "a7aca503d5cc"
+        "version": "3.1.22",
+        "run": "45054842076",
+        "commit": "eaa4919c3f07"
     }
 }
