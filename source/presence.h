@@ -81,13 +81,6 @@ static float facteurMonde() { if (!actif) return 1.0f; if (etat == ABSENT) retur
 
 // Secondes depuis l'arrivee (grand nombre quand on n'est pas en train d'arriver).
 static float depuisArrivee() { return (etat == ENTREE || etat == PRESENT) ? (millis() - tEveil) / 1000.0f : 1e6f; }
-// Un evenement unique, a s secondes apres l'arrivee (id de 0 a 31) : vrai une seule fois par arrivee.
-static bool unefois(int id, float s) {
-  if (!vraieArrivee || id < 0 || id > 31 || (masque & (1UL << id))) return false;
-  float t = depuisArrivee(); if (t < s || t > s + 4.0f) return false;
-  masque |= (1UL << id); return true;
-}
-
 // Mouvement du Core2 : on le prend en main ou on le secoue (la lecture est appelee a chaque tour par la physique).
 static void imu(float ax, float ay, float az, float sec) {
   static float rx = 0, ry = 1, rz = 0, agit = 0; static bool init = false; static uint32_t t0 = 0;
@@ -176,7 +169,6 @@ static bool alInterrupteur() { return actif && (etat == ENTREE || etat == SORTIE
 static bool persoVisible() { return !actif || sc > 0.02f; }
 
 // Nombre de traces a montrer et age de la plus recente (secondes) : en absence elles apparaissent peu a peu.
-static int tracesVisibles() { if (!actif) return 0; if (etat == ABSENT || etat == SORTIE) return 0; return nbTraces; }
 static int tracesPendantAbsence() { uint32_t q = (millis() - debAbsence) / PAS_TRACE; return (int)(q > 3 ? 3 : q); }
 static uint32_t graineAbsence() { return (debAbsence ? debAbsence : 1) * 2654435761UL; }
 

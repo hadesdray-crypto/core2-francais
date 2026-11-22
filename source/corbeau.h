@@ -148,10 +148,10 @@ static void chargerOptions() {
   OP.sec = prefs.getUChar("cbsec", 1); if (OP.sec > 2) OP.sec = 1;
   OP.vib = prefs.getUChar("cbvib", 1) ? 1 : 0;
   OP.amb = prefs.getUChar("cbamb", 0); if (OP.amb > 2) OP.amb = 0;
-  OP.fps = prefs.getUChar("cbfps", 0); if (OP.fps > 2) OP.fps = 0;      // 0 non (défaut), 1 images/s en petit coin, 2 mesures détaillées
+  OP.fps = 0;      // le compteur d'images/s n'est JAMAIS affiché à l'écran (il reste dans /api/etat : fps, fpsmin, msimage, msmax)
   OP.cad = prefs.getUChar("cbcad", 2); if (OP.cad > 2) OP.cad = 2;      // cadence maximale : 20, 25 ou 30 images/s (défaut 30)
   OP.deg = prefs.getUChar("cbdeg", 1) ? 1 : 0;      // allègement automatique : oui par défaut
-  OP.dec = prefs.getUChar("cbdec", 0); if (OP.dec > 2) OP.dec = 0;      // decor : complet par defaut
+  OP.dec = prefs.getUChar("cbdec", 1); if (OP.dec > 2) OP.dec = 1;      // decor : ALLEGE par defaut (reglable : complet / allege / minimal)
   OP.ecr = prefs.getUChar("cbecr", 0) ? 1 : 0;      // écran rapide 80 MHz : non par défaut (à essayer dans Réglages > Fluidité)
   OP.act = prefs.getUChar("cbact", 3); if (OP.act < 1 || OP.act > 5) OP.act = 3;
   OP.gp = prefs.getUChar("cbgp", 2); if (OP.gp > 3) OP.gp = 2;
@@ -162,7 +162,7 @@ static void chargerOptions() {
   OP.paume = prefs.getUChar("cbpaume", 1) ? 1 : 0; OP.pvis = prefs.getUChar("cbpvis", 2); if (OP.pvis > 3) OP.pvis = 2; { uint8_t v_ = prefs.getUChar("cbvue2", 255); if (v_ == 255) v_ = prefs.getUChar("cbrecul", 0) ? 4 : 0; OP.recul = (v_ > 5) ? 0 : v_; } OP.cauto = prefs.getUChar("cbcam", 0) ? 1 : 0;      // caméra automatique : Non par défaut (clé cbcam) ;      // vue choisie : 0 normale, 1 reculée, 2 très reculée, 3 arbre et rivière, 4 mare, 5 vieux bâtiments (clé cbvue)      // bloc AA : main paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
   OP.taille = prefs.getUChar("cbtaille", 1); if (OP.taille > 2) OP.taille = 1;      // taille : normal par défaut
   nbOeufs = prefs.getUInt("cboeufs", 0);
-  appliquerAct(); appliquerAmb(); appliquerSec(); debug = (OP.fps == 2);
+  appliquerAct(); appliquerAmb(); appliquerSec(); debug = false;
 }
 // œuf magique
 struct Oeuf { bool actif; float x, y, t, tc, tp; uint8_t etat; int8_t ponte; };      // etat : 0 posé, 1 qui craque
@@ -1293,53 +1293,6 @@ static void dessinerOeuf(M5Canvas& g) {
 }
 
 // ---------- visite d'un corbeau : il vient vers l'écran, regarde, donne un coup de bec dans la vitre, repart ----------
-static void teteGP(M5Canvas& g, float cx, float cy, float S, float th, float ouv, float lid, int mir, bool jeune) {      // gros plan de la tête, vue de profil
-  const uint16_t NOIR = C(4, 3, 6), RIM = C(118, 24, 32), RIM2 = C(70, 10, 18);
-  float ct = cosf(th), st = sinf(th), bk = jeune ? 0.86f : 1.0f;
-  auto P = [&](float u, float v, float& X, float& Y) { u *= mir; X = cx + S * (u * ct - v * st); Y = cy + S * (u * st + v * ct); };
-  auto T = [&](float au, float av, float bu, float bv, float cu, float cw) { float x1, y1, x2, y2, x3, y3; P(au, av, x1, y1); P(bu, bv, x2, y2); P(cu, cw, x3, y3); tri(g, x1, y1, x2, y2, x3, y3, NOIR); };
-  auto fan = [&](const float* p, int n, float ccu, float ccv) { for (int i = 0; i < n; i++) { int j = (i + 1) % n; T(ccu, ccv, p[i * 2], p[i * 2 + 1], p[j * 2], p[j * 2 + 1]); } };
-  auto L = [&](float au, float av, float bu, float bv, uint16_t col) { float x1, y1, x2, y2; P(au, av, x1, y1); P(bu, bv, x2, y2); ligne(g, x1, y1, x2, y2, col); };
-  // épaules : masse noire dont le bord est fait de plumes hérissées
-  { const float corps[22] = {-19, 5, -26, 20, -31, 40, -36, 80, 60, 80, 54, 48, 44, 31, 30, 27, 14, 23, 4, 17, -2, 12}; fan(corps, 11, 0, 40); }
-  { const float pl[6][6] = {{-19, 6, -25, -2, -14, 4}, {-22, 12, -31, 5, -19, 10}, {-25, 20, -35, 15, -22, 19}, {4, 17, -2, 26, 12, 22}, {30, 27, 28, 36, 38, 28}, {44, 31, 46, 42, 52, 34}};
-    for (int i = 0; i < 6; i++) T(pl[i][0], pl[i][1], pl[i][2], pl[i][3], pl[i][4], pl[i][5]); }
-  // crâne arrondi
-  { const float cr_[28] = {-17, 4, -17, -2, -14, -8, -8, -12.5f, -1, -14.5f, 6, -13.5f, 11, -11, 14.5f, -7.5f, 17, -4, 17, 3, 10, 9, -2, 13, -12, 12, -18, 8}; fan(cr_, 14, 0, 0); }
-  // bec lourd et arqué, avec un crochet à la pointe
-  float pt = 17.0f + (42.0f - 17.0f) * bk, pc = 17.0f + (35.0f - 17.0f) * bk;
-  { const float sup[16] = {16, -7, 22, -10.5f, 30, -10.2f, 37, -6.2f, pt, 1.4f, pc, 2.4f, 27, 2.2f, 17, 2.6f}; float cu = 0, cw = 0; for (int i = 0; i < 8; i++) { cu += sup[i * 2]; cw += sup[i * 2 + 1]; } fan(sup, 8, cu / 8, cw / 8); }
-  { float lw[14] = {17, 2.0f, 27, 2.2f, 17.0f + (34.0f - 17.0f) * bk, 3.4f, 18.0f + (37.0f - 18.0f) * bk, 5.6f, 31, 8.4f, 23, 9.2f, 16.5f, 9};      // mandibule du bas, qui s'ouvre
-    float co = cosf(ouv), si = sinf(ouv), pu = 17.0f, pv = 4.5f, q[14], cu = 0, cw = 0;
-    for (int i = 0; i < 7; i++) { float dx = lw[i * 2] - pu, dy = lw[i * 2 + 1] - pv; q[i * 2] = pu + dx * co - dy * si; q[i * 2 + 1] = pv + dx * si + dy * co; cu += q[i * 2]; cw += q[i * 2 + 1]; }
-    fan(q, 7, cu / 7, cw / 7); }
-  // soies à la base du bec
-  { const float sb[5][6] = {{16, -6, 24, -13.6f, 19, -7}, {16, -5, 27, -12.6f, 21, -6.2f}, {16, -4, 21.5f, -14, 18, -6.6f}, {17.5f, -1, 29, -5.2f, 22, -2.5f}, {17, 1, 28, 0.2f, 21, 2.6f}};
-    for (int i = 0; i < 5; i++) T(sb[i][0], sb[i][1], sb[i][2], sb[i][3], sb[i][4], sb[i][5]); }
-  // plumes hirsutes de la gorge
-  for (int i = 0; i < 9; i++) {
-    float u = 14.0f - i * 3.1f, v = 7.0f + 5.0f * (1.0f - fabsf(u + 2.0f) / 16.0f) - ((i % 2) ? 1.5f : 0.0f), ln = 9.0f + 6.0f * ((i * 7) % 5) / 4.0f;
-    T(u + 1.8f, v - 1.0f, u - 1.6f, v - 0.6f, u - 2.6f - 0.4f * (i % 3), v + ln);
-  }
-  // lisérés rouge sombre : le volume sans masque géométrique
-  L(-11, -10, -3, -14, RIM); L(-3, -14, 6, -13, RIM); L(6, -13, 13, -9, RIM); L(13, -9, 17, -4, RIM);
-  L(16, -7, 22, -10.5f, RIM); L(22, -10.5f, 30, -10.2f, RIM); L(30, -10.2f, 37, -6.2f, RIM); L(37, -6.2f, pt, 1.4f, RIM);
-  L(-19, 6, -26, 20, RIM2); L(-26, 20, -31, 40, RIM2);
-  { const float br[5][4] = {{-8, 2, -14, 6}, {-6, 6, -12, 11}, {0, 8, -5, 13}, {-10, -4, -15, 0}, {-4, -9, -9, -6}}; for (int i = 0; i < 5; i++) L(br[i][0], br[i][1], br[i][2], br[i][3], RIM2); }
-  { float n1x, n1y, n2x, n2y; P(21.5f, -5.4f, n1x, n1y); P(24.6f, -4.4f, n2x, n2y); ligne(g, n1x, n1y, n2x, n2y, RIM2); ell(g, n1x, n1y, mxf(1.0f, 0.28f * S), mxf(1.0f, 0.18f * S), RIM2); }      // narine
-  // œil rouge qui brille
-  { float ex, ey; P(8.0f, -4.0f, ex, ey); float r = 4.4f * S * (jeune ? 1.1f : 1.0f);
-    disque(g, ex, ey, r * 1.55f, C(46, 3, 8)); disque(g, ex, ey, r * 1.28f, C(96, 6, 12)); disque(g, ex, ey, r, C(180, 12, 20)); disque(g, ex, ey, r * 0.78f, C(255, 54, 38));
-    disque(g, ex, ey, r * 0.36f, C(14, 0, 3)); disque(g, ex - r * 0.28f, ey - r * 0.3f, r * 0.18f, C(255, 214, 190));
-    if (lid > 0.02f) { float h = r * 1.5f * lid; ell(g, ex, ey - r * 1.5f + h, r * 1.6f, h, NOIR); } }
-}
-static void corniche(M5Canvas& g, float y) {      // la corniche de pierre sur laquelle il se pose, devant la vitre
-  if (y >= 239.0f) return;
-  int yy = (int)y;
-  g.fillRect(0, yy, 320, 240 - yy, C(6, 3, 6));
-  g.drawFastHLine(0, yy, 320, C(118, 24, 32)); g.drawFastHLine(0, yy + 1, 320, C(70, 10, 18));
-  for (int i = 0; i < 9; i++) { int x = 14 + i * 37 + (i * 17) % 11; g.drawFastVLine(x, yy + 3, 6 + (i * 5) % 9, C(24, 8, 12)); }
-}
 static const float SILL_B = 176.0f;      // dessus de la barre de métal (pixels écran) : le corbeau s'arrête là, devant la vitre
 static void centreBarre(float s, float pitch, float dv, float mir, float& cx, float& cy) {      // centre du corps quand les pattes sont sur la barre
   float hx, hy; hancheC(s, pitch, dv, hx, hy); cx = 160.0f - mir * 16.0f - hx; cy = SILL_B - JAMBE * s - hy;
@@ -2342,7 +2295,6 @@ static void rendreObjets() {      // les objets posés dans la paume retombent
     if (j >= 0) { Obj& b = ob[j]; b.actif = true; b.type = o.type; b.x = lim(H.x + o.u, 12, 308); b.y = H.y - 4.0f; b.vy = 0; b.t = 0; b.repos = false; b.reserve = -1; }
   }
 }
-static void deplacerMain(float x, float y) { H.tx = x; H.ty = y; H.gauche = (x < 160.0f); }
 static bool mainOccupee() { for (int k = 0; k < NCB; k++) if (cr[k].perch == 14) return true; return false; }
 static int choisirVisiteurMain() {      // le plus apprivoisé et curieux vient ; un parent qui protège un petit ne vient pas (sauf s'il est le seul corbeau)
   int best = -1; float bs = -1e9f;
@@ -2700,27 +2652,7 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
     recOn = false; cmdF[SL_FX] = cmdN; grouper(t, n, EG_FX, E0 + 5, 2);
   } else if (cmdOvf) { for (int i = 0; i < NFX; i++) if (fx[i].actif) dessinerEclatFx(g, fx[i]); }
   else rejouer(g, cmdD[SL_FX], cmdF[SL_FX]);
-  // texte de mesure (mode debug)
-  if (veut(NCB + NOB + 2)) {
-    bbReset();
-    if (debug) {
-      bbPt(238, 26); bbPt(318, 78);
-      if (!sech) {
-        g.fillRoundRect(238, 26, 80, 52, 4, C(0, 0, 0)); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(120, 255, 150)); g.setTextDatum(top_left);
-        char b[40]; snprintf(b, sizeof(b), "%d i/s  %d ms", fps, msDessin); g.drawString(b, 242, 28);
-        snprintf(b, sizeof(b), "T%dk P%dk", memTas, memPsram); g.drawString(b, 242, 40);
-        snprintf(b, sizeof(b), "m%d f%d d%d e%d", (int)(emaMaj + 0.5f), (int)(emaCmp + 0.5f), (int)(emaEnt + 0.5f), (int)(emaPush + 0.5f)); g.drawString(b, 242, 52);
-        snprintf(b, sizeof(b), "corb %d  Q%d%s", (int)(emaCorb + 0.5f), (int)OP.q, qMin ? "--" : (qDeg ? "-" : "")); g.drawString(b, 242, 64);
-      }
-    } else if (OP.fps == 1) {      // petit compteur d'images/s (moyenne sur 5 s et plus bas recent), tout en haut a gauche de la scene
-      bbPt(2, 26); bbPt(94, 39);
-      if (!sech) {
-        g.fillRect(2, 26, 93, 14, C(0, 0, 0)); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(120, 255, 150)); g.setTextDatum(top_left);
-        char b[28]; snprintf(b, sizeof(b), "%d i/s  min %d", (fpsMoy10 + 5) / 10, fpsMin); g.drawString(b, 5, 27);
-      }
-    }
-    fin(NCB + NOB + 2);
-  }
+  if (sech) nouv[NCB + NOB + 2] = rVide();      // (emplacement libre : l'ancien affichage des mesures a l'ecran est supprime)
   rec(NCB + NOB + 8, [&] { if (OP.hor == 2 && eclT > 0.0f && !qMin) dessinerEclair(g); });
   rec(NCB + NOB + 11, [&] { dessinerGP(g); });      // la visite d'un corbeau au gros plan : redessinee par zones, comme le reste
   if (veut(NCB + NOB + 12)) { bbReset(); if (OP.fiche) dessinerFiche(g); fin(NCB + NOB + 12); }      // la fiche flottante d'un corbeau (double toucher)
@@ -2805,11 +2737,11 @@ static void dessinerPanneau() {
     tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
     tuile(g, 4, 100, 153, 32, "Secousse", SEC[OP.sec]); tuile(g, 163, 100, 153, 32, "Vibration", OP.vib ? "Oui" : "Non");
     tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Lumière", OP.hor == 2 ? "Horreur" : (OP.hor == 1 ? "Sombre" : "Clair"));
-    tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps == 2 ? "Détails" : (OP.fps ? "Oui" : "Non")); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
+    tuile(g, 4, 170, 153, 32, "Images par seconde", "API seulement"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
   } else if (panPage == 7) {      // fluidité : compteur d'images/s, cadence maximale, allègement automatique, écran rapide (clés cbfps, cbcad, cbdeg, cbecr)
     static const char* const LM3[3] = {"Non", "Images/s", "Détails"}; static const char* const LC3[3] = {"20", "25", "30"}; static const char* const LO2[2] = {"Non", "Oui"}; static const char* const LE3[3] = {"Standard", "Essai 80 MHz", "Garder"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
-    g.drawString("Afficher les images/s (petit coin en haut à gauche)", 6, 31); segBarre(g, 4, 45, 312, 24, 3, OP.fps, LM3);
+    g.drawString("Compteur d'images/s : jamais affiché à l'écran", 6, 31); g.drawString("Il reste lisible dans /api/etat (fps, fpsmin, msimage, msmax).", 6, 49);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Cadence maximale (images par seconde)", 6, 73); segBarre(g, 4, 87, 312, 24, 3, OP.cad, LC3);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Allègement automatique des détails si l'image ralentit", 6, 115); segBarre(g, 4, 129, 312, 24, 2, OP.deg, LO2);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(ecrEssaiFin ? C(255, 205, 130) : C(205, 145, 145)); g.drawString(ecrEssaiFin ? "Essai en cours : touche Garder si l'image est nette (10 s)" : "Écran rapide 80 MHz (essai de 10 s, à garder si l'image est nette)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, ecr80 ? (OP.ecr ? 2 : 1) : 0, LE3);
@@ -2860,7 +2792,7 @@ static void dessinerPanneau() {
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
     g.drawString("Lumière de la scène (Sombre par défaut)", 6, 31); segBarre(g, 4, 45, 312, 24, 3, OP.hor, LL);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Qualité des effets (Fluide = effets réduits, allège seul)", 6, 73); segBarre(g, 4, 87, 312, 24, 3, OP.q, LQ);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Afficher les images/s (Non, petit compteur, détails)", 6, 115); segBarre(g, 4, 129, 312, 24, 3, OP.fps, LM3p);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Compteur d'images/s : jamais affiché (voir /api/etat)", 6, 115);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Présence : animations réduites quand personne n'est là", 6, 157); segBarre(g, 4, 171, 312, 24, 2, presenceOn ? 1 : 0, LM);
   } else {
     static const char* const L5[5] = {"1", "2", "3", "4", "5"}; static const char* const L4[4] = {"Jamais", "Rare", "Normale", "Souvent"}; static const char* const L3[3] = {"Jamais", "Rare", "Souvent"};
@@ -2903,7 +2835,7 @@ static void touchPanneau(int x, int y) {
     panSale = true; return;
   }
   if (panPage == 7) {      // fluidité (clés cbfps, cbcad, cbdeg, cbecr)
-    if (y >= 42 && y < 72) { OP.fps = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbfps", OP.fps); debug = (OP.fps == 2); plein = true; }
+    if (y >= 42 && y < 72) return;      // (plus de réglage : le compteur n'est jamais affiché)
     else if (y >= 84 && y < 114) { OP.cad = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbcad", OP.cad); }
     else if (y >= 126 && y < 156) { OP.deg = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbdeg", OP.deg); qDeg = qMin = false; }
     else if (y >= 168 && y < 198) {
@@ -2956,7 +2888,7 @@ static void touchPanneau(int x, int y) {
   if (panPage == 2) {      // image : lumière, qualité, mesures
     if (y >= 42 && y < 72) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.hor = (uint8_t)i; prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; }
     else if (y >= 84 && y < 114) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.q = (uint8_t)i; prefs.putUChar("cbqual", OP.q); qDeg = qMin = false; }
-    else if (y >= 126 && y < 156) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.fps = (uint8_t)i; prefs.putUChar("cbfps", OP.fps); debug = (OP.fps == 2); plein = true; }
+    else if (y >= 126 && y < 156) return;      // (plus de réglage : le compteur n'est jamais affiché)
     else if (y >= 168 && y < 198) { presenceOn = ((x - 4) * 2 / 312) >= 1; prefs.putBool("pres", presenceOn); }
     else return;
     if (OP.vib) vibrer(40);
@@ -2988,7 +2920,7 @@ static void touchPanneau(int x, int y) {
     case 3: OP.vib = OP.vib ? 0 : 1; prefs.putUChar("cbvib", OP.vib); if (OP.vib) vibrer(90); break;
     case 4: OP.amb = (uint8_t)((OP.amb + 1) % 3); prefs.putUChar("cbamb", OP.amb); appliquerAmb(); ambChange = true; break;
     case 5: OP.hor = (uint8_t)((OP.hor + 1) % 3); prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; break;
-    case 6: OP.fps = (uint8_t)((OP.fps + 1) % 3); prefs.putUChar("cbfps", OP.fps); debug = (OP.fps == 2); break;
+    case 6: return;      // (compteur d'images/s : jamais affiché)
     default: fermerPanneau(); lancerVisite(); return;
   }
   panSale = true;

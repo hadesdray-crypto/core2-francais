@@ -362,7 +362,6 @@ static void dynPart(int kp) {      // morceau kp du décor animé (0 lanterne de
   }
   if (kp == 7) for (int i = 0; i < 14; i++) if (gout[i].on) disque(g, gout[i].x, gout[i].y, 0.9f, C(150, 70, 90));
 }
-static void dyn() { for (int k = 0; k < 8; k++) dynPart(k); }
 
 // ---------- caméra ----------
 static uint8_t cm = CM_NON; static bool cmAuto = false, cmFin = false;

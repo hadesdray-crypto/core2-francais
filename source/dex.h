@@ -180,7 +180,6 @@ static void couleurOeil(int i, int& motif, float& r, float& g, float& b, int& n)
   static const uint8_t MOT[4] = {M_ANN, M_VIRG, M_PALES, M_FLEUR};
   motif = MOT[cb::oCu.motif & 3]; cb::teinteRVB(cb::oCu.teinte, r, g, b); n = cb::oCu.marques;
 }
-static const char* courtOeil(int i) { return i < NE ? DEF[i].court : "Ton œil"; }
 static const char* nomOeil(int i) { return i < NE ? DEF[i].nom : "Ton œil"; }
 static int suivant(int i, int sens) { int T = NE + 1; for (int k = 0; k < T; k++) { i = (i + sens + T) % T; if (decouvert(i)) return i; } return i; }
 
