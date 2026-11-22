@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.4.1"
+#define VERSION_PROGRAMME "2.4.2"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -260,7 +260,7 @@ void chargerPerso() {
 
 // ---------- Sons ----------
 void bip(int freq, int ms) {
-  if (!R.actif[M_SON] || lectureEnCours) return;
+  if (!R.actif[M_SON] || lectureEnCours || page == 32) return;
   if (millis() - dernierBip < 150) return; dernierBip = millis();
   M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume);
   M5.Speaker.tone(freq, ms); delay(ms + 10);
@@ -270,7 +270,7 @@ void bip(int freq, int ms) {
 // Petits sons du personnage : une suite de notes très courte pour chaque événement.
 enum { S_MANGER = 0, S_CARESSE, S_CHOC, S_SECOUE, S_PILE, S_WIFI_OK, S_WIFI_KO, S_REVEIL, S_BRANCHE, S_VOL, S_GRAVITE, S_NB };
 void jouer(int s) {
-  if (!R.actif[M_SON] || R.volume == 0 || s < 0 || s >= S_NB || lectureEnCours) return;
+  if (!R.actif[M_SON] || R.volume == 0 || s < 0 || s >= S_NB || lectureEnCours || page == 32) return;
   static uint32_t dernier[S_NB];
   if (millis() - dernier[s] < 400) return; dernier[s] = millis();
   static const int16_t N[S_NB][6] = {
@@ -2728,7 +2728,7 @@ void actionBarre(int b) {
 uint32_t finAffVolume = 0;
 void changerVolume(int pas) {
   R.volume = constrain((int)R.volume + pas, 0, 255); M5.Speaker.setVolume(R.volume); finAffVolume = millis() + 1500;
-  if (!lectureEnCours) bip(900, 25);
+  if (page == 32) corbeauSonVolume(); else if (!lectureEnCours) bip(900, 25);
 }
 void afficherVolume() {          // une barre en haut de l'écran, sur toutes les pages, quand on règle le son
   if (millis() > finAffVolume || veille) return;
@@ -3103,14 +3103,14 @@ void loop() {
       int h = (int)constrain(dev * 14.0f, 0.0f, 86.0f);
       histMvt[histMvtPos] = (uint8_t)h; histMvtPos = (histMvtPos + 1) % (int)sizeof(histMvt);
     }
-    if (!veille && m - tDessin > (page == 32 ? 28u : (brancheUsb ? 33u : 50u))) { tDessin = m; dessinerPage(); afficherVolume(); }
+    if (!veille && m - tDessin > (page == 32 ? 18u : (brancheUsb ? 33u : 50u))) { tDessin = m; dessinerPage(); afficherVolume(); }
     if (sniffActif || detection || page == 11 || page == 13 || (page >= 21 && page <= 32) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - derniereActivite) > 300000) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
   vieDuPerso();
   {   // reconnexion automatique : toutes les 12 s sans Wi-Fi, on cherche les réseaux et on prend le réseau connu qui capte le mieux
     static uint32_t tWifi = 0; static bool rechFond = false; static uint32_t debFond = 0;
-    bool libre = !wifiCoupe && !(page >= 2 && page <= 4) && page != 7 && page != 8 && page != 9 && !sniffActif && !detection && !scanEnCours && !demandeMaj && nbConnus() > 0;
+    bool libre = !wifiCoupe && page != 32 && !(page >= 2 && page <= 4) && page != 7 && page != 8 && page != 9 && !sniffActif && !detection && !scanEnCours && !demandeMaj && nbConnus() > 0;
     if (W.wifiOk || WiFi.status() == WL_CONNECTED) { tWifi = m; if (rechFond) { WiFi.scanDelete(); rechFond = false; } }
     else if (libre && !rechFond && m - tWifi > 12000) {
       tWifi = m; WiFi.setAutoReconnect(false); WiFi.disconnect(false, false); delay(50);
