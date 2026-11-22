@@ -45,13 +45,13 @@ static const int NOB = 4;        // objets au sol / qui tombent
 static const int NPE = 6;        // perchoirs
 static const int NPART = 44;    // plumes
 static const int NFX = 6;       // éclats lumineux
-static const int NENT = NCB + NOB + 9;
+static const int NENT = NCB + NOB + 11;
 static const int H_SCENE = 206; // la barre de nourriture occupe le bas
 static const float SOL_Y = 201.0f;
 static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {224, 125.6f}, {88, 62.5f}, {24, 94.5f}};
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
-enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE, B_MONDE };
+enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE, B_MONDE, B_FAM };      // B_FAM : mission d'un parent (famille.h)
 namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); }      // monde.h : paysage, camera, excursions
 static void syncUI();
 enum { T_GRAINE = 0, T_VIANDE, T_NOIX, T_PAIN, T_BAIES, T_BRILLANT, T_BAGUE, T_KUNAI, T_SHURIKEN, T_PARCHEMIN, T_OEUF, T_NB };
@@ -1537,11 +1537,12 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         else if (c.but == B_VISITEUR) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(5, 13); c.ox = c.oy = 0; c.d = (c.perch == 14) ? (H.gauche ? 1 : -1) : ((c.perch == 10) ? -1 : 1); if (c.perch == 14) posture(c); }
         else if (c.but == B_NOUR || c.but == B_OBJET || c.but == B_FOURRAGE || c.but == B_BAIN) { c.etat = E_SOL; c.sub = 0; c.peck = 0; c.om = 0; }
         else if (c.but == B_MONDE) { mo::arrivee(c); }
+        else if (c.but == B_FAM) { fam::arrive(c, idx); }
         else { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = 4; }
       }
     } break;
     case E_SOL: {
-      c.pied = true; c.pitchC = c.pr * 0.45f; c.haC = c.pitchC - 0.35f; c.hbC = c.haC + 0.49f; if (c.but == B_MONDE) mo::sol(c, idx, dt);
+      c.pied = true; c.pitchC = c.pr * 0.45f; c.haC = c.pitchC - 0.35f; c.hbC = c.haC + 0.49f; if (c.but == B_MONDE) mo::sol(c, idx, dt); else if (c.but == B_FAM) fam::sol(c, idx, dt);
       if (c.but == B_NOUR && c.sub <= 1) {
         Obj* o = (c.item >= 0 && c.item < NOB && ob[c.item].actif && ob[c.item].reserve == idx) ? &ob[c.item] : nullptr;
         if (!o) { c.but = B_RIEN; c.item = -1; apresSol(c); break; }
@@ -2366,7 +2367,9 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   bbReset(); if (V.ph == V_PRESENT) dessinerVisiteur(g); nouv[NCB + NOB + 3] = bbRect();
   bbReset(); dessinerMain(g); nouv[NCB + NOB + 5] = bbRect();
   bbReset(); if (OE.actif) dessinerOeuf(g); nouv[NCB + NOB + 7] = bbRect();      // le visiteur, avant les corbeaux : ils se posent devant lui
-  for (int k = 0; k < NCB; k++) { bbReset(); if (cr[k].visible) dessinerCorbeau(g, cr[k]); nouv[k] = bbRect(); }
+  bbReset(); fam::nid(g); nouv[NCB + NOB + 9] = bbRect();      // le nid, derrière les corbeaux
+  for (int k = 0; k < NCB; k++) { bbReset(); if (cr[k].visible) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); } nouv[k] = bbRect(); }
+  bbReset(); fam::devant(g); nouv[NCB + NOB + 10] = bbRect();      // les brindilles du bord, devant le parent assis
   bbReset(); for (int i = 0; i < NMINI; i++) if (mini[i].actif) dessinerMini(g, mini[i]); nouv[NCB + NOB + 4] = bbRect();
   bbReset();
   for (int i = 0; i < NPROJ; i++) { Proj& p = proj[i]; if (p.actif) dessinerObjet(g, p.type, p.x, p.y, p.type >= T_BAGUE ? 5.5f : 4.6f, p.rot, 0.0f); }
