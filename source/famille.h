@@ -15,7 +15,7 @@ struct Sauv {
   uint8_t ver, fph;                           // version du bloc ; phase du cycle de famille (utilisée dès 3.1.1)
   uint8_t aud[NM], cal[NM], cur[NM], soc[NM], frc[NM];      // traits stables : audace, calme, curiosité, sociabilité, force
   uint8_t role[NM], rang[NM];                 // rôle (alpha, adulte, jeune) et rang (0 = dominant)
-  int8_t lien[21];                            // liens entre paires (-100 rivaux, +100 amis)
+  int8_t lien[NM * (NM - 1) / 2];              // liens entre paires (-100 rivaux, +100 amis)
   uint8_t brins, nEuf, nPou, gen, jeune;      // nid, œufs, poussins, générations, jeunes envolés (3.1.1 et 3.1.2)
   uint16_t age;                               // avancement de l'étape de la famille, en secondes
 };
@@ -868,7 +868,7 @@ static void init() {
   sale = false; if (!ok) { generer(); sale = true; }
   pret = true; calculerFoyers(); chg = 0.0f; tSauv = 0.0f;
   for (int k = 0; k < NM; k++) { appliquer(cr[k], k); eco[k] = 0.0f; rallie[k] = false; }
-  cr[0].s = 1.46f; cr[1].s = 1.34f;      // le couple dominant : le mâle un peu plus grand
+  cr[0].s = 1.46f * tailleF(); cr[1].s = 1.34f * tailleF();      // le couple dominant : le mâle un peu plus grand
   for (int k = 0; k < 3; k++) if (foyer[k] >= 0 && cr[k].etat == E_PERCHE) placer(cr[k], foyer[k]);      // les trois premiers sont déjà à leur place
   memset(mis, 0, sizeof(mis)); memset(&par, 0, sizeof(par)); memset(&men, 0, sizeof(men)); layT = 0.0f; couv = 0.0f; sui = 0; ordre = 0; tChasse = tMen = tCri = 0.0f; tNour = rnd(10.0f, 18.0f);
   for (int i = 0; i < 3; i++) { faim[i] = 0.5f; beg[i] = 0.0f; }
@@ -882,7 +882,7 @@ static void init() {
   if (sale) sauver(true);
 }
 static void maj(float dt) {
-  if (!pret) return;
+  if (!pret || nAct < 2) return;      // seul, un corbeau n'a ni couple ni famille : comportements solitaires
   tDepl -= dt; tSauv += dt; tMob -= dt;
   majFam(dt);
   for (int i = 0; i < 2; i++) if (pend[i].k >= 0) { pend[i].t -= dt; if (pend[i].t <= 0.0f) { suivreChef(pend[i]); pend[i].k = -1; } }
