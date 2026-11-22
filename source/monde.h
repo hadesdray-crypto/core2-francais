@@ -332,6 +332,7 @@ static uint8_t cm = CM_NON; static bool cmAuto = false, cmFin = false;
 static float cz = ZN, cxx = 160.0f, cyy = 128.0f, czv = 0.0f, cxv = 0.0f, cyv = 0.0f;
 static float cmT = 0.0f, cmDur = 0.0f, gLarge = 60.0f, tPerdu = 0.0f, tRetour = 0.0f;
 static int8_t suivi = -1;
+static bool reculLent = false; static float tReculRe = 0.0f;      // recul de la vue : coupé si l'image devient trop lente ; délai avant de reculer de nouveau
 static int8_t lpBird = -1; static uint32_t lpT = 0; static float lpX = 0, lpY = 0;
 static const char* etiquette() { return cm == CM_LARGE ? "Large" : (cm == CM_SUIVI ? "Suivi" : "Vue"); }
 static void majBouton() { boutonVue(fond); syncUI(); plein = true; }
@@ -346,11 +347,27 @@ static int choisirSuivi();
 static void basculer() {
   if (!pret) return;
   if (cm == CM_NON || cmFin) demarrer(CM_LARGE, false);
-  else if (cm == CM_LARGE) { int k = choisirSuivi(); if (k >= 0) { suivi = (int8_t)k; demarrer(CM_SUIVI, false); } else fermer(); }
+  else if (cm == CM_LARGE) { int k = choisirSuivi(); if (k >= 0) { suivi = (int8_t)k; demarrer(CM_SUIVI, false); } else if (OP.recul == 0) fermer(); }
+  else if (OP.recul > 0 && !reculLent) demarrer(CM_LARGE, false);
   else fermer();
   majBouton();
 }
 static void demandeLarge(bool on) { if (!pret) return; if (on && cm == CM_NON) demarrer(CM_LARGE, false); else if (!on && cm != CM_NON) fermer(); }
+static void finSuivi(bool bloque) { if (OP.recul > 0 && !reculLent && !bloque) { suivi = -1; demarrer(CM_LARGE, false); } else fermer(); }      // le suivi se termine : la vue reculée reste (si elle est réglée)
+static void reglerRecul(uint8_t n) {      // recul de la vue : 0 normale, 1 reculée, 2 très reculée (clé cbrecul) ; la vue large et le suivi existants font le travail
+  if (n > 2) n = 2; OP.recul = n; prefs.putUChar("cbrecul", n); reculLent = false; tReculRe = 0.0f;
+  if (!pret) return;
+  if (n == 0) { if (cm == CM_LARGE) fermer(); }
+  else if (cm == CM_NON || cmFin) demarrer(CM_LARGE, false);
+  else if (cm == CM_LARGE) { cmAuto = false; cmDur = 1e9f; }
+  majBouton();
+}
+static void reculer(int d) {      // pincement à deux doigts : se pincer recule d'un niveau, s'écarter avance d'un niveau
+  if (!pret) { demandeLarge(d > 0); return; }
+  int n = (int)OP.recul + d; if (n < 0) n = 0; if (n > 2) n = 2;
+  if (n == (int)OP.recul) { if (d < 0 && n == 0 && cm != CM_NON) fermer(); return; }
+  reglerRecul((uint8_t)n);
+}
 
 // ---------- excursions : maison, mare, champ ----------
 struct Rt { uint8_t dest, ph, spot, n, hops, cop, seq, grp; float t, dur, tx, sB, tw, tl; bool away; };      // cop : compagnon + 1 ; seq : prochaine destination + 1 ; grp : vol de groupe (haltes courtes) ; tl : minuteur du duo
@@ -855,24 +872,28 @@ static bool camPilote(float dt) {
   if (!pret) return false;
   const bool bloque = GP.ph || V.ph != V_RIEN || H.actif || appelOn;
   if (cm == CM_NON) {
+    if (OP.recul > 0 && !reculLent) {      // vue reculée tenue : elle revient dès que l'événement (gros plan, visiteur, main, appel) est fini
+      if (bloque || panneau) tReculRe = 0.0f;
+      else { tReculRe += dt; if (tReculRe > 1.5f && millis() - tToucher > 1200UL) { tReculRe = 0.0f; demarrer(CM_LARGE, false); } }
+    }
     gLarge -= dt * actFreq;
     if (gLarge <= 0.0f) { gLarge = rnd(50.0f, 90.0f); if (!bloque && !panneau && !cbAbsent && millis() - tToucher > 5000UL) demarrer(CM_LARGE, true); }
     if (cm == CM_NON) return false;
   }
   cmT += dt;
   { static int lent = 0;      // si l'image prend trop de temps (vue recomposée), on referme la caméra et on arrête les vues spontanées
-    if (msDessin > 80) { if (++lent > 20 && cmT > 2.0f && !cmFin) { fermer(); gLarge = 1e8f; lent = 0; } } else if (lent > 0) lent--; }
+    if (msDessin > 80) { if (++lent > 20 && cmT > 2.0f && !cmFin) { fermer(); gLarge = 1e8f; lent = 0; reculLent = true; } } else if (lent > 0) lent--; }
   if (bloque && !cmFin) fermer();
   float tz = ZN, tx = 160.0f, ty = 128.0f;
   if (!cmFin) {
     if (cm == CM_LARGE) {
-      tz = 0.5f; tx = 190.0f + 28.0f * sinf(cmT * 0.28f); ty = 118.0f;
+      tz = (OP.recul == 1) ? 0.72f : 0.5f; tx = 190.0f + 28.0f * sinf(cmT * 0.28f); ty = 118.0f;
       if (LG.on && LG.a >= 0 && LG.b >= 0) { const float xa = cr[LG.a].x, xb = cr[LG.b].x; tx = lerpf(tx, (xa + xb) * 0.5f, 0.85f); tz = (fabsf(xa - xb) < 190.0f) ? 0.6f : 0.5f; }      // l'échange à distance est au centre de l'image
       if (cmAuto && cmT > cmDur) fermer();
     } else {
       Corbeau& c = cr[suivi < 0 ? 0 : suivi]; Rt& r = rt[suivi < 0 ? 0 : suivi];
       bool ok = (suivi >= 0) && c.visible && c.etat != E_DEHORS && c.etat != E_POOF && c.etat != E_OFF;
-      if (!ok) { tPerdu += dt; if (tPerdu > 1.5f) fermer(); } else tPerdu = 0.0f;
+      if (!ok) { tPerdu += dt; if (tPerdu > 1.5f) finSuivi(bloque); } else tPerdu = 0.0f;
       if (ok) {
         switch (c.etat) {
           case E_SOL: tz = 1.35f; break;
@@ -889,11 +910,12 @@ static bool camPilote(float dt) {
         if (!r.away && c.etat == E_PERCHE && c.perch >= 0) {      // encore (ou de nouveau) sur l'arbre
           tRetour += dt;
           if (cmT > 2.6f && tRetour > 2.6f && cmT < 8.0f && nbAilleurs() < 3) { int d = choisirDest(suivi); if (d >= 0) excursion(c, suivi, d); }      // il part en excursion : la caméra le suit
-          if (tRetour > 4.5f && cmT > 8.0f) fermer();      // revenu à l'arbre : le suivi s'arrête
+          if (tRetour > 4.5f && cmT > 8.0f) finSuivi(bloque);      // revenu à l'arbre : le suivi s'arrête
         } else tRetour = 0.0f;
       }
     }
   }
+  if (cm == CM_SUIVI && OP.recul > 0) tz = mxf(0.5f, tz * ((OP.recul == 1) ? 0.82f : 0.66f));      // le suivi recule aussi quand la vue est reculée
   bornes(tz, tx, ty);
   ressort(cz, czv, tz, 3.6f, dt); ressort(cxx, cxv, tx, 3.4f, dt); ressort(cyy, cyv, ty, 3.4f, dt);
   if (cmFin && fabsf(cz - ZN) < 0.003f && fabsf(cxx - 160.0f) < 0.6f && fabsf(cyy - 128.0f) < 0.6f) {
@@ -970,7 +992,7 @@ static void reinit() {
   for (int k = 0; k < NAD; k++) rang[k] = (int8_t)k;
   for (int k = NAD - 1; k > 0; k--) { int j = random(k + 1); int8_t q = rang[k]; rang[k] = rang[j]; rang[j] = q; }
   for (int i = 0; i < NAD; i++) for (int j = i; j < NAD; j++) lien[i][j] = lien[j][i] = (i == j) ? 0 : (int8_t)(random(5) - 2);
-  cm = CM_NON; cmFin = false; suivi = -1; lpBird = -1; cz = ZN; cxx = 160.0f; cyy = 128.0f; czv = cxv = cyv = 0.0f;
+  reculLent = false; tReculRe = 0.0f; cm = CM_NON; cmFin = false; suivi = -1; lpBird = -1; cz = ZN; cxx = 160.0f; cyy = 128.0f; czv = cxv = cyv = 0.0f;
   gLarge = rnd(40.0f, 70.0f); gTrip = rnd(10.0f, 20.0f); tMonde = 0.0f;
 }
 static void fermerMonde() { libererSprites(); tentee = false; cm = CM_NON; cmFin = false; suivi = -1; memset(rt, 0, sizeof(rt)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); }
