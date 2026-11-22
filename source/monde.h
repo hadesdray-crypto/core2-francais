@@ -656,7 +656,11 @@ static bool cSale = false; static float tCSale = 0.0f;
 static int8_t tK = -1, tObj = -1; static uint8_t tPh = 0, tOu = 0; static float tT = 0.0f, gTres = 60.0f;      // tK : le corbeau en mission ; tPh 0 il va prendre l'objet, 1 il le porte ; tOu 0 tour, 1 mare
 static void tresFlush() { if (cSale) { prefs.putUInt("cbcach", (uint32_t)cTour | ((uint32_t)cMare << 16)); cSale = false; } }
 static bool tresorDepart(Corbeau& c, int idx) {      // appele quand le corbeau vient de ramasser l'objet : il s'envole vers la cache (renvoie faux : ce n'est pas un tresor, la routine normale continue)
-  if (tK != idx || tPh != 0 || c.objet == 0 || idx < 0 || idx >= NAD) return false;
+  // 3.1.30 (precision de Hades) : un corbeau qui tient quelque chose de brillant (bague, eclat : trouve, lance, rapporte) l'emmene TOUJOURS a la tour, a chaque fois ; la mare seulement si le decor Tour est coupe
+  if (idx < 0 || idx >= NAD || c.objet == 0 || !(c.objet == T_BRILLANT + 1 || c.objet == T_BAGUE + 1) || rt[idx].away || c.duvet >= 0.5f) return false;
+  if (tK >= 0 && tK != idx) return false;      // un seul voyage de tresor a la fois
+  if (tK == idx && tPh != 0) return false;
+  tK = (int8_t)idx; tOu = RGM.tour ? 0 : 1;
   Rt& r = rt[idx]; const float tx = (tOu == 0) ? TRX - 11.0f : PX + PRX + 5.0f, ty = solHaut(tx);
   r.sB = c.s; r.hops = 0; r.away = true; r.dest = D_TRES; r.spot = tOu; r.ph = 0; r.t = 0; r.n = 0; r.dur = 0; r.tw = 0; r.cop = r.seq = r.grp = 0; r.tl = 0.0f;
   c.perch = -1; c.item = -1; c.rapporte = false;
@@ -1212,7 +1216,7 @@ static void tresorDebut() {      // un corbeau perche trouve un objet brillant a
   const int k = pickPond(l, n, 2); static const uint8_t TT[4] = {T_BRILLANT, T_BAGUE, T_BRILLANT, T_BAGUE};
   Obj& o = ob[j]; o.actif = true; o.type = TT[random(4)]; o.x = rnd(100.0f, 240.0f); o.y = solHaut(o.x) - 3.2f; o.vy = 0; o.t = 0; o.repos = true; o.reserve = -1;
   Corbeau& c = cr[k]; c.d = (o.x >= c.x) ? 1 : -1; c.look = lim(atan2f(solHaut(o.x) - c.y, fabsf(o.x - c.x) + 8.0f) * 0.7f, -0.3f, 0.8f); c.tLook = 1.0f;
-  tK = (int8_t)k; tObj = (int8_t)j; tPh = 0; tT = 0.0f; tOu = (RGM.tour && random(100) < 72) ? 0 : 1;
+  tK = (int8_t)k; tObj = (int8_t)j; tPh = 0; tT = 0.0f; tOu = RGM.tour ? 0 : 1;
   attribuer(j, k);
   if (cr[k].but != B_NOUR) { o.actif = false; tK = -1; tObj = -1; }
 }

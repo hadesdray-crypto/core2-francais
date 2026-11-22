@@ -1610,6 +1610,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       c.bob += 0.30f * c.s * sinf(c.resp * 2.7f);                   // respiration
       c.pitchC = c.pr + 0.015f * sinf(c.resp * 0.9f);               // léger balancement
       acteur(c, dt);
+      if (c.objet && c.t > 1.2f && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && mo::tresorDepart(c, (int)(&c - cr))) break;      // 3.1.30 : un objet brillant va toujours a la tour
       if (c.objet && c.t > 9.0f) { c.objet = 0; eclat(c.x + c.dv * 18 * c.s, c.y - 2, 0.3f, 0.7f); }
       if (c.perch < 10 && c.t * actFreq >= c.tfin && gAction <= 0 && c.act <= A_REGARDE && !fam::immobile(c)) {
         int r = random(100);
@@ -1727,7 +1728,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         if (c.peck > 1.8f) { c.but = B_RIEN; apresSol(c); }
       } else if (c.but == B_NOUR && c.sub == 2) { c.peck += dt; if (c.peck > 0.7f) { c.but = B_RIEN; if (!mo::tresorDepart(c, idx)) apresSol(c); } }
       else if (c.but == B_OBJET) {
-        if (c.sub == 0) { c.sub = 1; c.peck = 0; c.d = (c.x < 160) ? 1 : -1; }
+        if (c.sub == 0) { if (!mo::tresorDepart(c, idx)) { c.sub = 1; c.peck = 0; c.d = (c.x < 160) ? 1 : -1; } }      // 3.1.30 : brillant = tour
         else if (c.sub == 1) {
           c.peck += dt; c.bec = lim((c.peck - 0.35f) * 4.0f, 0, 1); c.haC = 0.2f; c.hbC = 0.7f;
           if (c.peck > 0.55f && c.objet) {       // il dépose l'objet devant lui
