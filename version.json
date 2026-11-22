@@ -1,6 +1,6 @@
 {
     "version": "3.1.30",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=3f9e68c6eba0",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=2dfbda4e30b1",
     "changes": [
         "3.1.30 : quand un corbeau a quelque chose qui brille (bague, éclat : trouvé, lancé ou rapporté), il l'emmène TOUJOURS à la tour, à chaque fois (plus de répartition tour / mare ; la mare seulement si le décor est réglé sur Simple). C'est l'exception à la règle des excursions lointaines rares : sans trouvaille brillante, la visite au fond reste rare.",
         "3.1.29 : vues recadrées pour que chacune soit pertinente. Arbre : l'arbre ENTIER (cime, branches de gauche, grosse branche et perchoirs) avec le bord de la mare. Nid : l'arbre entier aussi, le nid et sa branche au centre. Mare : la mare, le champ et son épouvantail, la stèle de gauche et le bord de l'arbre. Vieux bâtiments : portique, quatre stèles et tour, plus gros pour bien voir les petits oiseaux du fond. Large : tout, du champ à la tour.",
@@ -125,17 +125,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "3f9e68c6eba08cee1386310723546bd84064ec3d458c5b8323ef5e32677ccc54",
-    "size": 5150640,
+    "sha256": "2dfbda4e30b1b3f7127582f0f69cd55d2adebf6479e6c53fa326ff9437ffca7e",
+    "size": 5150784,
     "canal": "test",
     "notes": [
-        "3.1.29 : vues recadrees (arbre entier en vue Arbre et Nid, mare, vieux batiments, large)",
+        "3.1.30 : un objet brillant va toujours a la tour (plus de repartition tour/mare)",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.29",
-        "run": "45065597825",
-        "commit": "31bf6ae9530c"
+        "version": "3.1.30",
+        "run": "45066155433",
+        "commit": "091040aa9288"
     }
 }
