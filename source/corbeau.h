@@ -472,6 +472,8 @@ struct Plume { float x, y, vx, vy, rot, vr, vie, dur; bool actif; };
 struct Eclat { float x, y, t, dur, taille; bool actif; };
 
 static Corbeau cr[NCB];
+struct VisiteGP { uint8_t ph; float t, dur, sx, sy, ex, ey, th, choc, tCl, cl, tCri, ouv, sc, dy, tChoc; int8_t k, n, nf, mir; bool jeune, impact, cri; };      // visite d'un corbeau devant l'écran
+static VisiteGP GP; static Corbeau vcb; static float gVisGP = 60.0f; static uint32_t tToucher = 0;
 static Obj ob[NOB];
 static Plume pl[NPART];
 static Eclat fx[NFX];
@@ -838,6 +840,72 @@ static void dessinerOeuf(M5Canvas& g) {
     ligne(g, x, y - 5.5f, x - 1.6f, y - 2.6f, cf); if (p > 0.25f) ligne(g, x - 1.6f, y - 2.6f, x + 0.8f, y - 0.6f, cf);
     if (p > 0.5f) { ligne(g, x + 0.8f, y - 0.6f, x - 1.2f, y + 2.0f, cf); ligne(g, x, y - 5.5f, x + 2.2f, y - 3.0f, cf); }
     if (p > 0.75f) { ligne(g, x - 1.2f, y + 2.0f, x + 1.0f, y + 4.2f, cf); ligne(g, x + 2.2f, y - 3.0f, x + 3.4f, y - 0.4f, cf); }
+  }
+}
+
+// ---------- visite d'un corbeau : il vient vers l'écran, regarde, donne un coup de bec dans la vitre, repart ----------
+static void teteGP(M5Canvas& g, float cx, float cy, float S, float th, float ouv, float lid, int mir, bool jeune) {      // gros plan de la tête, vue de profil
+  const uint16_t NOIR = C(4, 3, 6), RIM = C(118, 24, 32), RIM2 = C(70, 10, 18);
+  float ct = cosf(th), st = sinf(th), bk = jeune ? 0.86f : 1.0f;
+  auto P = [&](float u, float v, float& X, float& Y) { u *= mir; X = cx + S * (u * ct - v * st); Y = cy + S * (u * st + v * ct); };
+  auto T = [&](float au, float av, float bu, float bv, float cu, float cw) { float x1, y1, x2, y2, x3, y3; P(au, av, x1, y1); P(bu, bv, x2, y2); P(cu, cw, x3, y3); tri(g, x1, y1, x2, y2, x3, y3, NOIR); };
+  auto fan = [&](const float* p, int n, float ccu, float ccv) { for (int i = 0; i < n; i++) { int j = (i + 1) % n; T(ccu, ccv, p[i * 2], p[i * 2 + 1], p[j * 2], p[j * 2 + 1]); } };
+  auto L = [&](float au, float av, float bu, float bv, uint16_t col) { float x1, y1, x2, y2; P(au, av, x1, y1); P(bu, bv, x2, y2); ligne(g, x1, y1, x2, y2, col); };
+  // épaules : masse noire dont le bord est fait de plumes hérissées
+  { const float corps[22] = {-19, 5, -26, 20, -31, 40, -36, 80, 60, 80, 54, 48, 44, 31, 30, 27, 14, 23, 4, 17, -2, 12}; fan(corps, 11, 0, 40); }
+  { const float pl[6][6] = {{-19, 6, -25, -2, -14, 4}, {-22, 12, -31, 5, -19, 10}, {-25, 20, -35, 15, -22, 19}, {4, 17, -2, 26, 12, 22}, {30, 27, 28, 36, 38, 28}, {44, 31, 46, 42, 52, 34}};
+    for (int i = 0; i < 6; i++) T(pl[i][0], pl[i][1], pl[i][2], pl[i][3], pl[i][4], pl[i][5]); }
+  // crâne arrondi
+  { const float cr_[28] = {-17, 4, -17, -2, -14, -8, -8, -12.5f, -1, -14.5f, 6, -13.5f, 11, -11, 14.5f, -7.5f, 17, -4, 17, 3, 10, 9, -2, 13, -12, 12, -18, 8}; fan(cr_, 14, 0, 0); }
+  // bec lourd et arqué, avec un crochet à la pointe
+  float pt = 17.0f + (42.0f - 17.0f) * bk, pc = 17.0f + (35.0f - 17.0f) * bk;
+  { const float sup[16] = {16, -7, 22, -10.5f, 30, -10.2f, 37, -6.2f, pt, 1.4f, pc, 2.4f, 27, 2.2f, 17, 2.6f}; float cu = 0, cw = 0; for (int i = 0; i < 8; i++) { cu += sup[i * 2]; cw += sup[i * 2 + 1]; } fan(sup, 8, cu / 8, cw / 8); }
+  { float lw[14] = {17, 2.0f, 27, 2.2f, 17.0f + (34.0f - 17.0f) * bk, 3.4f, 18.0f + (37.0f - 18.0f) * bk, 5.6f, 31, 8.4f, 23, 9.2f, 16.5f, 9};      // mandibule du bas, qui s'ouvre
+    float co = cosf(ouv), si = sinf(ouv), pu = 17.0f, pv = 4.5f, q[14], cu = 0, cw = 0;
+    for (int i = 0; i < 7; i++) { float dx = lw[i * 2] - pu, dy = lw[i * 2 + 1] - pv; q[i * 2] = pu + dx * co - dy * si; q[i * 2 + 1] = pv + dx * si + dy * co; cu += q[i * 2]; cw += q[i * 2 + 1]; }
+    fan(q, 7, cu / 7, cw / 7); }
+  // soies à la base du bec
+  { const float sb[5][6] = {{16, -6, 24, -13.6f, 19, -7}, {16, -5, 27, -12.6f, 21, -6.2f}, {16, -4, 21.5f, -14, 18, -6.6f}, {17.5f, -1, 29, -5.2f, 22, -2.5f}, {17, 1, 28, 0.2f, 21, 2.6f}};
+    for (int i = 0; i < 5; i++) T(sb[i][0], sb[i][1], sb[i][2], sb[i][3], sb[i][4], sb[i][5]); }
+  // plumes hirsutes de la gorge
+  for (int i = 0; i < 9; i++) {
+    float u = 14.0f - i * 3.1f, v = 7.0f + 5.0f * (1.0f - fabsf(u + 2.0f) / 16.0f) - ((i % 2) ? 1.5f : 0.0f), ln = 9.0f + 6.0f * ((i * 7) % 5) / 4.0f;
+    T(u + 1.8f, v - 1.0f, u - 1.6f, v - 0.6f, u - 2.6f - 0.4f * (i % 3), v + ln);
+  }
+  // lisérés rouge sombre : le volume sans masque géométrique
+  L(-11, -10, -3, -14, RIM); L(-3, -14, 6, -13, RIM); L(6, -13, 13, -9, RIM); L(13, -9, 17, -4, RIM);
+  L(16, -7, 22, -10.5f, RIM); L(22, -10.5f, 30, -10.2f, RIM); L(30, -10.2f, 37, -6.2f, RIM); L(37, -6.2f, pt, 1.4f, RIM);
+  L(-19, 6, -26, 20, RIM2); L(-26, 20, -31, 40, RIM2);
+  { const float br[5][4] = {{-8, 2, -14, 6}, {-6, 6, -12, 11}, {0, 8, -5, 13}, {-10, -4, -15, 0}, {-4, -9, -9, -6}}; for (int i = 0; i < 5; i++) L(br[i][0], br[i][1], br[i][2], br[i][3], RIM2); }
+  { float n1x, n1y, n2x, n2y; P(21.5f, -5.4f, n1x, n1y); P(24.6f, -4.4f, n2x, n2y); ligne(g, n1x, n1y, n2x, n2y, RIM2); ell(g, n1x, n1y, mxf(1.0f, 0.28f * S), mxf(1.0f, 0.18f * S), RIM2); }      // narine
+  // œil rouge qui brille
+  { float ex, ey; P(8.0f, -4.0f, ex, ey); float r = 4.4f * S * (jeune ? 1.1f : 1.0f);
+    disque(g, ex, ey, r * 1.55f, C(46, 3, 8)); disque(g, ex, ey, r * 1.28f, C(96, 6, 12)); disque(g, ex, ey, r, C(180, 12, 20)); disque(g, ex, ey, r * 0.78f, C(255, 54, 38));
+    disque(g, ex, ey, r * 0.36f, C(14, 0, 3)); disque(g, ex - r * 0.28f, ey - r * 0.3f, r * 0.18f, C(255, 214, 190));
+    if (lid > 0.02f) { float h = r * 1.5f * lid; ell(g, ex, ey - r * 1.5f + h, r * 1.6f, h, NOIR); } }
+}
+static void dessinerGP(M5Canvas& g) {
+  if (!GP.ph) return;
+  VueId vid_;
+  if (GP.ph == 1 || GP.ph == 5) {      // le corbeau vole vers l'écran en grossissant, ou s'éloigne
+    float u = lim(GP.t / GP.dur, 0.0f, 1.0f), x, y, s; Corbeau& c = vcb;
+    if (GP.ph == 1) { s = lerpf(0.3f, 3.3f, powf(u, 2.2f)); x = lerpf(GP.sx, 160.0f, powf(u, 1.2f)); y = lerpf(GP.sy, 165.0f, powf(u, 1.6f)) - 22.0f * sinf(3.1416f * u); c.d = (GP.sx < 160) ? 1 : -1; }
+    else { s = lerpf(3.3f, 0.35f, powf(u, 1.8f)); x = lerpf(160.0f, GP.ex, powf(u, 1.3f)); y = lerpf(165.0f, GP.ey, powf(u, 1.5f)) - 22.0f * sinf(3.1416f * u); c.d = (GP.ex > 160) ? 1 : -1; }
+    float cp = coup(c.phase);
+    c.s = s; c.x = x; c.y = y; c.dv = (float)c.d; c.pitch = 0.1f; c.pose = mixA(A_HAUT, A_BAS, cp); c.wl = 1; c.fan = 0; c.pied = false; c.bob = -2.4f * s * (cp - 0.4f); c.ha = -0.3f; c.hb = 0.19f; c.bec = 0; c.clin = 0; c.flash = 0; c.objet = 0; c.duvet = 0;
+    dessinerCorbeau(g, c);
+    return;
+  }
+  for (int y = 0; y < 240; y++) { float r, gg, b; cielRGB((float)y, r, gg, b); g.drawFastHLine(0, y, 320, CF(r * 0.6f, gg * 0.6f, b * 0.6f)); }
+  ztx = (GP.choc > 0.2f) ? sinf(GP.t * 90.0f) * GP.choc : 0.0f; zty = (GP.choc > 0.2f) ? cosf(GP.t * 77.0f) * GP.choc * 0.7f : 0.0f;
+  float S = 4.3f * GP.sc, cx = GP.mir > 0 ? 125.0f : 195.0f, cy = 112.0f + GP.dy;
+  if (GP.ph == 3 && GP.t < 0.5f) cy += 130.0f * (1.0f - pas(GP.t / 0.5f));      // il arrive par le bas
+  teteGP(g, cx, cy, S, GP.th, GP.ouv, GP.cl, GP.mir, GP.jeune);
+  if (GP.tChoc < 0.35f) {      // choc dans la vitre : anneaux et fissures au bout du bec
+    float ct = cosf(GP.th), st = sinf(GP.th), u = 42.0f * (GP.jeune ? 0.86f : 1.0f) * GP.mir, tx = cx + S * (u * ct - 1.4f * st), ty = cy + S * (u * st + 1.4f * ct);
+    float k = GP.tChoc / 0.35f, rr = 8.0f + 44.0f * k; uint16_t cl = CF(235 * (1 - k), 205 * (1 - k), 205 * (1 - k));
+    g.drawCircle((int)tx, (int)ty, (int)rr, cl); g.drawCircle((int)tx, (int)ty, (int)(rr * 0.62f), cl);
+    for (int i = 0; i < 6; i++) { float a = i * 1.047f + 0.4f; g.drawLine((int)tx, (int)ty, (int)(tx + cosf(a) * rr * 0.9f), (int)(ty + sinf(a) * rr * 0.9f), cl); }
   }
 }
 // ---------- logique ----------
@@ -1594,9 +1662,55 @@ static void majSocial(float dt) {
   }
 }
 
+// ---------- visite d'un corbeau devant l'écran : déroulement ----------
+static void departGP() { GP.ph = 5; GP.t = 0; GP.dur = 1.1f; GP.ex = rnd(-30.0f, 350.0f); GP.ey = rnd(-40.0f, 40.0f); son(SN_AILES, 230); }
+static void lancerVisite() {
+  if (GP.ph || V.ph != V_RIEN || panneau || appelOn || H.actif) return;
+  int n = 0, l[NAD];
+  for (int k = 0; k < NAD; k++) { Corbeau& c = cr[k]; if (c.etat == E_PERCHE && c.perch < 10 && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f) l[n++] = k; }
+  if (!n) return;
+  int k = l[random(n)]; Corbeau& c = cr[k];
+  c.etat = E_DEHORS; c.visible = false; c.t = 0; c.tfin = 1e6f; c.perch = -1; c.but = B_RIEN;      // il quitte la scène le temps de la visite
+  memset(&GP, 0, sizeof(GP)); GP.ph = 1; GP.dur = 1.7f; GP.k = (int8_t)k; GP.mir = random(2) ? 1 : -1; GP.jeune = (rnd01() < 0.45f || c.s < 0.8f);
+  GP.sx = rnd(50.0f, 270.0f); GP.sy = rnd(15.0f, 70.0f); GP.sc = 1.0f; GP.tChoc = 1.0f;
+  initCorbeau(vcb, 1.0f); vcb.etat = E_VOL; son(SN_AILES, 240);
+}
+static void majGP(float dt) {
+  gVisGP -= dt;
+  if (!GP.ph) {
+    if (gVisGP <= 0) { float rep = (millis() - tToucher) / 1000.0f; bool ok = rep > 20.0f || random(100) < 20; gVisGP = (rep > 20.0f) ? rnd(40.0f, 90.0f) : rnd(110.0f, 190.0f); if (ok) lancerVisite(); }
+    return;
+  }
+  GP.t += dt; vcb.phase += 3.2f * dt; if (vcb.phase >= 1) vcb.phase -= 1;
+  GP.choc *= expf(-dt * 12.0f); GP.tChoc += dt;
+  switch (GP.ph) {
+    case 1: if (GP.t >= GP.dur) { GP.ph = 3; GP.t = 0; GP.dur = rnd(3.0f, 5.5f); GP.n = (int8_t)(1 + random(3)); GP.nf = 0; GP.tCl = rnd(1.5f, 3.0f); GP.sc = 1.0f; GP.dy = 0; GP.tChoc = 1.0f; son(SN_ATTERRIT, 230); } break;
+    case 3:      // il regarde l'écran, penche la tête, cligne, parfois appelle
+      GP.th = -0.2f + 0.28f * sinf(GP.t * 0.9f) + 0.06f * sinf(GP.t * 2.7f);
+      GP.tCl -= dt; if (GP.tCl <= 0) { GP.cl = 1.0f; GP.tCl = rnd(2.0f, 4.0f); } if (GP.cl > 0) GP.cl = mxf(0.0f, GP.cl - dt * 6.0f);
+      if (!GP.cri && GP.t > 1.2f && random(1000) < 12) { GP.cri = true; GP.tCri = 0; sonCri(); }
+      if (GP.cri) { GP.tCri += dt; GP.ouv = 0.38f * sinf(3.1416f * lim(GP.tCri / 0.7f, 0.0f, 1.0f)); if (GP.tCri > 0.7f) { GP.cri = false; GP.ouv = 0; } }
+      if (GP.t >= GP.dur) { GP.ph = 4; GP.t = 0; GP.nf = 0; GP.impact = false; GP.ouv = 0; }
+      break;
+    case 4: {      // coups de bec dans la vitre
+      float cyc = 0.95f, tc = GP.t - GP.nf * cyc;
+      if (tc >= cyc) { GP.nf++; GP.impact = false; tc -= cyc; if (GP.nf >= GP.n) { departGP(); break; } }
+      if (tc < 0.35f) { float e = pas(tc / 0.35f); GP.sc = 1.0f - 0.06f * e; GP.dy = -4.0f * e; GP.th += (-0.1f - GP.th) * mnf(1.0f, dt * 6.0f); }
+      else if (tc < 0.43f) { float u = (tc - 0.35f) / 0.08f; GP.sc = lerpf(0.94f, 1.2f, u); GP.dy = lerpf(-4.0f, 16.0f, u); }
+      else {
+        if (!GP.impact) { GP.impact = true; GP.choc = 5.0f; GP.tChoc = 0; son(SN_CROC, 255); son(SN_PLUMES, 110); vib(40); }
+        float u = pas((tc - 0.43f) / 0.52f); GP.sc = lerpf(1.2f, 1.0f, u); GP.dy = lerpf(16.0f, 0.0f, u);
+      }
+    } break;
+    default:
+      if (GP.t >= GP.dur) { GP.ph = 0; Corbeau& c = cr[GP.k]; c.etat = E_DEHORS; c.visible = false; c.t = 0; c.tfin = 0.4f; }      // il revient dans la scène
+      break;
+  }
+}
+
 static void majGlobal(float dt) {
   gAction -= dt; gPoof -= dt; gObjet -= dt; gAttrib -= dt; gCalme -= dt;
-  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt);
+  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt);
   if (H.actif) H.ext += (1.0f - H.ext) * mnf(1.0f, dt * 5.0f); else if (H.ext > 0) { H.ext -= dt * 4.0f; if (H.ext < 0) H.ext = 0; }
   for (int i = 0; i < NPROJ; i++) {      // objets lancés : trajectoire, puis ils retombent et deviennent de l'objet au sol
     Proj& p = proj[i]; if (!p.actif) continue;
@@ -1761,7 +1875,7 @@ static void dessinerPanneau() {
   tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
   tuile(g, 4, 100, 153, 32, "Visiteur mystérieux", VIS[OP.vis]); tuile(g, 163, 100, 153, 32, "Secousse", SEC[OP.sec]);
   tuile(g, 4, 135, 153, 32, "Vibration", OP.vib ? "Oui" : "Non"); tuile(g, 163, 135, 153, 32, "Ambiance", AMB[OP.amb]);
-  tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps ? "Oui" : "Non"); tuile(g, 163, 170, 153, 32, "Menu principal", "Retour");
+  tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps ? "Oui" : "Non"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
   g.fillRoundRect(4, 206, 312, 30, 8, C(110, 24, 30)); g.drawRoundRect(4, 206, 312, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225)); g.drawString("FERMER", 160, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
@@ -1792,7 +1906,7 @@ static void touchPanneau(int x, int y) {
     case 4: OP.vib = OP.vib ? 0 : 1; prefs.putUChar("cbvib", OP.vib); if (OP.vib) vibrer(90); break;
     case 5: OP.amb = (uint8_t)((OP.amb + 1) % 3); prefs.putUChar("cbamb", OP.amb); appliquerAmb(); ambChange = true; break;
     case 6: OP.fps = OP.fps ? 0 : 1; prefs.putUChar("cbfps", OP.fps); debug = (OP.fps != 0); break;
-    default: panneau = false; page = 6; bip(700, 40); return;
+    default: fermerPanneau(); lancerVisite(); return;
   }
   panSale = true;
 }
@@ -1889,6 +2003,7 @@ static void ouvrir() {
   cr[PC].etat = E_OFF; cr[PC].visible = false;
   zoomC = prefs.getUChar("cbvue", 0) ? 1.0f : 0.0f; zoomU = zoomC; pinceOn = false;
   if (zoomC > 0.5f) { if (creerLarge()) { zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs); fondAct = &fondL; } else { zoomC = zoomU = 0.0f; } }
+  memset(&GP, 0, sizeof(GP)); gVisGP = rnd(50.0f, 90.0f); tToucher = millis();
   memset(&OE, 0, sizeof(OE)); OE.ponte = -1; gOeuf = rnd(40.0f, 70.0f); agePous = 0; panneau = false; panSale = true; ambChange = false; oeufsSale = false; appliquerNb();
   gAction = 3.0f; gPoof = rnd(14, 24); gObjet = rnd(24, 40); gAttrib = 0; choix = 0; presse = -1; tDernier = millis(); tSec = millis(); nImg = 0; fps = 0; msDessin = 0; volVu = false;
   if (R.actif[M_SON] && !lectureEnCours && !M5.Speaker.isEnabled()) { M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume); }
@@ -1922,6 +2037,7 @@ static void dessiner() {
   else if (zoomU != zoomC) { zoomU = zoomC; plein = true; }
   { float zn = lerpf(1.0f, 0.6f, pas(zoomU)); if (zn != zs) { zs = zn; ztx = zax * (1 - zs); zty = zay * (1 - zs); plein = true; } }
   fondAct = (zoomU > 0.5f && fondLOk) ? &fondL : &fond;
+  if (GP.ph) plein = true;
   // volume affiché par le programme sur l'écran : on redessine tout quand il disparaît
   if (millis() < finAffVolume) volVu = true; else if (volVu) { volVu = false; plein = true; }
   if (dernierSecouement != secVu) { if (secVu != 0 || dernierSecouement != 0) { if (millis() - dernierSecouement < 600) secousse(); } secVu = dernierSecouement; }
@@ -1942,6 +2058,7 @@ static void dessiner() {
   for (int e = 0; e < NENT; e++) anc[e] = nouv[e];
   Rect barre; barre.x0 = 0; barre.y0 = H_SCENE; barre.x1 = 320; barre.y1 = 240;
   if (plein || barreSale) restaurer(barre);       // ce qui a pu déborder sur la barre est effacé
+  dessinerGP(cv);
   M5.Display.startWrite();
   if (plein) { cv.pushSprite(0, 0); plein = false; }
   else { for (int i = 0; i < nListe; i++) pousser(liste[i]); if (barreSale) pousser(barre); }
@@ -1995,6 +2112,7 @@ static void appui(int x, int y) {
     case 0: {
       int b = trouverCorbeau((float)x, (float)y, 1.0f / zs);
       if (b >= 0) { reagirToucher(cr[b], (float)x, (float)y); D.bas = false; return; }
+      if (V.ph == V_RIEN && !GP.ph && hypotf((float)(sxp - 160), (float)(syp - 95)) < 42.0f) { tpCible = 3; tpT0 = m; tpX = (float)x; D.bas = false; return; }      // toucher long au centre : un corbeau vient
       if (V.ph == V_RIEN && x >= 70 && x < 244 && fabsf(y - ytop((float)x)) < 14) { tpCible = 2; tpT0 = m; tpX = (float)x; D.bas = false; return; }
       lacher(choix, (float)x); D.bas = false;
     } break;
@@ -2053,8 +2171,10 @@ static void relache() {
 static void toucher(const m5::touch_detail_t& t) {
   if (!ouvert || !fondOk) return;
   if (panneau) { if (t.wasPressed()) touchPanneau(t.x, t.y); return; }
+  if (t.isPressed() || t.wasPressed()) tToucher = millis();
+  if (GP.ph >= 3) { if (t.wasPressed() && GP.ph != 5) departGP(); return; }
   if (pinceOn) return;
-  if (tpCible && t.isPressed() && !tpFait && millis() - tpT0 > 600) { tpFait = true; if (tpCible == 1) bras(); else invoquer(); }
+  if (tpCible && t.isPressed() && !tpFait && millis() - tpT0 > 600) { tpFait = true; if (tpCible == 1) bras(); else if (tpCible == 3) lancerVisite(); else invoquer(); }
   if (t.wasReleased()) { if (tpCible && !tpFait) { if (tpCible == 1) gerbe(); else lacher(choix, tpX); } tpCible = 0; relache(); }
   if (t.wasPressed()) appui(t.x, t.y);
   else if (t.isPressed()) glisse(t.x, t.y);
