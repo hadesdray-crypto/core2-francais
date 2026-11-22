@@ -31,6 +31,35 @@ static int8_t sent = -1;                      // sentinelle du sommeil collectif
 static int8_t lastM[NAD][NAD];                // dernier lien vu dans monde.h (-3 à +3) : pour répercuter ses changements dans la colonie
 struct Suit { int8_t k, dest; float t; };
 static Suit pend[2];
+// ---- BLOC Y (3.1.11) : parent attitré du petit corbeau, entraide, protection, croissance (la logique est dans la section « BLOC Y » plus bas) ----
+struct Pet { uint8_t ver, stade, par, rare, nour, res; uint16_t age; };      // le petit de l'œuf, mémorisé (clé cbpet) : stade 0 aucun, 1 poussin, 2 jeune, 3 grand ; par : son parent attitré (255 = aucun) ; nour : repas reçus ; age : secondes
+static Pet PE;
+struct Rg { uint8_t on, aide, prot, vit; };      // réglages « Famille » (clés cbfam, cbfaid, cbfpro, cbfvit) : activée ; entraide 0 non, 1 selon le caractère, 2 tous ; protection 0 douce, 1 normale, 2 forte ; croissance 0 lente, 1 normale, 2 rapide
+static Rg RG = {1, 1, 1, 1};
+static bool saleP = false, restau = false;
+static int8_t pNext = -1, pondeur = -1, hostY = -1, hostCible = 0;      // parent désigné pour le prochain petit ; celui qui a pondu l'œuf de la branche ; corbeau qui menace le petit ; 0 : il menace le petit, 1 : son parent
+static const float Y_JEUNE = 110.0f, Y_GRAND = 300.0f;      // âge (secondes) où le poussin devient jeune, puis grand
+static float faimP = 0.4f, tSoin = 8.0f, tAide = 20.0f, tMenP = 0.0f, tBat = 15.0f, tHost = 90.0f, tSauvP = 0.0f, tCriY = 0.0f, tChaY = 0.0f, tCriP = 4.0f, tEssai = 40.0f, tSurv = 5.0f, tProche = 20.0f;
+static bool rage[NM];
+static float tmis[NM];
+struct MenY { bool on; uint8_t kind; int8_t qui; float x, y, tOff; };      // menace près du petit : 1 visiteur, 2 main, 3 corbeau hostile en vol, 4 objet lancé, 5 hostile qui vient le menacer
+static MenY ym;
+static bool soinOn() { return pret && RG.on && PE.stade >= 1 && PE.stade <= 2 && cr[PC].etat != E_OFF && cr[PC].visible; }
+static bool grand() { return !RG.on || (PE.stade != 1 && PE.stade != 2); }      // le petit est grand (ou la famille coupée) : un nouvel œuf peut le remplacer
+static float yInt(int k) {      // intensité de la défense : réglage Protection x audace du corbeau (un aidant protège moins fort que le parent)
+  static const float PR[3] = {0.55f, 0.8f, 1.0f};
+  float a = (k >= 0 && k < NM) ? S.aud[k] / 255.0f : 0.5f;
+  return PR[RG.prot > 2 ? 1 : RG.prot] * (0.55f + 0.45f * a) * ((k == PE.par) ? 1.0f : 0.8f);
+}
+static float coteY(float off) {      // un point de la grosse branche, à côté du petit
+  float cx = cr[PC].fx, x = cx + off; if (x < 84.0f || x > 226.0f) x = cx - off; return lim(x, 84.0f, 226.0f);
+}
+static void sauverY(bool force) {
+  if (!pret) return;
+  if (force && PE.stade >= 1 && PE.stade <= 2) saleP = true;
+  if (!saleP || (!force && tSauvP < 90.0f)) return;
+  PE.age = (uint16_t)mnf(agePous, 60000.0f); prefs.putBytes("cbpet", &PE, sizeof(PE)); saleP = false; tSauvP = 0.0f;
+}
 
 static int8_t& lien(int a, int b) { if (a > b) { int t = a; a = b; b = t; } return S.lien[a * NM - a * (a + 3) / 2 + b - 1]; }
 static void changer(int a, int b, int d) {
@@ -73,6 +102,7 @@ static void appliquer(Corbeau& c, int k) {      // les traits de la colonie devi
   c.pCal = S.cal[k] / 255.0f; c.pBav = S.soc[k] / 255.0f; c.pJou = S.cur[k] / 255.0f; c.pCra = 1.0f - S.aud[k] / 255.0f;
 }
 static void sauver(bool force) {
+  sauverY(force);
   if (!pret || !sale) return;
   if (!force && tSauv < 90.0f) return;
   S.age = (uint16_t)mnf(ageF, 60000.0f);
@@ -83,6 +113,7 @@ static bool libre(int k) {      // perché sur l'arbre, sans rien à faire de pa
   if (k < 0 || k >= NAD) return false;
   const Corbeau& c = cr[k];
   if (k < 2 && S.fph >= F_NID) return false;      // le couple a mieux à faire
+  if (k == PE.par && soinOn()) return false;      // le parent attitré veille sur son petit
   return c.etat == E_PERCHE && c.visible && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f && !mo::rt[k].away;
 }
 static bool calme() {
@@ -206,9 +237,9 @@ static const float NX = 88.0f, NY = 106.0f;      // le nid : sur une fourche au 
 static const float CUPX = NX + 3.0f, RIMX = NX + 14.0f;      // où la femelle couve ; où se pose un parent qui apporte quelque chose ou qui monte la garde
 static const int NB_NID = 16;                    // brindilles d'un nid fini
 static const float T_SOLO = 45.0f, T_COUVE = 150.0f, T_POUS = 200.0f, T_JEUN = 70.0f, T_VIDE = 120.0f;
-enum { M_RIEN = 0, M_VERS_BRIN, M_PIQUE, M_VERS_NID, M_DEPOSE, M_COUPLE, M_VERS_COUVE, M_NID, M_GARDE };
-struct Mis { uint8_t ph, kind, porte; float t, def; };      // mission d'un parent (0 = le mâle, 1 = la femelle) ; kind : 1 brindille, 2 nourriture ; porte : ce qu'il tient au bec ; t avance image par image (pose) ; def : posture de défense (0 à 1)
-static Mis mis[2];
+enum { M_RIEN = 0, M_VERS_BRIN, M_PIQUE, M_VERS_NID, M_DEPOSE, M_COUPLE, M_VERS_COUVE, M_NID, M_GARDE, M_Y_VERS, M_Y_DONNE, M_Y_GARDE, M_Y_VEILLE, M_Y_MENACE, M_Y_ESSAI };      // M_Y_* : missions du parent attitré, des aidants et du petit (bloc Y)
+struct Mis { uint8_t ph, kind, porte; float t, def, tz, dur; };      // mission d'un parent (0 = le mâle, 1 = la femelle) ; kind : 1 brindille, 2 nourriture ; porte : ce qu'il tient au bec ; t avance image par image (pose) ; def : posture de défense (0 à 1)
+static Mis mis[NM];
 struct Par { bool on, go; uint8_t step; float t, sx; };
 static Par par;
 struct Men { bool on; uint8_t kind; int8_t qui; float x, y, tOff; };      // menace sur le nid : 1 visiteur, 2 main, 3 corbeau étranger, 4 objet lancé
@@ -231,11 +262,11 @@ static bool parentLibre(int p) {
 static bool auNid(int p) { return mis[p].ph == M_NID && cr[p].etat == E_PERCHE && cr[p].but == B_FAM; }
 static void versPoint(int p, float x, float y, uint8_t ph) {
   Corbeau& c = cr[p]; c.perch = -1; c.item = -1; c.rapporte = false; c.fuite = false; c.pj = -1;
-  mis[p].ph = ph; mis[p].t = 0.0f;
+  mis[p].ph = ph; mis[p].t = 0.0f; mis[p].tz = 0.0f; mis[p].dur = 0.0f; tmis[p] = 0.0f;
   decoller(c, x, y, B_FAM);
 }
 static void arrive(Corbeau& c, int idx) {      // fin de l'atterrissage d'un parent sur un point de sa mission
-  int p = (idx >= 0 && idx < 2) ? idx : -1;
+  int p = (idx >= 0 && idx < NM) ? idx : -1;
   if (p < 0 || mis[p].ph == M_RIEN) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = 4; return; }
   Mis& m = mis[p]; c.t = 0.0f; c.ox = c.oy = 0.0f; c.act = A_IMMO; c.tAct = 0.0f; c.dAct = rnd(1.5f, 3.0f); c.sub = 0; c.peck = 0.0f; m.t = 0.0f;
   switch (m.ph) {
@@ -244,15 +275,21 @@ static void arrive(Corbeau& c, int idx) {      // fin de l'atterrissage d'un par
     case M_VERS_COUVE: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (croiss() >= 0.35f) ? -1 : 1; m.ph = M_NID; break;
     case M_COUPLE: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (cr[1 - p].x >= c.x) ? 1 : -1; break;
     case M_GARDE: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (men.x >= c.fx) ? 1 : -1; break;
+    case M_Y_VERS: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (cr[PC].x >= c.x) ? 1 : -1; m.ph = M_Y_DONNE; break;
+    case M_Y_GARDE: case M_Y_VEILLE: case M_Y_MENACE: c.etat = E_PERCHE; c.tfin = 1e9f; posture(c); c.d = (((m.ph == M_Y_MENACE && hostCible == 1 && PE.par < NAD) ? cr[PE.par].x : cr[PC].x) >= c.x) ? 1 : -1; break;
+    case M_Y_ESSAI: c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(3.0f, 6.0f); posture(c); m.ph = M_RIEN; break;
     default: c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = 4; m.ph = M_RIEN; break;
   }
 }
 static void sol(Corbeau& c, int idx, float dt) {      // au sol : il ramasse une brindille ou de la nourriture (tête qui plonge trois fois), puis la porte au nid
-  (void)dt; if (idx < 0 || idx >= 2) return;
+  (void)dt; if (idx < 0 || idx >= NM) return;
   Mis& m = mis[idx]; if (m.ph != M_PIQUE) return;
   float dip = fabsf(sinf(m.t / 0.42f * 3.1416f));
   c.haC = lerpf(-0.3f, 0.55f, dip); c.hbC = lerpf(0.2f, 0.8f, dip); c.pitchC = c.pr * 0.45f - 0.30f * dip;
-  if (m.t > 1.3f) { uint8_t k = (m.kind == 2) ? 2 : 1; versPoint(idx, RIMX, NY - 7.5f, M_VERS_NID); mis[idx].porte = k; }
+  if (m.t > 1.3f) {
+    if (m.kind == 3) { float tx = coteY(c.x < cr[PC].fx ? -17.0f : 17.0f); versPoint(idx, tx, ytop(tx) + 0.4f, M_Y_VERS); mis[idx].porte = 2; mis[idx].kind = 3; }      // ce qu'il a trouvé est pour le petit
+    else { uint8_t k = (m.kind == 2) ? 2 : 1; versPoint(idx, RIMX, NY - 7.5f, M_VERS_NID); mis[idx].porte = k; }
+  }
 }
 static void debutParade() {
   memset(&par, 0, sizeof(par)); par.on = true; S.fph = F_PARADE; ageF = 0.0f;
@@ -351,7 +388,7 @@ static void eclosion() {      // les œufs s'ouvrent : des poussins duveteux au 
 static void envol() {      // un jeune quitte le nid : le premier rejoint le groupe quand la place est libre, les autres s'en vont
   if (S.nPou == 0) return;
   S.nPou--; S.jeune++; sale = true;
-  if (cr[PC].etat == E_OFF && random(100) < 70) { naissance(NX + 2.0f, NY - 5.0f, false); agePous = 140.0f; }
+  if ((cr[PC].etat == E_OFF || grand()) && random(100) < 70) { pNext = 1; naissance(NX + 2.0f, NY - 5.0f, false); agePous = 140.0f; if (PE.stade == 1) { PE.stade = 2; PE.age = 140; saleP = true; } }
   else minisEnvol(NX, NY - 12.0f, 1);
   son(SN_AILES, 170); sonCri(); plumes(NX, NY - 10.0f, 6);
 }
@@ -385,7 +422,7 @@ static void pilote(float h) {      // une tranche de 0,25 s : les missions des d
   }
   switch (S.fph) {
     case F_SOLO:
-      if (ageF > T_SOLO && calme() && parentLibre(0) && parentLibre(1) && mo::nbAilleurs() == 0) debutParade();
+      if (RG.on && ageF > T_SOLO && calme() && parentLibre(0) && parentLibre(1) && mo::nbAilleurs() == 0) debutParade();
       break;
     case F_NID:
       tBrin -= h;
@@ -410,7 +447,7 @@ static void pilote(float h) {      // une tranche de 0,25 s : les missions des d
       if (S.nPou == 0) { S.fph = F_VIDE; ageF = 0.0f; S.gen++; sale = true; sauver(true); finMission(1); }
       break;
     case F_VIDE:
-      if (ageF > T_VIDE) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; sale = true; sauver(true); }
+      if (RG.on && ageF > T_VIDE) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; sale = true; sauver(true); }
       break;
     default: break;
   }
@@ -485,25 +522,27 @@ static void boutBec(const Corbeau& c, float& X, float& Y, float& dx, float& dy) 
   dx = c.dv * (cb * ct + sb * st); dy = -cb * st + sb * ct;
 }
 static void sur(M5Canvas& g, int k) {      // ce que le corbeau k porte au bec : une brindille, un morceau de nourriture, un morceau offert
-  if (!pret || k < 0 || k >= 2 || !cr[k].visible) return;
+  if (!pret || k < 0 || k >= NM || !cr[k].visible) return;
   const Corbeau& c = cr[k]; float X, Y, dx, dy; boutBec(c, X, Y, dx, dy); const float s = c.s;
   if (mis[k].porte == 1) {
     float cs = cosf(0.35f), sn = sinf(0.35f), px = -dy, py = dx, tx = dx * cs + px * sn, ty = dy * cs + py * sn, cx = X - dx * 3.0f * s, cy = Y - dy * 3.0f * s;
     ligne(g, cx - tx * 6.0f * s, cy - ty * 6.0f * s, cx + tx * 9.0f * s, cy + ty * 9.0f * s, C(96, 44, 22)); ligne(g, cx - tx * 6.0f * s, cy - ty * 6.0f * s + 0.8f, cx + tx * 9.0f * s, cy + ty * 9.0f * s + 0.8f, C(60, 26, 14));
   } else if (mis[k].porte == 2) {
-    disque(g, X - dx * 1.5f * s, Y - dy * 1.5f * s, 1.5f * s, C(200, 54, 60)); disque(g, X - dx * 1.9f * s - 0.4f, Y - dy * 1.9f * s - 0.6f, 0.6f * s, C(255, 170, 170));
+    float mx = X - dx * 1.5f * s, my = Y - dy * 1.5f * s;
+    if (mis[k].ph == M_Y_DONNE && k != PC) { float X2, Y2, d2, e2; boutBec(cr[PC], X2, Y2, d2, e2); float u = lim((mis[k].t - 0.25f) / 0.45f, 0.0f, 1.0f); mx = lerpf(mx, X2, u); my = lerpf(my, Y2, u); }      // le morceau passe du bec du parent à celui du petit
+    disque(g, mx, my, 1.5f * s, C(200, 54, 60)); disque(g, mx - 0.4f, my - 0.6f, 0.6f * s, C(255, 170, 170));
   }
-  if (par.on && par.step == 2) {
+  if (k < 2 && par.on && par.step == 2) {
     float u = lim((par.t - 2.2f) / 1.1f, 0.0f, 1.0f); bool tient = (k == 0) ? (par.t < 3.3f) : (par.t >= 3.3f && par.t < 4.6f);
     if (tient) { float mx = X, my = Y; if (u > 0.0f && u < 1.0f) { float X2, Y2, d2, e2; boutBec(cr[1 - k], X2, Y2, d2, e2); mx = lerpf(X, X2, (k == 0) ? u : 1.0f - u); my = lerpf(Y, Y2, (k == 0) ? u : 1.0f - u); }
       disque(g, mx, my - 0.5f * s, 1.3f * s, C(200, 54, 60)); disque(g, mx - 0.4f * s, my - 0.9f * s, 0.5f * s, C(255, 170, 170)); }
   }
 }
 static void pose(Corbeau& c, int idx, float dt) {      // attitudes des parents : lissage, partage, dépôt, couvaison, défense du nid
-  if (!pret || idx < 0 || idx >= 2) return;
+  if (!pret || idx < 0 || idx >= NM) return;
   Mis& m = mis[idx]; m.t += dt;
   const bool dort = (c.act == A_DORT);
-  if (par.on && (par.step == 1 || par.step == 2) && c.etat == E_PERCHE) {
+  if (idx < 2 && par.on && (par.step == 1 || par.step == 2) && c.etat == E_PERCHE) {
     const Corbeau& o = cr[1 - idx]; c.d = (o.x >= c.x) ? 1 : -1; const float T = par.t;
     if (par.step == 1) {
       bool actif = (idx == 1) == (T < 4.5f);      // la femelle lisse d'abord, puis le mâle
@@ -516,7 +555,12 @@ static void pose(Corbeau& c, int idx, float dt) {      // attitudes des parents 
     return;
   }
   const bool surNid = (c.etat == E_PERCHE && c.but == B_FAM && (m.ph == M_NID || m.ph == M_GARDE));
-  m.def += (((men.on && surNid) ? 1.0f : 0.0f) - m.def) * mnf(1.0f, dt * 6.0f);
+  float tg = (men.on && surNid) ? 1.0f : 0.0f, dx0 = men.x;
+  if (soinOn() && c.etat == E_PERCHE) {      // défense du petit : le parent (ou un aidant) ailes ouvertes face à l'intrus ; le corbeau hostile fait sa parade de menace
+    if (c.but == B_FAM && m.ph == M_Y_MENACE && m.t > 0.4f) { tg = 0.85f; dx0 = (hostCible == 1 && PE.par < NAD) ? cr[PE.par].x : cr[PC].x; }
+    else if (ym.on && ((c.but == B_FAM && m.ph == M_Y_GARDE) || (idx == PE.par && ym.kind == 5 && hostCible == 1 && c.but != B_FAM))) { tg = yInt(idx); dx0 = ym.x; }
+  }
+  m.def += (tg - m.def) * mnf(1.0f, dt * 6.0f);
   if (m.ph == M_DEPOSE && c.etat == E_PERCHE) {      // il penche la tête dans le nid et y glisse la brindille, ou la nourriture
     float dip = sinf(3.1416f * lim(m.t / 1.4f, 0.0f, 1.0f)); c.haC = lerpf(c.ha0, 0.75f, dip); c.hbC = c.haC + 0.5f; c.pitchC = c.pr - 0.2f * dip;
   } else if (m.ph == M_NID && c.etat == E_PERCHE) {      // elle couve : corps bas dans la coupe, de temps en temps elle retourne les œufs du bec
@@ -527,13 +571,21 @@ static void pose(Corbeau& c, int idx, float dt) {      // attitudes des parents 
       if (layT > 0.0f) { float e = sinf(3.1416f * lim((1.5f - layT) / 1.5f, 0.0f, 1.0f)); c.ruf = 0.6f * e; c.pitchC -= 0.12f * e; c.bec = mxf(c.bec, 0.4f * e); }
     }
   }
+  if (idx == PC && soinOn()) {      // le petit : réclame (tête levée, bec ouvert) quand il a faim, se fait tout petit quand on menace
+    float bg = lim((faimP - 0.5f) * 2.2f, 0.0f, 1.0f);
+    if (ym.on) { c.pitchC = c.pr * 0.82f; c.bob += 0.8f * c.s; }
+    else if (bg > 0.02f && !dort && c.etat == E_PERCHE) { c.haC = c.ha0 - 0.22f * bg; c.hbC = c.haC + 0.49f; c.bec = mxf(c.bec, bg * (0.45f + 0.55f * sinf(tAnim * 12.0f))); c.pitchC = c.pr - 0.08f * bg; }
+  }
+  if (m.ph == M_Y_DONNE && c.etat == E_PERCHE && idx < NAD) {      // il penche la tête vers le bec du petit et lui passe le morceau
+    float dip = sinf(3.1416f * lim(m.t / 1.6f, 0.0f, 1.0f)); c.haC = lerpf(c.ha0, 0.5f, dip); c.hbC = c.haC + 0.45f; c.pitchC = c.pr - 0.12f * dip;
+  }
   if (m.def > 0.02f && !dort) {      // défense : ailes à demi ouvertes arquées vers l'avant, plumes de la gorge hérissées, bec ouvert, face à l'intrus
-    c.d = (men.x >= c.x) ? 1 : -1; c.wlC = 0.9f * m.def; c.poseC = mixA(A_PLANE, A_FLARE, 0.55f * m.def); c.fanC = m.def; c.ruf = m.def;
+    c.d = (dx0 >= c.x) ? 1 : -1; c.wlC = 0.9f * m.def; c.poseC = mixA(A_PLANE, A_FLARE, 0.55f * m.def); c.fanC = m.def; c.ruf = m.def;
     c.pitchC = c.pr - 0.18f * m.def; c.haC = c.ha0 - 0.12f * m.def; c.hbC = c.haC + 0.45f; c.bec = mxf(c.bec, 0.55f * m.def * (0.5f + 0.5f * sinf(tAnim * 12.0f)));
   }
 }
 static bool enService(const Corbeau& c) {      // un parent qui a des œufs ou des petits ne rejoint ni la nuée du visiteur ni l'appel
-  int k = (int)(&c - cr); return pret && k >= 0 && k < 2 && nichee();
+  int k = (int)(&c - cr); return pret && k >= 0 && ((k < 2 && nichee()) || ((k == PE.par || k == PC) && soinOn()));
 }
 static void majFam(float dt) {      // à chaque image : poussins qui réclament, couverts la nuit, ponte
   if (layT > 0.0f) { layT -= dt; if (layT <= 0.0f && S.nEuf < 3) { S.nEuf++; sale = true; son(SN_POP_APP, 80); plumes(NX, NY - 6.0f, 2); } }      // l'œuf apparaît dans le nid
@@ -550,6 +602,226 @@ static void majFam(float dt) {      // à chaque image : poussins qui réclament
     if (t > beg[i] && beg[i] < 0.2f && tCri <= 0.0f && random(100) < 8) { son(SN_GAZ, 95); tCri = 1.5f; }
     beg[i] += (t - beg[i]) * mnf(1.0f, dt * 5.0f);
   }
+}
+
+// ======================= BLOC Y (3.1.11) : parent attitré, entraide, protection, nourriture rare =======================
+// Le petit corbeau de l'œuf (cr[PC]) a un parent attitré (PE.par), mémorisé (clé cbpet). Il le nourrit, le garde, veilleY sur lui la nuit et l'encourage à voler jusqu'à ce qu'il soit grand (stade 3).
+// Les autres corbeaux aident (aident à nourrir et à garder), ignorent ou menacent le petit selon leur caractère et leur lien avec le parent.
+// Les missions réutilisent celles du nid (mis[], versPoint, arrive, pose) : phases M_Y_*. Tout est coupé par le réglage « Famille » (RG.on).
+static bool paisible() { return V.ph == V_RIEN && !GP.ph && !appelOn && !panneau && tAlerte <= 0.0f && !H.actif; }
+static bool libreY(int k) { return k >= 0 && k < NAD && k != PC && parentLibre(k) && mis[k].ph == M_RIEN && !(k < 2 && (precieux() || par.on)); }
+static int attitudeY(int k) {      // 0 aide le petit, 1 l'ignore, 2 le menace : sociabilité, calme, force, lien avec le parent (amis et couple : plus volontiers) et audace
+  if (k < 0 || k >= NAD || k == PE.par || RG.aide == 0 || cr[k].etat == E_OFF) return 1;
+  if (RG.aide == 2) return 0;
+  int P = (PE.par < NAD) ? (int)PE.par : -1, l = (P >= 0) ? (int)lien(P, k) : 0;
+  int b = (int)S.soc[k] + (int)S.cal[k] / 2 + (255 - (int)S.frc[k]) / 4 + 2 * l;
+  if (b >= 290) return 0;
+  if (b < 190 && S.aud[k] >= 130) return 2;
+  return 1;
+}
+static void rageSet(int k, bool on) {      // un parent dont le petit a faim se bat plus fort pour un morceau : sa force monte d'un cran tant que dure la faim
+  if (k < 0 || k >= NAD || rage[k] == on) return;
+  rage[k] = on; int v = (int)mo::forceK[k] + (on ? 1 : -1); if (v < 0) v = 0; if (v > 4) v = 4; mo::forceK[k] = (int8_t)v;
+}
+static int meilleurParent() {      // adoption : à défaut de parent désigné (ou s'il n'est plus là), l'adulte le plus bienveillant
+  int b = -1, sc = -1;
+  for (int k = 0; k < NAD; k++) { if (cr[k].etat == E_OFF) continue; int v = (int)S.soc[k] + (int)S.cal[k] / 2 + (k < 2 ? 40 : 0) + (int)random(30); if (v > sc) { sc = v; b = k; } }
+  return b;
+}
+static void poserPetit(float x) {      // le petit est posé sur la grosse branche (c'est là que ses parents viennent le nourrir)
+  Corbeau& c = cr[PC]; x = lim(x, 84.0f, 226.0f);
+  c.perch = -1; c.fx = x; c.fy = ytop(x) + 0.4f; c.fp = (ytop(x + 4.0f) - ytop(x - 4.0f)) / 8.0f; c.pied = true; c.vx = c.vy = 0.0f; c.etat = E_PERCHE; c.but = B_RIEN; c.sub = 0; c.ox = c.oy = 0.0f;
+  c.pitch = c.pitchC = c.pr; c.pv = 0.0f; c.dv = (float)c.d; c.visible = true;
+  float hx, hy; hancheC(c.s, c.pitch, c.dv, hx, hy); c.x = c.fx - hx; c.y = c.fy - JAMBE * c.s - hy;
+}
+static float xPetitLibre() {      // un point de la branche entre deux perchoirs, le plus loin des autres corbeaux
+  static const float XS[3] = {116.0f, 160.0f, 203.0f}; int best = 1; float bd = -1.0f;
+  for (int i = 0; i < 3; i++) { float d = 1e9f; for (int k = 0; k < NAD; k++) if (cr[k].etat == E_PERCHE && cr[k].visible) { float q = fabsf(cr[k].fx - XS[i]); if (q < d) d = q; } if (d > bd) { bd = d; best = i; } }
+  return XS[best];
+}
+static void debutPetit(bool rare) {      // appelé par naissance() : le petit a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid), sinon un adoptant
+  if (!pret || restau) return;
+  int p = pNext; pNext = -1;
+  if (!RG.on) { PE.stade = 0; return; }
+  if (p < 0 || p >= NAD || cr[p].etat == E_OFF) p = meilleurParent();
+  PE.ver = 1; PE.stade = 1; PE.par = (p >= 0) ? (uint8_t)p : 255; PE.rare = rare ? 1 : 0; PE.nour = 0; PE.age = 0; saleP = true;
+  faimP = 0.35f; tSoin = 8.0f; ym.on = false; hostY = -1;
+  poserPetit(xPetitLibre());
+  if (p >= 0) changer(p, PC, 40);
+  sauverY(true);
+}
+static void restaurerY() {      // à l'ouverture du mode : le petit (ou le jeune devenu grand, s'il y a de la place) revient, avec son âge et son parent
+  if (!pret || !RG.on || PE.stade == 0 || cr[PC].etat != E_OFF) return;
+  if (PE.stade == 3 && nAct >= NAD) return;
+  restau = true; naissance(120.0f, 140.0f, PE.rare != 0); restau = false;
+  agePous = (PE.stade == 3) ? (Y_GRAND + 5.0f) : (float)PE.age;
+  poserPetit(xPetitLibre()); faimP = 0.45f; tSoin = 10.0f;
+  if (PE.par < NAD && cr[PE.par].etat == E_OFF) PE.par = 255;
+}
+static bool immobile(const Corbeau& c) { return (int)(&c - cr) == PC && soinOn() && c.etat == E_PERCHE; }      // le petit ne s'éloigne pas de la branche de ses parents
+static void rattrapageY(uint32_t secs) { if (soinOn() && secs > 40UL) faimP = mxf(faimP, 0.7f); }      // au retour de l'utilisateur : le petit réclame
+static int prix(int t) { return t == T_VIANDE ? 5 : (t == T_PAIN ? 4 : (t == T_NOIX ? 3 : (t == T_BAIES ? 2 : 1))); }
+static bool defier(int P, int iO) {      // il y a peu de nourriture : le parent défie celui qui tient le morceau (la bagarre est celle du bloc J : ailes ouvertes, cris, choc, le plus fort l'emporte)
+  Obj& o = ob[iO]; int W = o.reserve; Corbeau& c = cr[P]; mo::Rt& r = mo::rt[P];
+  if (!o.actif || W < 0 || W >= NAD || W == P || r.away || mo::nbAilleurs() >= 3) return false;
+  if (!(cr[W].but == B_NOUR && cr[W].etat == E_SOL && cr[W].item == iO)) return false;
+  int sw = (cr[W].x < o.x) ? -1 : 1; float tx = lim(o.x - sw * 24.0f * c.s, 12.0f, 308.0f), ty = solHaut(tx);
+  r.sB = c.s; r.hops = 0; r.away = true; r.dest = mo::D_DISPUTE; r.spot = 0; r.ph = 0; r.t = 0.0f; r.tx = tx; r.n = (uint8_t)iO; r.dur = 0.0f; r.tw = 0.0f;
+  c.perch = -1; c.item = -1; c.rapporte = false; decoller(c, tx, ty, B_MONDE);
+  tBat = 22.0f; c.hum = 1.0f; son(SN_CROASSE2, 190);
+  return true;
+}
+static bool chercher(int k) {      // k va chercher un morceau pour le petit : la meilleure nourriture posée (ou la disputer s'il y en a peu), sinon il cherche par terre
+  Corbeau& c = cr[k]; int iO = -1, n = 0, sc = 0;
+  for (int i = 0; i < NOB; i++) if (ob[i].actif && ob[i].repos && ob[i].type < T_BRILLANT) { n++; int v = prix(ob[i].type); if (v > sc) { sc = v; iO = i; } }
+  if (iO < 0) { float gx = rnd(110.0f, 300.0f); versPoint(k, gx, solHaut(gx), M_VERS_BRIN); mis[k].kind = 3; mis[k].porte = 0; return true; }
+  Obj& o = ob[iO]; int W = o.reserve;
+  if (W < 0 || W == k) {
+    int sg = (o.x >= c.x) ? 1 : -1; float gx = lim(o.x - sg * 19.0f * c.s, 10.0f, 310.0f);
+    c.perch = -1; c.item = iO; o.reserve = (int8_t)k; c.objet = 0; c.rapporte = false; decoller(c, gx, solHaut(gx), B_NOUR); c.item = iO; return true;
+  }
+  if (n <= 2 && tBat <= 0.0f && k == PE.par) return defier(k, iO);
+  return false;
+}
+static bool detourner(Corbeau& c, int idx) {      // appelé quand un corbeau va manger : s'il est le parent (ou un aidant) et que le petit a faim, il garde le morceau pour le petit
+  if (!soinOn() || idx < 0 || idx >= NAD || mis[idx].ph != M_RIEN || faimP < 0.28f || (idx < 2 && (precieux() || par.on))) return false;
+  if (idx != PE.par && (attitudeY(idx) != 0 || faimP < 0.55f || random(100) < 40)) return false;
+  float tx = coteY(c.x < cr[PC].fx ? -17.0f : 17.0f);
+  versPoint(idx, tx, ytop(tx) + 0.4f, M_Y_VERS); mis[idx].porte = 2; mis[idx].kind = 3; c.hum = 1.0f; son(SN_GAZ, 120);
+  return true;
+}
+static void donner(int k) {      // le morceau passe du bec du parent au bec du petit
+  Corbeau& pc = cr[PC]; mis[k].porte = 0; pc.bec = 1.0f; pc.flash = 0.35f; cr[k].bec = 0.6f; son(SN_GAZ, 150);
+  faimP -= (k == PE.par) ? 0.85f : 0.6f; if (faimP < 0.0f) faimP = 0.0f;
+  if (PE.nour < 250) PE.nour++; saleP = true;
+  changer(k, PC, (k == PE.par) ? 2 : 3); if (k != PE.par && PE.par < NAD) changer(PE.par, k, 2);
+  tSoin = rnd(10.0f, 16.0f);
+}
+static void veilleY(int k, float dur) {      // il vient se poser à côté du petit (la nuit : jusqu'au réveil du groupe)
+  float tx = coteY(cr[k].x < cr[PC].fx ? -17.0f : 17.0f);
+  versPoint(k, tx, ytop(tx) + 0.4f, M_Y_VEILLE); mis[k].dur = dur;
+}
+static void essai(int P) {      // le jeune apprend à voler : un saut ailes battantes le long de la branche, son parent l'encourage du bec
+  Corbeau& pc = cr[PC]; float amp = 14.0f + 40.0f * lim((agePous - Y_JEUNE) / (Y_GRAND - Y_JEUNE), 0.0f, 1.0f);
+  float x = pc.fx + (random(2) ? amp : -amp); if (x < 90.0f || x > 220.0f) x = pc.fx - (x - pc.fx);
+  x = lim(x, 90.0f, 220.0f);
+  versPoint(PC, x, ytop(x) + 0.4f, M_Y_ESSAI); tEssai = rnd(35.0f, 60.0f);
+  if (P >= 0 && P < NAD && cr[P].etat == E_PERCHE) { cr[P].d = (x >= cr[P].x) ? 1 : -1; cr[P].bec = 1.0f; cr[P].look = -0.1f; cr[P].tLook = 1.5f; }
+  son(SN_AILES, 120);
+}
+static void devenuGrand() {      // il est grand : il quitte le giron et rejoint la colonie (l'état est mémorisé)
+  PE.stade = 3; saleP = true; Corbeau& c = cr[PC]; int P = PE.par;
+  c.bec = 1.0f; c.flash = 0.6f; son(SN_AILES, 170); son(SN_GAZ, 120); plumes(c.x, c.y - 4.0f, 8); eclat(c.x, c.y - 6.0f, 0.3f, 1.2f);
+  if (P >= 0 && P < NAD) { if (cr[P].etat == E_PERCHE) { cr[P].bec = 1.0f; cr[P].d = (c.x >= cr[P].x) ? 1 : -1; sonCri(); } changer(P, PC, 10); }
+  rageSet(P, false); sauverY(true);
+}
+static void finHost(int k) {      // le menaçant s'en va (ou a été chassé) : le lien avec le parent se refroidit
+  if (PE.par < NAD && k >= 0 && k < NAD) changer(PE.par, k, -7);
+  hostY = -1; hostCible = 0; tHost = rnd(80.0f, 140.0f);
+}
+static void missionsY(float h) {      // avancement des missions Y (chaque phase se termine ou est annulée si le parent, le petit ou le réglage change)
+  for (int k = 0; k < NM; k++) {
+    Mis& m = mis[k]; if (m.ph < M_Y_VERS) continue;
+    Corbeau& c = cr[k]; tmis[k] += h;
+    if (c.etat == E_OFF || c.but != B_FAM || !soinOn() || tmis[k] > 45.0f) {
+      bool etait = (m.ph == M_Y_MENACE); m.ph = M_RIEN; m.porte = 0; m.kind = 0; tmis[k] = 0.0f;
+      if (c.etat != E_OFF && c.but == B_FAM) { if (k == PC) { c.but = B_RIEN; c.tfin = 4.0f; } else finMission(k); }
+      if (etait && hostY == k) finHost(k);
+      if (hostY == k && !etait) hostY = -1;
+      continue;
+    }
+    switch (m.ph) {
+      case M_Y_DONNE: if (c.etat == E_PERCHE) { if (m.porte == 2 && m.t > 0.8f) donner(k); if (m.t > 1.7f) finMission(k); } break;
+      case M_Y_GARDE: if (!ym.on) { m.tz += h; if (m.tz > 1.5f) finMission(k); } else m.tz = 0.0f; break;
+      case M_Y_VEILLE: if (c.etat == E_PERCHE) { if (m.dur < 1e8f) { if (m.t > m.dur) finMission(k); } else if (repos <= 0.0f) finMission(k); } break;
+      case M_Y_MENACE: if (c.etat == E_PERCHE && m.t > 3.8f) { finHost(k); finMission(k); } break;
+      default: break;
+    }
+  }
+}
+static void detecterMenaceY(float h) {      // une menace près du petit : visiteur, main, objet lancé, corbeau hostile en vol ou qui vient le menacer
+  const Corbeau& pc = cr[PC]; bool on = false; uint8_t kind = 0; int8_t qui = -1; float x = pc.x, y = pc.y;
+  if (V.ph != V_RIEN) { on = true; kind = 1; x = VX; y = 92.0f; }
+  else if (H.actif && hypotf(H.x - pc.x, H.y - pc.y) < 120.0f) { on = true; kind = 2; x = H.x; y = H.y; }
+  else if (hostY >= 0 && mis[hostY].ph == M_Y_MENACE && cr[hostY].etat == E_PERCHE && mis[hostY].t > 0.4f) { on = true; kind = 5; qui = (int8_t)hostY; x = cr[hostY].x; y = cr[hostY].y; }
+  else {
+    for (int i = 0; i < NPROJ && !on; i++) if (proj[i].actif && hypotf(proj[i].x - pc.x, proj[i].y - pc.y) < 60.0f) { on = true; kind = 4; x = proj[i].x; y = proj[i].y; }
+    for (int k = 0; k < NAD && !on; k++) {
+      const Corbeau& c = cr[k]; if (k == PE.par || !c.visible || c.but == B_ORBITE || c.but == B_FAM || attitudeY(k) != 2) continue;
+      if ((c.etat == E_VOL || c.etat == E_DECOLLE || c.etat == E_ATTERRIT) && hypotf(c.x - pc.x, c.y - pc.y) < 34.0f) { on = true; kind = 3; qui = (int8_t)k; x = c.x; y = c.y; }
+    }
+  }
+  tMenP -= h;
+  if (on) {
+    bool debut = !ym.on; ym.on = true; ym.kind = kind; ym.qui = qui; ym.x = x; ym.y = y; ym.tOff = 0.0f;
+    if (debut && tMenP <= 0.0f) { tMenP = 12.0f; if (!men.on && kind <= 2) { tAlerte = mxf(tAlerte, 3.0f); dirAlerte = (x >= pc.x) ? 1 : -1; alerteFuite = false; } }
+    if (tCriY <= 0.0f) { tCriY = 2.4f; if (PE.par < NAD) cr[PE.par].bec = 1.0f; son(SN_ALARME, 160); }
+  } else if (ym.on) { ym.tOff += h; if (ym.tOff > 3.0f) ym.on = false; }
+}
+static void protegerPetit(int P) {      // le parent s'interpose ailes ouvertes (le caractère règle l'intensité) et chasse l'intrus ; les aidants le rejoignent
+  Corbeau& c = cr[P];
+  if (libreY(P) && !(ym.kind == 5 && hostCible == 1)) { float tx = coteY(c.x < cr[PC].fx ? -15.0f : 15.0f); versPoint(P, tx, ytop(tx) + 0.4f, M_Y_GARDE); }
+  if (ym.kind >= 3 && ym.qui >= 0 && ym.qui < NAD && tChaY <= 0.0f && (RG.prot == 2 || (RG.prot == 1 && S.aud[P] > 100)) && (c.etat == E_PERCHE || c.etat == E_SOL)) {
+    Corbeau& v = cr[ym.qui]; tChaY = 25.0f; mis[P].ph = M_RIEN; mis[P].porte = 0;
+    c.perch = -1; c.pj = ym.qui; c.tOrb = rnd(3.5f, 5.0f); c.hum = 1.0f; decoller(c, v.x, v.y, B_POURSUITE); sonCri(); chasser(v);
+  }
+  int ng = 0; for (int k = 0; k < NAD; k++) if (mis[k].ph == M_Y_GARDE) ng++;
+  for (int k = 0; k < NAD && ng < 2; k++) if (k != P && attitudeY(k) == 0 && libreY(k) && random(100) < 30) { float tx = coteY(cr[k].x < cr[PC].fx ? 14.0f : -14.0f); versPoint(k, tx, ytop(tx) + 0.4f, M_Y_GARDE); ng++; }
+}
+static void soinTick(float h) {      // une tranche de 0,25 s : faim du petit, repas, veilleY, protection, entraide, croissance
+  if (!pret) return;
+  tBat -= h; tSoin -= h; tAide -= h; tCriY -= h; tChaY -= h; tHost -= h * actFreq; tProche -= h; tCriP -= h; tEssai -= h * actFreq; tSurv -= h; tSauvP += h;
+  if (!OE.actif && OE.ponte < 0) pondeur = -1;
+  if (RG.on && OE.actif && pondeur >= 0 && pondeur < NAD && tSurv <= 0.0f) {      // celui qui a pondu surveille l'œuf : il devient le parent attitré s'il l'ouvre
+    tSurv = rnd(5.0f, 9.0f); Corbeau& c = cr[pondeur];
+    if (c.etat == E_PERCHE && c.act <= A_REGARDE && c.but == B_RIEN) { c.d = (OE.x >= c.x) ? 1 : -1; c.look = lim(atan2f(OE.y - c.y, fabsf(OE.x - c.x) + 8.0f) * 0.7f, -0.4f, 0.8f); c.tLook = 2.0f; if (OE.etat == 1) c.bec = 0.6f; }
+  }
+  if (RG.on && PE.stade >= 1 && PE.stade <= 2 && cr[PC].etat != E_OFF) {      // croissance : le réglage accélère ou ralentit l'âge (corbeau.h l'avance d'une seconde par seconde)
+    static const float VF[3] = {0.6f, 1.0f, 1.8f}; agePous += h * (VF[RG.vit > 2 ? 1 : RG.vit] - 1.0f);
+    if (PE.stade == 1 && agePous >= Y_JEUNE) { PE.stade = 2; saleP = true; cr[PC].bec = 1.0f; son(SN_GAZ, 140); sauverY(true); }
+    else if (PE.stade == 2 && agePous >= Y_GRAND) devenuGrand();
+  }
+  missionsY(h);
+  if (!soinOn()) { if (ym.on) ym.on = false; if (hostY >= 0 && mis[hostY].ph < M_Y_VERS) hostY = -1; faimP = 0.4f; sauverY(false); return; }
+  const bool absent = cbAbsent; Corbeau& pc = cr[PC]; int P = PE.par;
+  if (P >= NAD || cr[P].etat == E_OFF) {      // adoption : le parent n'est plus là
+    int n = meilleurParent(); if (n < 0) return;
+    PE.par = (uint8_t)n; P = n; saleP = true; changer(n, PC, 25);
+  }
+  faimP += h / (PE.stade == 1 ? 26.0f : 42.0f) * (absent ? 0.25f : 1.0f); if (faimP > 1.0f) faimP = 1.0f; if (absent && faimP > 0.8f) faimP = 0.8f;
+  rageSet(P, faimP > 0.5f);
+  if (!absent && faimP > 0.6f && tCriP <= 0.0f && !ym.on && pc.act != A_DORT) { tCriP = rnd(5.0f, 9.0f); pc.bec = 1.0f; son(SN_GAZ, 100); }      // il réclame
+  if (repos > 0.0f && pc.etat == E_PERCHE && pc.act != A_DORT && pc.act <= A_REGARDE) { pc.act = A_DORT; pc.tAct = 0.0f; pc.dAct = repos + 1.0f; }      // il dort avec les autres
+  detecterMenaceY(h);
+  sauverY(false);
+  if (absent) return;
+  if (ym.on) { protegerPetit(P); return; }
+  if (!paisible()) return;
+  if (faimP > 0.55f && tSoin <= 0.0f && libreY(P)) { tSoin = chercher(P) ? 14.0f : 4.0f; }
+  else if (faimP > 0.75f && tAide <= 0.0f && RG.aide > 0) {      // le parent est pris ou tarde : un aidant va chercher à manger pour le petit
+    tAide = rnd(18.0f, 32.0f);
+    if (!libreY(P) || random(100) < 35) for (int k = 0; k < NAD; k++) if (attitudeY(k) == 0 && libreY(k) && cr[k].duvet < 0.5f) { chercher(k); break; }
+  }
+  else if (repos > 0.0f && libreY(P)) veilleY(P, 1e9f);
+  else if (libreY(P) && tProche <= 0.0f && fabsf(cr[P].x - pc.x) > 50.0f) { tProche = rnd(25.0f, 45.0f); veilleY(P, rnd(20.0f, 40.0f)); }
+  else if (PE.stade == 2 && tEssai <= 0.0f && pc.etat == E_PERCHE && pc.act <= A_REGARDE && mis[PC].ph == M_RIEN && !(P < 2 && precieux())) essai(P);
+  else if (RG.aide == 1 && hostY < 0 && tHost <= 0.0f && mis[PC].ph == M_RIEN) {      // un corbeau hostile vient menacer le petit (ou son parent) : le parent défend
+    tHost = rnd(80.0f, 140.0f); int k = -1, d0 = random(NAD);
+    for (int j = 0; j < NAD && k < 0; j++) { int i = (d0 + j) % NAD; if (attitudeY(i) == 2 && libreY(i) && cr[i].duvet < 0.5f) k = i; }
+    if (k >= 0) {
+      hostCible = (random(100) < 35 && P < NAD && cr[P].etat == E_PERCHE && cr[P].perch >= 0 && cr[P].perch < 4) ? 1 : 0;
+      float bx = (hostCible == 1) ? cr[P].fx : cr[PC].fx, tx = lim(bx + ((bx < 150.0f) ? 21.0f : -21.0f), 84.0f, 226.0f);
+      versPoint(k, tx, ytop(tx) + 0.4f, M_Y_MENACE); hostY = (int8_t)k; cr[k].bec = 1.0f; sonCri();
+    }
+  }
+}
+static void texteLien(int k, char* b, int n, const char (*noms)[9]) {      // pour la fiche d'un corbeau (double toucher) : son lien avec le petit (parent, aidant, hostile, petit)
+  if (n < 4) return; b[0] = 0;
+  if (!pret || !RG.on || PE.stade == 0 || k < 0 || k >= NCB || cr[PC].etat == E_OFF) return;
+  const int P = (PE.par < NAD) ? (int)PE.par : -1;
+  if (k == PC) { const char* st = (PE.stade == 1) ? "Poussin" : (PE.stade == 2 ? "Jeune" : "Grand, élevé"); if (P >= 0) snprintf(b, n, "%s %s %s", st, PE.stade == 3 ? "par" : "de", noms[P]); else snprintf(b, n, "%s", st); }
+  else if (k == P) snprintf(b, n, "%s %s", PE.stade < 3 ? "Parent de" : "A élevé", noms[PC]);
+  else if (k < NAD && PE.stade < 3) { int a = attitudeY(k); snprintf(b, n, "%s %s", a == 0 ? "Aide" : (a == 2 ? "Menace" : "Ignore"), noms[PC]); }
 }
 
 // ---------- une tranche de 0,25 s ----------
@@ -579,6 +851,7 @@ static void tick(float h) {
   lierMonde();
   // sorties en groupe
   pilote(h);
+  soinTick(h);
   if (repos <= 0.0f && !par.on) {
     gGrp -= h * actFreq;
     if (gGrp <= 0.0f) { gGrp = rnd(45.0f, 90.0f); if (calme() && !mo::camOn()) sortieGroupe(); }
@@ -602,6 +875,10 @@ static void init() {
   if (S.fph == F_PARADE) S.fph = F_SOLO; ageF = S.age; tBrin = rnd(4.0f, 7.0f); tEuf = rnd(8.0f, 14.0f);
   pend[0].k = pend[1].k = -1; vuV = vuH = vuP = false; vuSec = dernierSecouement; tAlPrec = 0.0f; tMob = 10.0f; tDepl = 0.0f; tRappel = -1.0f;
   gGrp = rnd(35.0f, 60.0f); gRepos = rnd(70.0f, 110.0f); repos = 0.0f; sent = -1;
+  RG.on = prefs.getUChar("cbfam", 1) ? 1 : 0; RG.aide = prefs.getUChar("cbfaid", 1); if (RG.aide > 2) RG.aide = 1; RG.prot = prefs.getUChar("cbfpro", 1); if (RG.prot > 2) RG.prot = 1; RG.vit = prefs.getUChar("cbfvit", 1); if (RG.vit > 2) RG.vit = 1;
+  memset(&PE, 0, sizeof(PE)); if (prefs.getBytesLength("cbpet") == sizeof(Pet)) { prefs.getBytes("cbpet", &PE, sizeof(PE)); if (PE.ver != 1 || PE.stade > 3) memset(&PE, 0, sizeof(PE)); }
+  saleP = false; restau = false; pNext = pondeur = hostY = -1; hostCible = 0; memset(&ym, 0, sizeof(ym)); memset(rage, 0, sizeof(rage)); memset(tmis, 0, sizeof(tmis));
+  faimP = 0.4f; tSoin = 8.0f; tAide = 20.0f; tMenP = 0.0f; tBat = 15.0f; tHost = rnd(60.0f, 110.0f); tSauvP = 0.0f; tCriY = tChaY = 0.0f; tCriP = 4.0f; tEssai = rnd(25.0f, 45.0f); tSurv = 5.0f; tProche = 15.0f;
   if (sale) sauver(true);
 }
 static void maj(float dt) {
@@ -618,4 +895,4 @@ static void maj(float dt) {
 }  // namespace fam
 
 static int perchPour(const Corbeau& c) { return fam::perchPour(c); }
-static float rangPoids(int k) { return (fam::pret && k >= 0 && k < NCB) ? 12.0f * fam::S.rang[k] : 0.0f; }
+static float rangPoids(int k) { return (fam::pret && k >= 0 && k < NCB) ? 12.0f * fam::S.rang[k] - ((fam::soinOn() && k == fam::PE.par && fam::faimP > 0.3f) ? 90.0f : 0.0f) : 0.0f; }      // le parent attitré d'un petit qui a faim est servi le premier

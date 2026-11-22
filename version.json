@@ -1,5 +1,5 @@
 {
-    "version": "3.1.11",
+    "version": "3.1.12",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -104,7 +104,8 @@
         "Nouveau menu Jeux : Attraper, Mémoire, Pierre-feuille-ciseaux, points et chapeaux.",
         "Heure sur l'accueil, jauge d'énergie, réveil du matin, réactions au bruit, aux caresses, à la secousse et à la tête en bas.",
         "Tous les réglages sont aussi dans la page web du Core2.",
-        "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles penchées, un épouvantail au loin et une brume basse ; la mare reste. Les corbeaux se posent sur la tour, les stèles, le portique et l'épouvantail. Échanges à longue distance : appels et réponses entre un corbeau de l'arbre et un corbeau resté loin, poursuites et vols de parade qui traversent le monde, vol de groupe arbre, tour, mare, regroupement général sur alerte, avec un petit halo sonore en vue large. Réglages des corbeaux, page Monde : décor (tour en ruine / simple) et échanges lointains (oui / non)."
+        "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles penchées, un épouvantail au loin et une brume basse ; la mare reste. Les corbeaux se posent sur la tour, les stèles, le portique et l'épouvantail. Échanges à longue distance : appels et réponses entre un corbeau de l'arbre et un corbeau resté loin, poursuites et vols de parade qui traversent le monde, vol de groupe arbre, tour, mare, regroupement général sur alerte, avec un petit halo sonore en vue large. Réglages des corbeaux, page Monde : décor (tour en ruine / simple) et échanges lointains (oui / non).",
+        "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, sinon un adoptant), qui le nourrit (il lui ramène de la nourriture, passée de bec à bec), le garde, veille sur lui la nuit et l'encourage à voler jusqu'à ce qu'il soit grand (poussin, jeune, grand en 5 minutes, mémorisé). Selon leur caractère, les autres corbeaux aident (nourrir, garder), ignorent ou menacent le petit ; les amis et le couple du parent aident plus volontiers. Le parent protège son petit (ailes ouvertes, alarme, poursuite de l'intrus) avec une intensité qui dépend de son caractère. S'il y a peu de nourriture, le parent se bat pour rapporter un morceau à son petit. Double toucher sur un corbeau : la fiche indique son lien avec le petit. Nouveau réglage Famille (dernière page des réglages des corbeaux) : famille activée ou non, entraide, protection, vitesse de croissance."
     ],
     "app": {
         "version": "1.1",
