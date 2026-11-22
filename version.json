@@ -1,5 +1,5 @@
 {
-    "version": "3.1.6",
+    "version": "3.1.7",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -69,6 +69,7 @@
         "Économie de batterie : sur pile, quand personne ne touche l'écran, la luminosité baisse par paliers (30 s puis 60 s en mode fort), les images passent à 15 puis 8 par seconde, le processeur ralentit, le micro s'arrête et l'écran s'éteint plus vite (2 min 30). Un toucher, un bouton ou une secousse remet tout en route tout de suite. Réglage « Économie forte / normale » dans Réglages (bouton en bas à droite) et dans la page web. Branché sur le courant, rien ne change. Réglages affiche aussi l'autonomie estimée sur pile.",
         "Wi-Fi à la demande : par défaut, le Wi-Fi est en économie (endormi ou coupé quand rien n'en a besoin). Pour une mise à jour : Menu, Réglages, tuile « Mise à jour » : le Wi-Fi se rallume 15 minutes et l'écran affiche le réseau, l'adresse et le code. Le bouton « Wi-Fi : éco / actif » reste pour le garder toujours allumé.",
         "La Matinale est mise de côté : sa tuile est masquée du menu, plus rien n'est téléchargé, ses données sont effacées et sa tâche en arrière-plan n'est plus lancée (mémoire libérée). On la remet avec Réglages, bouton « Matinale : non » en haut (ou la page web) ; elle se met alors à jour à l'ouverture.",
+        "Présence : quand personne ne touche rien depuis 25 secondes, les corbeaux passent en vie minimale (5 images par seconde, cinq fois moins d'événements, plus de visite ni de vue d'ensemble spontanées, ils respirent et clignent seulement) et l'accueil n'est redessiné que 5 fois par seconde ; dès qu'on touche, secoue ou branche le Core2, tout reprend à pleine vitesse : les corbeaux lèvent la tête, leurs yeux s'allument l'un après l'autre, l'un d'eux croasse, et ce qui s'est passé pendant l'absence est rattrapé (œuf possible, petit qui a grandi, feuilles tombées). Réglage « Présence » dans Réglages des corbeaux, page Image.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
