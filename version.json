@@ -1,5 +1,5 @@
 {
-    "version": "2.7.1",
+    "version": "2.7.2",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -21,6 +21,7 @@
         "Corbeaux plus vrais : posture perchée redressée (tronc incliné de 45 à 65 degrés, poitrine en avant, queue qui pend), et un DÉZOOM : pince l'écran à deux doigts (ou touche le bouton « Vue » en haut) pour voir l'arbre en entier, le sol et le paysage, avec un zoom animé ; les corbeaux restent utilisables dans les deux vues.",
         "Vie des corbeaux : chacun a sa personnalité (calme, bavard, joueur, craintif) et son humeur. Ils s'étirent les ailes, picorent et sautillent au sol, se poudrent, dorment la tête sous l'aile (ambiance nuit sombre), s'appellent entre eux, restent en alerte tous dans la même direction, se poursuivent en vol, et volent en groupe.",
         "Visite d'un corbeau : de temps en temps (plus souvent quand personne ne touche l'écran) un corbeau vole vers toi en grossissant, se pose devant l'écran, te regarde en penchant la tête, donne parfois un coup de bec dans la vitre (choc, son, légère vibration) puis repart. Tu peux aussi l'appeler par un toucher long au centre de l'écran ou par le bouton « Corbeau visiteur » des réglages. Tape l'écran pour qu'il s'envole.",
+        "Plus de réalisme : vue normale un peu plus large avec un petit arbre lointain, ciel avec un léger grain, collines et brume en plusieurs plans, liseré rouge sombre sur les corbeaux, feuilles et plumes qui tombent avec le vent. Animations plus vivantes : corbeaux écrasés puis étirés aux décollages et atterrissages, images fantômes des ailes et lignes de vitesse sur les vols rapides, éclat de choc aux départs, deuxième œil visible quand un corbeau pivote, et petits ralentis sur les moments forts.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
