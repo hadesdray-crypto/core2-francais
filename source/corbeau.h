@@ -105,7 +105,7 @@ static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 
 // fps : 0 non, 1 images/s en petit coin, 2 mesures détaillées ; cad : cadence maximale 0 = 20, 1 = 25, 2 = 30 images/s (défaut) ; deg : allègement automatique des détails si l'image est trop lente ; ecr : écran rapide (80 MHz) gardé
 struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto, dec; };      // dec : decor 0 complet (defaut, s'allege seul si l'image ralentit), 1 allege, 2 minimal ;      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
 static Opt OP = {4, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0, 1, 1, 1, 1, 1, 2, 0, 2, 1, 0, 0};      // paume : main ouverte paume vers le haut (1 oui) ; pvis : visites dans la paume (0 jamais, 1 rare, 2 normales, 3 souvent) ; recul : vue reculée (0 normale, 1 reculée, 2 très reculée)
-static inline float tailleF() { static const float F[3] = {1.0f, 1.10f, 1.25f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux : petit (comme avant), normal (+10 %), grand (+25 %)
+static inline float tailleF() { static const float F[3] = {0.85f, 0.935f, 1.0625f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux (3.1.26 : tous 15 % plus petits qu'avant pour que l'arbre paraisse plus grand) : petit, normal, grand
 static uint32_t tQ = 0, tBon = 0;
 static bool qDeg = false, qMin = false;      // fluidité : quand l'image prend trop de temps, détails coûteux réduits (qDeg) puis encore plus (qMin), automatiquement ; rétablis quand ça repasse sous le seuil      // nombre de corbeaux (3 à 6), visiteur (0 jamais, 1 rare, 2 souvent), secousse, vibration, ambiance, images/s, activité (1 à 5), gros plan (0 jamais, 1 rare, 2 normale, 3 souvent), œufs (idem), horreur
 static bool panneau = false, panSale = true, ambChange = false, oeufsSale = false;
@@ -170,7 +170,8 @@ static Oeuf OE;
 static float gOeuf = 50.0f, agePous = 0.0f;
 static uint32_t tTestSon = 0;      // fin du bip de test (volume au maximum)
 static float gFeuille = 2.0f, slowT = 0.0f;      // feuilles qui tombent ; ralenti sur les moments forts
-static inline void ralenti(float d) { if (d > slowT) slowT = d; }
+static inline void ralenti(float d) { (void)d; }      // 3.1.26 : plus de ralenti sur les moments forts (le temps ne ralentit jamais : Hades veut aucun ralentissement)
+static bool nbOeufsSale = false; static uint32_t tOeufsEcr = 0;      // le compteur d'oeufs est ecrit en memoire quelques secondes apres l'oeuf, pas en plein evenement
 static float gSocial = 14.0f, tAlerte = 0.0f; static int dirAlerte = 1; static bool alerteFuite = false;
 static float lueurOeil = 1.0f, gEcl = 40.0f, eclT = 0.0f, eclX = 200.0f, gBatt = 55.0f, battT = 0.0f;      // horreur : lueur des yeux (instable), éclair rouge lointain, battement de lumière (rares)
 static uint32_t eclGraine = 1;
@@ -694,7 +695,8 @@ static const float VX = 166.0f;               // où il se tient sur la branche
 static inline float visPiedsY() { return ytop(VX) + 0.4f; }
 struct RepM { float hx, hy, ux, uy, S, ex, ey, mx; bool g; };
 static RepM repereMain() {      // repère de la main : le bras (manche et avant-bras) est FIXE ; la paume pivote autour du poignet ; calculée comme une main gauche puis retournée pour le côté droit
-  RepM r; r.g = H.gauche; r.S = 1.85f; float e = pas(H.ext);
+  RepM r; r.g = H.gauche; r.S = 1.57f;      // 3.1.26 : la main suit les oiseaux (15 % plus petits)
+   float e = pas(H.ext);
   r.ex = H.exs; r.ey = 262.0f;
   const float hx0 = lerpf(r.ex, H.x, e), hy0 = lerpf(r.ey, H.y + 0.6f * H.resp, e);      // position de repos de la paume (la main sort du bas de l'écran)
   float a0 = lim(atan2f(r.ey - hy0, fabsf(hx0 - r.ex)), 0.15f, 1.3f);
@@ -952,7 +954,7 @@ static float tCs[15][14], tSn[15][14]; static bool tTrigOk = false;      // cosi
 static void initTrig() { for (int n = 6; n <= 14; n++) for (int i = 0; i < n; i++) { const float a = i * (6.2832f / (float)n); tCs[n][i] = cosf(a); tSn[n][i] = sinf(a); } tTrigOk = true; }
 static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   if (!tTrigOk) initTrig();
-  { const float sc = c.s * zs; lodG = (OP.q == 2 || c.duvet > 0.02f || sc >= 1.05f) ? 0 : (sc < 0.80f ? 2 : 1); }      // taille a l'ecran : moins de details quand le corbeau est petit
+  { const float sc = c.s * zs; lodG = (OP.q == 2 || c.duvet > 0.02f || sc >= 0.90f) ? 0 : (sc < 0.68f ? 2 : 1); }      // taille a l'ecran : moins de details quand le corbeau est petit
   const uint16_t NOIR = C(4, 3, 6);
   Rep R_; R_.cx = c.x; R_.cy = c.y + c.bob; R_.d = c.dv; R_.s = c.s; R_.ct = cosf(c.pitch); R_.st = sinf(c.pitch); { float sqv = c.sq > 0.2f ? c.sq : 1.0f; R_.sy = sqv; R_.sx = 1.0f / sqrtf(sqv); }
   R_.sn = sqrtf(mxf(0.0f, 1.0f - c.dv * c.dv)); if (c.ro != 0.0f) { R_.ro = c.ro; R_.cro = cosf(c.ro); R_.sro = sinf(c.ro); }
@@ -1571,7 +1573,7 @@ static bool placeNaiss();      // famille.h : le corbeau k sera le parent attitr
 static void oeufAttrape(Corbeau& c) {      // l'œuf lancé est attrapé en vol : il ne casse pas, il éclot en nouveau corbeau (ou en petits corbeaux s'il n'y a plus de place)
   Proj& p = proj[c.pj]; ralenti(0.35f); p.actif = false; c.flash = 1.0f; c.bec = 1; c.surs = 0.3f;
   son(SN_CROC, 230); sonCri(); plumes(c.x, c.y, 10); eclat(c.x, c.y, 0.3f, 1.5f); vib(50);
-  nbOeufs++; prefs.putUInt("cboeufs", nbOeufs); oeufsSale = true;
+  nbOeufs++; nbOeufsSale = true; tOeufsEcr = millis(); oeufsSale = true;
   int i = perchLibre();
   if ((oeufAF() ? placeNaiss() : (cr[PC].etat == E_OFF || petitGrand())) && i >= 0) { designerParent((int)(&c - cr)); naissance(PERCH[i][0], perchY(i), rnd01() < 0.2f); }      // celui qui attrape l'œuf devient le parent attitré du petit
   else { if (!oeufAF()) minisEnvol(c.x, c.y - 4.0f, 7); son(SN_POP_DISP, 190); }
@@ -1723,7 +1725,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         c.peck += dt; float dip = fabsf(sinf(c.peck / 0.40f * 3.1416f)); c.haC = lerpf(-0.3f, 0.55f, dip); c.hbC = lerpf(0.2f, 0.8f, dip); c.pitchC = c.pr * 0.45f - 0.30f * dip;
         if (c.peck > 0.9f && c.peck - dt <= 0.9f) { son(SN_GAZ, 150); }
         if (c.peck > 1.8f) { c.but = B_RIEN; apresSol(c); }
-      } else if (c.but == B_NOUR && c.sub == 2) { c.peck += dt; if (c.peck > 0.7f) { c.but = B_RIEN; apresSol(c); } }
+      } else if (c.but == B_NOUR && c.sub == 2) { c.peck += dt; if (c.peck > 0.7f) { c.but = B_RIEN; if (!mo::tresorDepart(c, idx)) apresSol(c); } }
       else if (c.but == B_OBJET) {
         if (c.sub == 0) { c.sub = 1; c.peck = 0; c.d = (c.x < 160) ? 1 : -1; }
         else if (c.sub == 1) {
@@ -2117,7 +2119,7 @@ static void craquer() {      // un toucher : l'œuf tremble et se fissure
 }
 static void eclore() {      // il s'ouvre : naissance, ou explosion de plumes avec une surprise
   float x = OE.x, y = OE.y - 5.0f; OE.actif = false; OE.etat = 0;
-  nbOeufs++; prefs.putUInt("cboeufs", nbOeufs); oeufsSale = true; ralenti(0.3f);
+  nbOeufs++; nbOeufsSale = true; tOeufsEcr = millis(); oeufsSale = true; ralenti(0.3f);
   int r = random(100); if (fam::oeufCouve()) r = (random(100) < 15) ? 90 : 10;      // un œuf couvé éclot toujours en petit corbeau
   eclat(x, y, 0.3f, 1.6f); plumes(x, y, r < 50 ? 8 : 24); vib(80);
   if ((r < 50 || r >= 85) && (fam::afOn() ? fam::placeLibre() : (cr[PC].etat == E_OFF || fam::grand()))) { fam::pNext = fam::oeufCouve() ? fam::cvK : fam::pondeur; naissance(OE.x, OE.y, r >= 85); }      // celui qui a pondu (et surveillé) l'œuf devient le parent attitré      // petit corbeau (parfois un rare, à l'œil doré)
@@ -2130,7 +2132,7 @@ static void eclore() {      // il s'ouvre : naissance, ou explosion de plumes av
   fam::apresEclosion();
 }
 static void oeufExplose(float x, float y) {      // un œuf lancé explose à l'impact en nuée de plumes et de petits corbeaux
-  nbOeufs++; prefs.putUInt("cboeufs", nbOeufs); oeufsSale = true; ralenti(0.3f);
+  nbOeufs++; nbOeufsSale = true; tOeufsEcr = millis(); oeufsSale = true; ralenti(0.3f);
   eclat(x, y - 4, 0.3f, 2.2f); plumes(x, y - 4, 26); if (!fam::afOn()) minisEnvol(x, y - 6, 12); son(SN_POP_DISP, 230); son(SN_PLUMES, 180); sonCri(); vib(90);
   for (int k = 0; k < NCB; k++) { Corbeau& c = cr[k]; if (c.visible && hypotf(c.x - x, c.y - y) < 60) { c.flash = 1.0f; c.surs = 0.3f; } }
 }
@@ -2783,16 +2785,17 @@ static void dessinerPanneau() {
   } else if (panPage == 3) {      // monde : décor (tour en ruine / simple) et échanges à longue distance (monde.h)
     static const char* const LD[2] = {"Simple", "Tour en ruine"}; static const char* const LO[2] = {"Non", "Oui"}; static const char* const LDC[3] = {"Complet", "Allégé", "Minimal"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
-    g.drawString("Décor du monde (tour, portique, stèles, brume)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, mo::RGM.tour ? 1 : 0, LD);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Échanges à longue distance (appels, poursuites, vols)", 6, 73); segBarre(g, 4, 87, 312, 24, 2, mo::RGM.lng ? 1 : 0, LO);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Décor : arrière-plan complet, allégé ou minimal", 6, 115); segBarre(g, 4, 129, 312, 24, 3, OP.dec, LDC);
-    { static const char* const LB[3] = {"Non", "Peu", "Beaucoup"}; g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Petites bêtes à attraper (escargots, lézards, insectes)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, mo::RGM.bet, LB); }
+    g.drawString("Décor du monde (tour, portique, stèles, brume)", 6, 28); segBarre(g, 4, 41, 312, 21, 2, mo::RGM.tour ? 1 : 0, LD);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Échanges à longue distance (appels, poursuites, vols)", 6, 62); segBarre(g, 4, 75, 312, 21, 2, mo::RGM.lng ? 1 : 0, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Décor : arrière-plan complet, allégé ou minimal", 6, 96); segBarre(g, 4, 109, 312, 21, 3, OP.dec, LDC);
+    { static const char* const LB[3] = {"Non", "Peu", "Beaucoup"}; g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Petites bêtes à attraper (escargots, lézards, insectes)", 6, 130); segBarre(g, 4, 143, 312, 21, 3, mo::RGM.bet, LB); }
+    { static const char* const LT[3] = {"Non", "Rares", "Fréquents"}; char tb[72]; snprintf(tb, sizeof(tb), "Trésors cachés (tour, mare) : cache %u tour, %u mare", (unsigned)mo::cTour, (unsigned)mo::cMare); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString(tb, 6, 164); segBarre(g, 4, 177, 312, 21, 3, mo::RGM.tres, LT); }
   } else if (panPage == 2) {
     static const char* const LL[3] = {"Clair", "Sombre", "Horreur"}; static const char* const LQ[3] = {"Fluide", "Normal", "Riche"}; static const char* const LM[2] = {"Non", "Oui"}; static const char* const LM3p[3] = {"Non", "Images/s", "Détails"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
     g.drawString("Lumière de la scène (Sombre par défaut)", 6, 31); segBarre(g, 4, 45, 312, 24, 3, OP.hor, LL);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Qualité des effets (Fluide = effets réduits, allège seul)", 6, 73); segBarre(g, 4, 87, 312, 24, 3, OP.q, LQ);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Compteur d'images/s : jamais affiché (voir /api/etat)", 6, 115);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Ralentissement au repos (sur pile seulement)", 6, 115); { static const char* const LR[3] = {"Jamais", "Après 5 min", "Après 15 min"}; segBarre(g, 4, 129, 312, 24, 3, reposNiv, LR); }
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Présence : animations réduites quand personne n'est là", 6, 157); segBarre(g, 4, 171, 312, 24, 2, presenceOn ? 1 : 0, LM);
   } else {
     static const char* const L5[5] = {"1", "2", "3", "4", "5"}; static const char* const L4[4] = {"Jamais", "Rare", "Normale", "Souvent"}; static const char* const L3[3] = {"Jamais", "Rare", "Souvent"};
@@ -2877,10 +2880,11 @@ static void touchPanneau(int x, int y) {
     panSale = true; return;
   }
   if (panPage == 3) {      // monde : décor et échanges lointains (clés cbmtour, cblng)
-    if (y >= 42 && y < 72) { mo::RGM.tour = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbmtour", mo::RGM.tour); mo::decorChange(); ambChange = true; }
-    else if (y >= 84 && y < 114) { mo::RGM.lng = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblng", mo::RGM.lng); }
-    else if (y >= 126 && y < 156) { OP.dec = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbdec", OP.dec); ambChange = true; }      // le decor est refait a la fermeture du panneau
-    else if (y >= 168 && y < 198) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.bet = (uint8_t)v; prefs.putUChar("cbbet", mo::RGM.bet); mo::majNbBetes(); }
+    if (y >= 39 && y < 64) { mo::RGM.tour = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbmtour", mo::RGM.tour); mo::decorChange(); ambChange = true; }
+    else if (y >= 73 && y < 98) { mo::RGM.lng = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblng", mo::RGM.lng); }
+    else if (y >= 107 && y < 132) { OP.dec = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbdec", OP.dec); ambChange = true; }      // le decor est refait a la fermeture du panneau
+    else if (y >= 141 && y < 166) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.bet = (uint8_t)v; prefs.putUChar("cbbet", mo::RGM.bet); mo::majNbBetes(); }
+    else if (y >= 175 && y < 200) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.tres = (uint8_t)v; prefs.putUChar("cbtres", mo::RGM.tres); }      // tresors : non / rares / frequents
     else return;
     if (OP.vib) vibrer(40);
     panSale = true; return;
@@ -2888,7 +2892,7 @@ static void touchPanneau(int x, int y) {
   if (panPage == 2) {      // image : lumière, qualité, mesures
     if (y >= 42 && y < 72) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.hor = (uint8_t)i; prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; }
     else if (y >= 84 && y < 114) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.q = (uint8_t)i; prefs.putUChar("cbqual", OP.q); qDeg = qMin = false; }
-    else if (y >= 126 && y < 156) return;      // (plus de réglage : le compteur n'est jamais affiché)
+    else if (y >= 126 && y < 156) { reposNiv = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("repos", reposNiv); }
     else if (y >= 168 && y < 198) { presenceOn = ((x - 4) * 2 / 312) >= 1; prefs.putBool("pres", presenceOn); }
     else return;
     if (OP.vib) vibrer(40);
@@ -3124,6 +3128,7 @@ static void ouvrir() {
 }
 static void quitter() {
   if (!ouvert) return;
+  if (nbOeufsSale) { prefs.putUInt("cboeufs", nbOeufs); nbOeufsSale = false; }
   libererCamCache(); if (cmdB) { free(cmdB); cmdB = nullptr; cmdMax = 0; } fam::sauver(true); fam::pret = false; mo::fermerMonde(); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
   vitesseEcran(false); ecrEssaiFin = 0;      // les autres pages gardent la vitesse d'écran d'usine (40 MHz)
   if (fondLOk) { fondL.deleteSprite(); fondLOk = false; }
@@ -3148,7 +3153,8 @@ static void eveiller(uint32_t secs) {
   ralenti(0.25f);
 }
 static void presenceMaj() {
-  const bool a = presenceOn && ((uint32_t)(millis() - derniereVraie) > 25000UL) && !GP.ph && V.ph == V_RIEN && !H.actif && !appelOn;
+  const uint32_t der_ = ((int32_t)(pr::derInter - derniereVraie) > 0) ? pr::derInter : derniereVraie;      // dernier geste, bruit fort ou changement d'orientation
+  const bool a = presenceOn && ((uint32_t)(millis() - der_) > pr::delaiAbs) && !GP.ph && V.ph == V_RIEN && !H.actif && !appelOn;
   if (a == cbAbsent) return;
   if (a) { cbAbsent = true; cbDepuis = millis(); appliquerAct(); }
   else { cbAbsent = false; appliquerAct(); eveiller((millis() - cbDepuis) / 1000UL); }
@@ -3231,6 +3237,7 @@ static void dessiner() {
   if (dernierSecouement != secVu) { if (secVu != 0 || dernierSecouement != 0) { if (millis() - dernierSecouement < 600) secousse(); } secVu = dernierSecouement; }
   tAnim = millis() * 0.001f;
   presenceMaj(); reactionRetardee();
+  if (nbOeufsSale && millis() - tOeufsEcr > 6000u && !occupe()) { prefs.putUInt("cboeufs", nbOeufs); nbOeufsSale = false; }      // ecrit en memoire quelques secondes apres l'evenement, jamais pendant
   for (int k = 0; k < NCB; k++) majCorbeau(cr[k], k, dt);
   majGlobal(dt * pr::facteurMonde());      // presence : en absence les evenements du monde sont rares
   presenceCb();
@@ -3339,7 +3346,7 @@ static void appui(int x, int y) {
   switch (modeCb) {
     case 0: {
       int b = trouverCorbeau((float)x, (float)y, 1.0f / zs);
-      if (b >= 0) { mo::armer(b); mo::cibler(b); if (OP.fiche) { pendOn = true; pendK = (int8_t)b; pendX = (float)x; pendY = (float)y; pendT = m; } else reagirToucher(cr[b], (float)x, (float)y); D.bas = false; return; }
+      if (b >= 0) { mo::armer(b); mo::cibler(b); if (OP.fiche) { pendOn = true; pendK = (int8_t)b; pendX = (float)x; pendY = (float)y; pendT = m; { Corbeau& cq = cr[b]; cq.d = (x >= cq.x) ? 1 : -1; cq.look = lim(atan2f((float)y - cq.y, fabsf((float)x - cq.x) + 8.0f) * 0.7f, -0.3f, 0.8f); cq.tLook = 1.2f; if (cq.surs <= 0.0f) cq.surs = 0.16f; } }      // retour visible tout de suite (tete tournee vers le doigt, petit sursaut), la reaction complete suit apres 0,28 s si ce n'est pas un double toucher else reagirToucher(cr[b], (float)x, (float)y); D.bas = false; return; }
       if (V.ph == V_RIEN && !GP.ph && hypotf((float)(sxp - 160), (float)(syp - 95)) < 42.0f) { tpCible = 3; tpT0 = m; tpX = (float)x; if (OP.lance) { D.type = 7; visType = (int8_t)choix; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; } else D.bas = false; return; }      // toucher long au centre : un corbeau vient
       if (V.ph == V_RIEN && x >= 70 && x < 244 && fabsf(y - ytop((float)x)) < 14) { tpCible = 2; tpT0 = m; tpX = (float)x; if (OP.lance) { D.type = 7; visType = (int8_t)choix; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; } else D.bas = false; return; }
       if (OP.lance) { D.type = 7; visType = (int8_t)choix; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; } else { lacher(choix, (float)x); D.bas = false; }      // toucher = poser ici ; glisser = lancer

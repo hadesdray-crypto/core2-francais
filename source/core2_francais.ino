@@ -25,7 +25,7 @@
 #include "presence.h"      // presence / absence des personnages et des univers (3.1.6)
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.25"
+#define VERSION_PROGRAMME "3.1.26"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 #define SOURCE_MAJ_TEST "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/version.json"      // canal « test » (par défaut) : publié automatiquement après chaque compilation réussie de la branche corbeau
@@ -214,6 +214,7 @@ int essaiReseau = 0;
 void activite() { derniereActivite = millis(); }
 uint32_t derniereVraie = 0;      // dernier vrai geste de l'utilisateur (toucher, secousse, bouton, branchement) ; activite() est aussi forcée par des pages qui restent éveillées
 void activiteReelle() { derniereVraie = millis(); activite(); pr::interaction(); }      // presence : un vrai geste (toucher, secousse, bouton, branchement) = quelqu'un est la
+uint8_t reposNiv = 1;      // Ralentissement au repos (cle repos) : 0 Jamais, 1 Apres 5 min (defaut), 2 Apres 15 min ; seulement sur pile, jamais en USB
 bool presenceOn = true;      // presence : animations reduites quand personne n'interagit depuis 25 s (cle memoire pres) ; reglable dans Reglages des corbeaux > Image
 bool ecoForte = true;            // réglage « Économie de batterie : normale / forte » (clé econiv), forte par défaut ; sans effet quand le Core2 est branché
 int palierEco = 0;               // 0 plein régime, 1 puis 2 = inactivité de plus en plus longue (écran qui baisse, moins d'images)
@@ -3185,6 +3186,7 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("matinale")) reglerMatinale(serveur.arg("matinale") == "1");
   if (serveur.hasArg("canal")) { String c = serveur.arg("canal"); if (c == "test" || c == "stable") changerCanal(c == "test"); }      // canal de mise à jour
   if (serveur.hasArg("dessus")) { vueDessusOn = serveur.arg("dessus") == "1"; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } }
+  if (serveur.hasArg("repos")) { int v = serveur.arg("repos").toInt(); reposNiv = (uint8_t)(v < 0 ? 0 : (v > 2 ? 2 : v)); prefs.putUChar("repos", reposNiv); }      // ralentissement au repos : 0 jamais, 1 apres 5 min, 2 apres 15 min
   if (serveur.hasArg("presence")) { presenceOn = serveur.arg("presence") == "1"; prefs.putBool("pres", presenceOn); }      // presence / absence automatique
   if (serveur.hasArg("perso")) R.perso = constrain(serveur.arg("perso").toInt(), 0, NB_PERSOS - 1);
   { Fiche& f = FA; bool mf = false;
@@ -3280,7 +3282,7 @@ void demarrerServeur() {
     d["version"] = VERSION_PROGRAMME; d["wifiMaison"] = (WiFi.status() == WL_CONNECTED); d["reseau"] = WiFi.SSID(); d["reseau1"] = R.ssid; d["reseau2"] = R.ssid2;
     d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["canalMaj"] = canalTest ? "test" : "stable"; d["ip"] = WiFi.localIP().toString();
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
-    d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
+    d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["repos"] = reposNiv; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
     d["fps"] = cb::fpsMoy10 / 10.0f; d["fpsmin"] = cb::fpsMin; d["msimage"] = cb::emaTot; d["msmax"] = cb::msMax; d["cbCadenceMax"] = (cb::OP.cad == 0 ? 20 : (cb::OP.cad == 1 ? 25 : 30)); d["cbAllegement"] = cb::qMin ? 2 : (cb::qDeg ? 1 : 0); d["cbEcran80MHz"] = cb::ecr80;
   d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
     d["uptimeMs"] = millis(); d["prEtat"] = pr::etat; d["prAbsMs"] = pr::absent() ? (uint32_t)(millis() - pr::debAbsence) : 0; d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
@@ -3296,7 +3298,7 @@ void demarrerServeur() {
 }
 
 void demarrerReseau() {
-  direct = prefs.getBool("direct", false); presenceOn = prefs.getBool("pres", true); wifiToujours = prefs.getBool("wifitj", false); eco = !wifiToujours;      // Wi-Fi à la demande (économie) par défaut
+  direct = prefs.getBool("direct", false); presenceOn = prefs.getBool("pres", true); reposNiv = prefs.getUChar("repos", 1); if (reposNiv > 2) reposNiv = 1; wifiToujours = prefs.getBool("wifitj", false); eco = !wifiToujours;      // Wi-Fi à la demande (économie) par défaut
   vueDessusOn = prefs.getBool("vdessus", false); canalTest = prefs.getBool("canalmaj", true);      // canal de mise à jour : test par défaut
   ecoForte = prefs.getUChar("econiv", 1) != 0; matVisible = prefs.getBool("matvis", false);
   WiFi.setHostname("core2-francais");
@@ -3330,9 +3332,19 @@ void setup() {
   if (matVisible) demarrerMatinale(); else effacerDonneesMat();      // Matinale mise de côté : aucune tâche (16 Ko de pile gardés libres), aucune donnée
 }
 
+static uint32_t reposDelai() {      // 0 = jamais de ralentissement (USB, charge, ou reglage Jamais) ; sinon delai sans geste avant la vie minimale et la baisse de cadence
+  if (brancheUsb || reposNiv == 0) return 0;
+  return reposNiv == 1 ? 300000UL : 900000UL;
+}
+static uint32_t delaiVeilleEcran() {      // sur pile : l'ecran ne s'eteint pas avant que le ralentissement ait eu lieu (corbeaux et accueil animes : 3 minutes de plus)
+  uint32_t b = ecoForte ? 150000u : 300000u;
+  if (page == 32 || page == 33) { const uint32_t rd = reposNiv == 0 ? 1500000u : (reposNiv == 1 ? 300000u : 900000u); if (rd + 180000u > b) b = rd + 180000u; }
+  return b;
+}
 static int ecoPalier() {      // 0 plein régime ; 1 : 30 s sans toucher (60 s en mode normal) ; 2 : 60 s (120 s) ; seulement sur pile
   if (brancheUsb || veille || sniffActif || detection || page == 34 || page == 35 || page == 11 || page == 13 || lectureEnCours) return 0;
-  uint32_t d = millis() - derniereVraie, a = ecoForte ? 30000u : 60000u, b = ecoForte ? 60000u : 120000u;
+  const uint32_t rd = reposDelai(); if (!rd) return 0;      // 3.1.26 : jamais de baisse de cadence ni de luminosite tant que personne n'a laisse l'appareil tranquille tres longtemps (5 min par defaut) ET qu'il est sur pile
+  uint32_t d = millis() - derniereVraie, a = rd, b = rd + (ecoForte ? 60000u : 120000u);
   return d > b ? 2 : (d > a ? 1 : 0);
 }
 
@@ -3360,7 +3372,7 @@ void loop() {
     moduleWifi();
     if (R.actif[M_HEURE]) moduleHeure();
   }
-  pr::actif = presenceOn;
+  pr::actif = presenceOn; { const uint32_t rd = reposDelai(); pr::delaiAbs = rd ? rd : 2000000000UL; }
   pr::tick(page == 0 || page == 32, page == 32 && corbeauOccupe());      // presence : la scene avance (entree, sortie, absence)
   if (page != 0) pr::consommerClic();
   bool clicMarche = M5.BtnPWR.wasClicked();
@@ -3409,7 +3421,7 @@ void loop() {
       } else if (m - tDessin > periode) { tDessin = m; dessinerPage(); afficherVolume(); }
     }
     if (sniffActif || detection || page == 11 || page == 13 || ((page == 34 || page == 35) && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
-    if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (ecoForte ? 150000 : 300000)) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
+    if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (int32_t)delaiVeilleEcran()) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
   if (page == 31 && !matVisible) page = 6;
   vieDuPerso();

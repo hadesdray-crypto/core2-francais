@@ -138,6 +138,8 @@ static void sauver(bool force) {
   prefs.putBytes("cbgrp", &S, sizeof(S)); sale = false; tSauv = 0.0f; chg = 0.0f;
 }
 
+static void sauverTard() { sale = true; if (tSauv < 87.0f) tSauv = 87.0f; }      // 3.1.26 : la sauvegarde des grands moments du nid est ecrite quelques secondes plus tard (jamais en pleine animation) ; quitter() l'ecrit tout de suite
+
 static bool libre(int k) {      // perché sur l'arbre, sans rien à faire de particulier : disponible pour une sortie ou un rôle collectif
   if (k < 0 || k >= NAD) return false;
   const Corbeau& c = cr[k];
@@ -379,7 +381,7 @@ static void paradeTick(float h) {
     default:      // retour aux perchoirs, puis le couple est formé : le nid commence
       if (par.t > 11.0f || (par.t > 4.0f && cr[0].etat == E_PERCHE && cr[1].etat == E_PERCHE)) {
         if (par.calin) { par.on = false; par.calin = false; changer(0, 1, 6); sale = true; }      // simple parade de couple : le cycle continue là où il en était
-        else { par.on = false; S.fph = F_NID; ageF = 0.0f; tBrin = rnd(5.0f, 8.0f) * nidMul(); changer(0, 1, 100); calculerFoyers(); sale = true; sauver(true); }
+        else { par.on = false; S.fph = F_NID; ageF = 0.0f; tBrin = rnd(5.0f, 8.0f) * nidMul(); changer(0, 1, 100); calculerFoyers(); sauverTard(); }
       }
       break;
   }
@@ -424,7 +426,7 @@ static void eclosion() {      // les œufs s'ouvrent : des poussins duveteux au 
   S.nPou = (uint8_t)((S.nEuf > 1 && random(100) < 25) ? S.nEuf - 1 : S.nEuf); if (S.nPou < 1) S.nPou = 1;
   S.nEuf = 0; S.fph = F_POUSSINS; ageF = 0.0f; tNour = rnd(6.0f, 10.0f);
   for (int i = 0; i < 3; i++) { faim[i] = 0.5f; beg[i] = 1.0f; }
-  eclat(NX, NY - 8.0f, 0.3f, 1.2f); plumes(NX, NY - 8.0f, 6); son(SN_GAZ, 180); son(SN_PLUMES, 120); sale = true; sauver(true);
+  eclat(NX, NY - 8.0f, 0.3f, 1.2f); plumes(NX, NY - 8.0f, 6); son(SN_GAZ, 180); son(SN_PLUMES, 120); sauverTard();
 }
 static void envol() {      // un jeune quitte le nid : le premier rejoint le groupe quand la place est libre, les autres s'en vont
   if (S.nPou == 0) return;
@@ -547,24 +549,24 @@ static void pilote(float h) {      // une tranche de 0,25 s : les missions des d
           if (parentLibre(p) && mis[p].ph == M_RIEN) { float gx = rnd(110.0f, 300.0f); versPoint(p, gx, solHaut(gx), M_VERS_BRIN); mis[p].kind = 1; mis[p].porte = 0; tBrin = rnd(2.5f, 5.0f) * nidMul(); } else tBrin = 1.0f;
         } else tBrin = 1.0f;
       }
-      if (S.brins >= NB_NID && mis[0].ph == M_RIEN && mis[1].ph == M_RIEN && reproOk()) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; S.nPou = 0; sale = true; sauver(true); }
+      if (S.brins >= NB_NID && mis[0].ph == M_RIEN && mis[1].ph == M_RIEN && reproOk()) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; S.nPou = 0; sauverTard(); }
       break;
     case F_PONTE: case F_COUVE:
       if (S.fph == F_PONTE && auNid(1)) {
         tEuf -= h; if (tEuf <= 0.0f && layT <= 0.0f && S.nEuf < noeufs()) { layT = 1.5f; tEuf = rnd(16.0f, 24.0f); }
       }
-      if (S.fph == F_PONTE && S.nEuf >= noeufs()) { S.fph = F_COUVE; ageF = 0.0f; tNour = rnd(14.0f, 22.0f); sale = true; sauver(true); }
+      if (S.fph == F_PONTE && S.nEuf >= noeufs()) { S.fph = F_COUVE; ageF = 0.0f; tNour = rnd(14.0f, 22.0f); sauverTard(); }
       if (S.fph == F_COUVE && ageF > T_COUVE && auNid(1)) eclosion();
       break;
     case F_POUSSINS:
-      if (ageF > T_POUS) { S.fph = F_JEUNES; ageF = 0.0f; sale = true; sauver(true); }
+      if (ageF > T_POUS) { S.fph = F_JEUNES; ageF = 0.0f; sauverTard(); }
       break;
     case F_JEUNES:
       if (S.nPou > 0 && ageF > T_JEUN * 0.55f + 9.0f * (S.jeune % 3)) { if (AFR.naiss != 0 || placeLibre() || ageF > T_JEUN + 400.0f) envol(); }      // l'un après l'autre ; il attend que l'emplacement du petit soit libre
-      if (S.nPou == 0) { S.fph = F_VIDE; ageF = 0.0f; S.gen++; sale = true; sauver(true); finMission(1); }
+      if (S.nPou == 0) { S.fph = F_VIDE; ageF = 0.0f; S.gen++; sauverTard(); finMission(1); }
       break;
     case F_VIDE:
-      if (RG.on && ageF > T_VIDE && reproOk()) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; sale = true; sauver(true); }
+      if (RG.on && ageF > T_VIDE && reproOk()) { S.fph = F_PONTE; ageF = 0.0f; tEuf = rnd(8.0f, 12.0f); S.nEuf = 0; sauverTard(); }
       break;
     default: break;
   }

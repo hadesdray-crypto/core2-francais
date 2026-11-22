@@ -9,7 +9,7 @@
 namespace pr {
 
 enum { PRESENT = 0, SORTIE = 1, ABSENT = 2, ENTREE = 3 };
-static const uint32_t DELAI_ABS = 25000;      // sans interaction : on part
+static uint32_t delaiAbs = 300000UL;          // sans interaction : on part (3.1.26 : 5 minutes par defaut, seulement sur pile ; 2000000000 = jamais ; regle par Ralentissement au repos)
 static const uint32_t DUREE_ENTREE = 3400, DUREE_SORTIE = 3000;
 static const uint32_t PAS_TRACE = 30000;      // une trace de plus toutes les 30 s d'absence (3 au plus)
 
@@ -45,7 +45,7 @@ static void tick(bool sceneVisible, bool occupe = false) {
   if (!sceneVisible && etat == PRESENT) derInter = m;      // on ne s'absente que devant une scene
   if (occupe) { if (etat == PRESENT) derInter = m; else if (etat == SORTIE) interaction(); }      // un evenement est en cours dans la scene : personne ne s'en va
   switch (etat) {
-    case PRESENT: if ((int32_t)(m - derInter) > (int32_t)DELAI_ABS) { etat = SORTIE; debAbsence = m; } break;
+    case PRESENT: if ((int32_t)(m - derInter) > (int32_t)delaiAbs) { etat = SORTIE; debAbsence = m; } break;
     case SORTIE: sc -= dt * 1000.0f / DUREE_SORTIE; if (sc <= 0.0f) { sc = 0.0f; etat = ABSENT; } break;
     case ENTREE: sc += dt * 1000.0f / DUREE_ENTREE; if (sc >= 1.0f) { sc = 1.0f; etat = PRESENT; derInter = m; } break;
     default: sc = 0.0f; break;

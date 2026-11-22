@@ -1,7 +1,11 @@
 {
-    "version": "3.1.25",
+    "version": "3.1.26",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=7e8d3640eeca",
     "changes": [
+        "3.1.26 : plus de ralentissement quand tu regardes sans toucher. La vie minimale (5 images/s), la sortie du personnage, la baisse de luminosité et la baisse de cadence (15 puis 8 images/s) ne se déclenchent plus qu'après 5 minutes sans aucun geste ET seulement sur pile ; jamais en USB. Nouveau réglage « Ralentissement au repos : Jamais / Après 5 min / Après 15 min » (Réglages des corbeaux, page Image). Un toucher, une secousse ou un bruit remet tout de suite la pleine cadence. L'écran ne s'éteint pas avant ce délai (plus 3 minutes).",
+        "3.1.26 : interactions plus réactives : plus aucun ralenti sur les moments forts (œuf attrapé, objet pris en vol, choc, visiteur), le toucher sur un corbeau tourne sa tête vers le doigt tout de suite, et les sauvegardes en mémoire (compteur d'œufs, grands moments du nid) sont écrites quelques secondes plus tard, jamais en pleine animation.",
+        "3.1.26 : trésors cachés : de temps en temps un corbeau découvre un objet brillant (bague, éclat) au sol, le prend au bec, s'envole au loin et le dépose dans l'ombre de la porte de la vieille tour (le plus souvent) ou dans la mare (parfois), puis revient. La cache grandit (mémorisée) et se voit en vue Ruine ou Mare : reflets dans la porte, éclats dans l'eau. Réglage « Trésors : Non / Rares / Fréquents » (Réglages des corbeaux, page Monde), Rares par défaut ; coupé en décor minimal.",
+        "3.1.26 : l'arbre paraît environ 17 % plus grand : les corbeaux sont 15 % plus petits (la main, le petit corbeau gardent leurs proportions) et les vues Arbre et Nid sont recadrées (plus serrées).",
         "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
         "En bas, une barre de nourriture (graines, viande, noix, pain, baies, objet brillant) : touche une icône ou touche l'écran, la nourriture tombe et un corbeau vient la prendre.",

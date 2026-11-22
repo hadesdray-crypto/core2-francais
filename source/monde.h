@@ -23,14 +23,14 @@ static const float TRX = 430.0f, PQX = 322.0f;             // vieille tour de gu
 static float TRB() { return 203.0f + 1.2f * sinf(TRX / 37.0f) + 0.8f * sinf(TRX / 13.0f + 1.0f); }      // pied de la tour (un peu enfoncé dans le sol)
 static float PQB() { return 203.0f + 1.2f * sinf(PQX / 37.0f) + 0.8f * sinf(PQX / 13.0f + 1.0f); }
 static const float STL[5][3] = {{346.0f, 28.0f, -0.12f}, {386.0f, 34.0f, 0.10f}, {470.0f, 30.0f, -0.09f}, {498.0f, 22.0f, 0.15f}, {-204.0f, 24.0f, 0.10f}};      // stèles : pied, hauteur, inclinaison
-struct Mon { uint8_t tour, lng, bet; };      // réglages : décor « tour en ruine » (1) ou « simple » (0) ; échanges à longue distance (1) ou non (0)
-static Mon RGM = {1, 1, 1};      // bet : petites betes 0 non, 1 peu (2), 2 beaucoup (4)
+struct Mon { uint8_t tour, lng, bet, tres; };      // réglages : décor « tour en ruine » (1) ou « simple » (0) ; échanges à longue distance (1) ou non (0)
+static Mon RGM = {1, 1, 1, 1};      // tres : tresors caches 0 non, 1 rares (defaut), 2 frequents (cle cbtres)      // bet : petites betes 0 non, 1 peu (2), 2 beaucoup (4)
 static const float PX = -4.0f, PY = 205.0f, PRX = 42.0f, PRY = 6.5f;      // mare
 static const float CH0 = -176.0f, CH1 = -112.0f;
 static const float RV0 = 250.0f, RV1 = 318.0f;           // zone de droite : petit ruisseau et bande d'herbe sombre (entre l'arbre et le portique)           // champ : bords gauche et droit
 static const uint16_t CLE_TR = 0x1818;                        // couleur transparente (identique dans les deux ordres d'octets)
 
-enum { D_TOUR = 0, D_MARE, D_CHAMP, D_EPOUV, D_DISPUTE, D_STELE, D_PORT, D_BETE, D_NB };      // D_BETE : un corbeau part attraper une petite bete
+enum { D_TOUR = 0, D_MARE, D_CHAMP, D_EPOUV, D_DISPUTE, D_STELE, D_PORT, D_BETE, D_TRES, D_NB };      // D_TRES : un corbeau porte un objet brillant a la tour ou a la mare      // D_BETE : un corbeau part attraper une petite bete
 enum { CM_NON = 0, CM_LARGE, CM_SUIVI };
 
 static M5Canvas sCiel(&M5.Display), sNear(&M5.Display);      // ciel fixe + le plan principal (un seul sprite de 411 Ko au lieu de trois bandes : 216 Ko de PSRAM en moins)
@@ -324,6 +324,14 @@ static void dynPart(int kp) {      // morceau kp du décor animé (0 lanterne de
     disque(g, TRX, b - 55.0f, 8.0f, CF(30 * f, 3 * f, 4 * f)); rect(g, TRX - 4, b - 62, TRX + 4, b - 50, CF(46 * f, 5 * f, 6 * f));
     rect(g, TRX - 2.2f, b - 59, TRX + 2.2f, b - 52, CF(220 * f, 34 * f, 24 * f));
     rect(g, TRX - 0.5f, b - 62, TRX + 0.5f, b - 50, C(3, 1, 2));
+    if (cTour > 0 && decLvl() < 2) {      // la cache : quelques reflets dans l'ombre de la porte (au plus 9 petits points)
+      const int n = cTour > 9 ? 9 : (int)cTour;
+      for (int i = 0; i < n; i++) {
+        const float gx = TRX - 4.5f + (float)((i * 7) % 10), gy = b - 2.2f - (float)((i * 5) % 4) * 1.4f; const bool vif = sinf(t * 2.1f + i * 1.9f) > 0.25f;
+        disque(g, gx, gy, 0.8f, vif ? CF(235, 190, 120) : CF(120, 86, 56));
+        if (vif && (i & 1)) { ligne(g, gx - 1.9f, gy, gx + 1.9f, gy, CF(200, 150, 100)); ligne(g, gx, gy - 1.9f, gx, gy + 1.9f, CF(200, 150, 100)); }
+      }
+    }
   }
   if (kp == 1 && RGM.tour && vis(PQX - 12, PQX + 4)) {      // lanterne du portique
     float f = 0.55f + 0.30f * sinf(t * 5.3f + 2.0f) * sinf(t * 1.7f); const float b = PQB();
@@ -353,6 +361,10 @@ static void dynPart(int kp) {      // morceau kp du décor animé (0 lanterne de
       if (fabsf(x - PX) + l > PRX * (1.0f - fabsf(y - PY) / PRY * 0.5f)) continue;
       ligne(g, x - l, y, x + l, y, CF(40 + 40 * a, 8 + 6 * a, 20 + 12 * a));
     }
+    if (cMare > 0 && decLvl() < 2) {      // la cache au fond de l'eau : de petits eclats qui scintillent (au plus 6)
+      const int n = cMare > 6 ? 6 : (int)cMare;
+      for (int i = 0; i < n; i++) { if (sinf(t * 1.9f + i * 2.4f) < 0.1f) continue; disque(g, PX - 22.0f + i * 9.0f + 3.0f * sinf(i * 3.1f), PY + 0.6f + 1.6f * sinf(i * 1.7f), 0.7f, CF(205, 150, 112)); }
+    }
     for (int i = 0; i < 4; i++) if (onde[i].on) { float u = onde[i].t / 1.3f, r = 2.0f + 9.0f * u; ellO(g, onde[i].x, onde[i].y, r, r * 0.32f, CF(120 * (1 - u), 40 * (1 - u), 60 * (1 - u))); }
   }
   if (kp == 7) for (int i = 0; i < 14; i++) if (gout[i].on) disque(g, gout[i].x, gout[i].y, 0.9f, C(150, 70, 90));
@@ -366,7 +378,7 @@ static int8_t suivi = -1;
 static bool reculLent = false; static float tReculRe = 0.0f; static int8_t suiviRet = -1;      // suiviRet : le corbeau suivi avant un événement (main, appel) : la vue suivie revient dessus      // recul de la vue : coupé si l'image devient trop lente ; délai avant de reculer de nouveau
 static int8_t lpBird = -1; static uint32_t lpT = 0; static float lpX = 0, lpY = 0;
 // vues choisies (OP.recul) : 0 normale, 1 arbre et rivière, 2 mare, 3 vieux bâtiments, 4 large ; le suivi d'un corbeau est un mode à part
-static const float VUE_Z[6] = {1.0f, 1.12f, 0.72f, 0.90f, 0.50f, 0.95f};      // échelle de la caméra
+static const float VUE_Z[6] = {1.0f, 1.30f, 0.72f, 0.90f, 0.50f, 1.10f};      // échelle de la caméra
 static const float VUE_X[6] = {160.0f, 165.0f, -10.0f, 382.0f, 190.0f, 104.0f};      // centre (monde) : arbre + bord de la mare ; la mare a gauche avec le champ ; portique, stèles, tour
 static const float VUE_Y[6] = {128.0f, 118.0f, 130.0f, 125.0f, 118.0f, 102.0f};      // 5 : le nid (branche secondaire, à gauche du tronc) et les branches de nuit
 static const char* const VUE_NOM[6] = {"Vue", "Arbre", "Mare", "Ruine", "Large", "Nid"};      // étiquette du bouton (32 px de large)
@@ -580,6 +592,7 @@ static void arrivee(Corbeau& c) {      // fin de l'atterrissage sur un site de l
     c.d = (r.dest == D_MARE) ? ((r.spot == 0) ? -1 : 1) : ((random(2)) ? 1 : -1);
     if (r.dest == D_DISPUTE) c.d = (ob[r.n % NOB].x >= c.x) ? 1 : -1;
     if (r.dest == D_BETE && r.spot < NBT) c.d = (bt[r.spot].x >= c.x) ? 1 : -1;
+    if (r.dest == D_TRES) c.d = (r.spot == 0) ? 1 : -1;      // tresor : face a la porte de la tour, ou face a l'eau
   }
   if (r.cop) liaisonArrivee(c, idx);
 }
@@ -624,11 +637,55 @@ static void solBete(Corbeau& c, int idx, Rt& r, float dt) {      // au sol, face
   }
   { c.peck += dt; const float dip = fabsf(sinf(c.peck / 0.42f * 3.1416f)); c.haC = lerpf(-0.3f, 0.55f, dip); c.hbC = lerpf(0.2f, 0.8f, dip); c.pitchC = c.pr * 0.45f - 0.30f * dip; if (r.t > 1.3f) apres(c, idx); }      // rien a manger : il picore un instant
 }
+// ---------- tresors caches (3.1.26) ----------
+// De temps en temps un corbeau decouvre un objet brillant au sol (bague, eclat), le prend au bec, s'envole au loin et le depose a l'interieur de la tour en ruine (le plus souvent)
+// ou dans la mare (parfois), puis revient a l'arbre. La cache grandit (compteurs en memoire, cle cbcach) et se voit en vue Vieux batiments / Mare : reflets dans l'ombre de la porte, eclats dans l'eau.
+// Reglage Tresors : non / rares / frequents (cle cbtres, page Monde). Cout : un objet au bec, au plus 9 + 6 petits points brillants, rien en decor minimal ni pendant l'allegement automatique.
+static uint16_t cTour = 0, cMare = 0; static bool cSale = false; static float tCSale = 0.0f;
+static int8_t tK = -1, tObj = -1; static uint8_t tPh = 0, tOu = 0; static float tT = 0.0f, gTres = 60.0f;      // tK : le corbeau en mission ; tPh 0 il va prendre l'objet, 1 il le porte ; tOu 0 tour, 1 mare
+static void tresFlush() { if (cSale) { prefs.putUInt("cbcach", (uint32_t)cTour | ((uint32_t)cMare << 16)); cSale = false; } }
+static bool tresorDepart(Corbeau& c, int idx) {      // appele quand le corbeau vient de ramasser l'objet : il s'envole vers la cache (renvoie faux : ce n'est pas un tresor, la routine normale continue)
+  if (tK != idx || tPh != 0 || c.objet == 0 || idx < 0 || idx >= NAD) return false;
+  Rt& r = rt[idx]; const float tx = (tOu == 0) ? TRX - 11.0f : PX + PRX + 5.0f, ty = solHaut(tx);
+  r.sB = c.s; r.hops = 0; r.away = true; r.dest = D_TRES; r.spot = tOu; r.ph = 0; r.t = 0; r.n = 0; r.dur = 0; r.tw = 0; r.cop = r.seq = r.grp = 0; r.tl = 0.0f;
+  c.perch = -1; c.item = -1; c.rapporte = false;
+  decoller(c, tx, ty, B_MONDE);
+  tPh = 1; tT = 0.0f; tObj = -1; return true;
+}
+static void solTres(Corbeau& c, int idx, Rt& r, float dt) {      // au pied de la porte de la tour ou au bord de l'eau, l'objet brillant au bec
+  const bool tour = (r.spot == 0);
+  if (r.ph == 0) {      // il regarde autour de lui
+    c.pitchC = c.pr * 0.5f; c.haC = -0.2f; c.hbC = 0.3f;
+    if (r.t > 0.7f) { r.ph = tour ? 1 : 2; r.t = 0; c.peck = 0; }
+    return;
+  }
+  if (r.ph == 1) {      // tour : il marche jusqu'a la porte
+    const float dxm = (TRX - 8.0f) - c.x; c.d = 1;
+    if (fabsf(dxm) < 1.8f || r.t > 8.0f) { r.ph = 2; r.t = 0; c.peck = 0; }
+    else { c.x += (dxm > 0 ? 1 : -1) * mnf(fabsf(dxm), 34.0f * dt) * mxf(0.0f, c.dv * (dxm > 0 ? 1.0f : -1.0f)); c.hop = -fabsf(sinf(c.t * 10.0f)) * 2.4f * c.s; c.bob = c.hop; c.pitchC = c.pr * 0.55f; c.haC = c.pitchC - 0.2f; c.hbC = c.haC + 0.5f; }
+    return;
+  }
+  if (r.ph == 2) {      // il depose l'objet : la tete plonge vers l'ombre de la porte (ou vers l'eau), le bec s'ouvre
+    c.peck += dt; const float dip = fabsf(sinf(lim(c.peck / 0.9f, 0.0f, 1.0f) * 3.1416f));
+    c.haC = lerpf(-0.3f, 0.7f, dip); c.hbC = lerpf(0.2f, 0.95f, dip); c.pitchC = c.pr * 0.45f - 0.34f * dip;
+    if (c.peck > 0.45f && c.objet) {
+      c.objet = 0; son(tour ? SN_CROC : SN_GAZ, 170); c.flash = 0.5f;
+      if (tour) { if (cTour < 9999) cTour++; eclat(TRX, TRB() - 8.0f, 0.35f, 1.1f); }
+      else { if (cMare < 9999) cMare++; const float wx = c.x + c.d * 17.0f * c.s; spawnOnde(wx, PY + 0.5f); spawnGoutte(wx, PY, rnd(-25, 25), rnd(-70, -40)); spawnGoutte(wx + 3.0f, PY, rnd(-25, 25), rnd(-60, -30)); }
+      cSale = true; tCSale = 6.0f;
+    }
+    if (c.peck > 1.0f) { r.ph = 3; r.t = 0; c.haC = -0.2f; c.hbC = 0.3f; }
+    return;
+  }
+  c.pitchC = c.pr * 0.5f; c.haC = -0.2f; c.hbC = 0.3f;      // il regarde sa cachette un instant, puis revient a l'arbre
+  if (r.t > 0.9f) retour(c, idx);
+}
 static void sol(Corbeau& c, int idx, float dt) {      // au sol : boire à la mare, picorer dans le champ (appelé à chaque image par majCorbeau)
   Rt& r = rt[idx]; r.t += dt;
   if (r.ph == 9) { if (r.t > 2.0f) retour(c, idx); return; }
   if (r.dest == D_DISPUTE) { dispute(c, idx, dt); return; }
   if (r.dest == D_BETE) { solBete(c, idx, r, dt); return; }
+  if (r.dest == D_TRES) { solTres(c, idx, r, dt); return; }
   if (r.dest == D_MARE) {
     if (r.ph == 0) { if (r.t > 1.1f) { r.ph = 1; r.t = 0; r.n = (uint8_t)(3 + random(3)); r.tw = 0; } return; }
     if (r.ph == 1) {      // boire : la tête plonge vers l'eau, remonte et avale la tête en arrière
@@ -844,6 +901,8 @@ static void chargerMon() {
   static bool lu = false; if (lu) return; lu = true;
   RGM.tour = prefs.getUChar("cbmtour", 1) ? 1 : 0; RGM.lng = prefs.getUChar("cblng", 1) ? 1 : 0;
   RGM.bet = prefs.getUChar("cbbet", 1); if (RGM.bet > 2) RGM.bet = 1;
+  RGM.tres = prefs.getUChar("cbtres", 1); if (RGM.tres > 2) RGM.tres = 1;
+  { const uint32_t v = prefs.getUInt("cbcach", 0); cTour = (uint16_t)(v & 0xFFFFu); cMare = (uint16_t)(v >> 16); }
 }
 static void spawnHalo(const Corbeau& c, float amp) {
   int k = 0; float tm = -1.0f;
@@ -1132,6 +1191,32 @@ static void composerPar(M5Canvas& d, int y0, int y1, float czS, float cxS, float
 static void composer() { composerPar(cv, 0, H_SCENE, cz, cxx, cyy); }
 
 // ---------- mise à jour générale (appelée par majGlobal) ----------
+static void tresorDebut() {      // un corbeau perche trouve un objet brillant au sol : il va le prendre
+  int l[NAD], n = 0;
+  for (int k = 0; k < NAD; k++) { Corbeau& c = cr[k]; if (!rt[k].away && c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f && fam::libre(k)) l[n++] = k; }
+  if (!n) return;
+  int j = -1; for (int i = 0; i < NOB; i++) if (!ob[i].actif) { j = i; break; }
+  if (j < 0) return;
+  const int k = l[random(n)]; static const uint8_t TT[4] = {T_BRILLANT, T_BAGUE, T_BRILLANT, T_BAGUE};
+  Obj& o = ob[j]; o.actif = true; o.type = TT[random(4)]; o.x = rnd(100.0f, 240.0f); o.y = solHaut(o.x) - 3.2f; o.vy = 0; o.t = 0; o.repos = true; o.reserve = -1;
+  Corbeau& c = cr[k]; c.d = (o.x >= c.x) ? 1 : -1; c.look = lim(atan2f(solHaut(o.x) - c.y, fabsf(o.x - c.x) + 8.0f) * 0.7f, -0.3f, 0.8f); c.tLook = 1.0f;
+  tK = (int8_t)k; tObj = (int8_t)j; tPh = 0; tT = 0.0f; tOu = (RGM.tour && random(100) < 72) ? 0 : 1;
+  attribuer(j, k);
+  if (cr[k].but != B_NOUR) { o.actif = false; tK = -1; tObj = -1; }
+}
+static void majTresors(float dt) {
+  if (tK >= 0) {
+    tT += dt;
+    if (tPh == 0) { if (tT > 30.0f || cr[tK].etat == E_OFF) { if (tObj >= 0 && ob[tObj].actif && ob[tObj].type >= T_BRILLANT && ob[tObj].reserve == tK) { ob[tObj].actif = false; ob[tObj].reserve = -1; } tK = -1; tObj = -1; } }
+    else if (!(rt[tK].away && rt[tK].dest == D_TRES) || tT > 120.0f) tK = -1;
+  }
+  if (cSale) { tCSale -= dt; if (tCSale <= 0.0f && tK < 0) tresFlush(); }      // ecrit en memoire une fois le corbeau revenu, jamais pendant le voyage
+  if (tK >= 0 || RGM.tres == 0) return;
+  gTres -= dt * actFreq; if (gTres > 0.0f) return;
+  gTres = (RGM.tres == 1) ? rnd(120.0f, 220.0f) : rnd(40.0f, 90.0f);
+  if (decLvl() >= 2 || cbAbsent || V.ph != V_RIEN || GP.ph || appelOn || panneau || H.actif || nbAilleurs() >= 2 || repK >= 0 || LG.on || S.on) return;
+  tresorDebut();
+}
 static void maj(float dt) {
   if (!pret) return;
   tMonde += dt;
@@ -1153,7 +1238,7 @@ static void maj(float dt) {
   for (int i = 0; i < NHALO; i++) if (halo[i].on) { halo[i].t += dt; if (halo[i].t > 1.3f) halo[i].on = false; }
   majSoc(dt);
   majLng(dt); majPoursuites();
-  majBetes(dt); chasseBetes(dt);
+  majBetes(dt); chasseBetes(dt); majTresors(dt);
   for (int k = 0; k < NAD; k++) {      // énergie qui baisse, gros après la viande, joie des baies, sieste quand il est rassasié
     Corbeau& c = cr[k]; en[k] = mxf(0.0f, en[k] - 0.004f * dt); if (tHer[k] > 0.0f) tHer[k] -= dt; if (tJoie[k] > 0.0f) tJoie[k] -= dt;
     if (!rt[k].away && c.etat != E_DEHORS && c.etat != E_OFF) { float tg = sBase[k] * (1.0f + 0.07f * lim(tHer[k] / 3.0f, 0.0f, 1.0f)); if (fabsf(c.s - tg) > 0.002f) c.s += (tg - c.s) * mnf(1.0f, dt * 2.0f); }
@@ -1174,7 +1259,7 @@ static void maj(float dt) {
   }
 }
 static void reinit() {
-  chargerMon(); beteInit(); memset(rt, 0, sizeof(rt)); memset(onde, 0, sizeof(onde)); memset(gout, 0, sizeof(gout)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); memset(&S, 0, sizeof(S)); gSoc = rnd(5.0f, 9.0f); gLng = rnd(14.0f, 24.0f); tAlertePrec = 0.0f;
+  chargerMon(); beteInit(); tK = -1; tObj = -1; tPh = 0; gTres = rnd(45.0f, 90.0f); memset(rt, 0, sizeof(rt)); memset(onde, 0, sizeof(onde)); memset(gout, 0, sizeof(gout)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); memset(&S, 0, sizeof(S)); gSoc = rnd(5.0f, 9.0f); gLng = rnd(14.0f, 24.0f); tAlertePrec = 0.0f;
   for (int k = 0; k < NAD; k++) { en[k] = 0.4f; tHer[k] = tJoie[k] = 0.0f; forceK[k] = 0; sBase[k] = cr[k].s; }
   for (int k = 0; k < NAD; k++) rang[k] = (int8_t)k;
   for (int k = NAD - 1; k > 0; k--) { int j = random(k + 1); int8_t q = rang[k]; rang[k] = rang[j]; rang[j] = q; }
@@ -1182,6 +1267,6 @@ static void reinit() {
   reculLent = false; tReculRe = 0.0f; suiviRet = -1; cm = CM_NON; cmFin = false; suivi = -1; lpBird = -1; cz = ZN; cxx = 160.0f; cyy = 128.0f; czv = cxv = cyv = 0.0f;
   gLarge = rnd(40.0f, 70.0f); gTrip = rnd(10.0f, 20.0f); tMonde = 0.0f;
 }
-static void fermerMonde() { libererSprites(); tentee = false; cm = CM_NON; cmFin = false; suivi = -1; memset(rt, 0, sizeof(rt)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); }
+static void fermerMonde() { tresFlush(); tK = -1; tObj = -1; libererSprites(); tentee = false; cm = CM_NON; cmFin = false; suivi = -1; memset(rt, 0, sizeof(rt)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); }
 
 }  // namespace mo
