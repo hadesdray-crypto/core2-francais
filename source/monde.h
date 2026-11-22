@@ -334,7 +334,12 @@ static float cmT = 0.0f, cmDur = 0.0f, gLarge = 60.0f, tPerdu = 0.0f, tRetour = 
 static int8_t suivi = -1;
 static bool reculLent = false; static float tReculRe = 0.0f;      // recul de la vue : coupé si l'image devient trop lente ; délai avant de reculer de nouveau
 static int8_t lpBird = -1; static uint32_t lpT = 0; static float lpX = 0, lpY = 0;
-static const char* etiquette() { return cm == CM_LARGE ? "Large" : (cm == CM_SUIVI ? "Suivi" : "Vue"); }
+// vues choisies (OP.recul) : 0 normale, 1 reculée, 2 très reculée, 3 arbre et rivière, 4 mare, 5 vieux bâtiments ; le suivi d'un corbeau est un mode à part
+static const float VUE_Z[6] = {1.0f, 0.72f, 0.50f, 0.80f, 1.10f, 0.90f};      // échelle de la caméra
+static const float VUE_X[6] = {160.0f, 190.0f, 190.0f, 100.0f, -90.0f, 382.0f};      // centre (monde) : arbre + bord de la mare ; mare + champ + épouvantail + stèle ; portique, stèles, tour
+static const float VUE_Y[6] = {128.0f, 118.0f, 118.0f, 128.0f, 135.0f, 125.0f};
+static const char* const VUE_NOM[6] = {"Vue", "Recul", "Loin", "Arbre", "Mare", "Ruine"};      // étiquette du bouton (32 px de large)
+static const char* etiquette() { return cm == CM_SUIVI ? "Suivi" : ((OP.recul > 0 && OP.recul <= 5) ? VUE_NOM[OP.recul] : (cm == CM_LARGE ? "Large" : "Vue")); }
 static void majBouton() { boutonVue(fond); syncUI(); plein = true; }
 static bool camOn() { return pret && cm != CM_NON; }
 static void demarrer(uint8_t mode, bool autom) {
@@ -344,27 +349,27 @@ static void demarrer(uint8_t mode, bool autom) {
 }
 static void fermer() { if (cm != CM_NON) { cmFin = true; } }
 static int choisirSuivi();
+static void reglerRecul(uint8_t n);
 static void basculer() {
   if (!pret) return;
-  if (cm == CM_NON || cmFin) demarrer(CM_LARGE, false);
-  else if (cm == CM_LARGE) { int k = choisirSuivi(); if (k >= 0) { suivi = (int8_t)k; demarrer(CM_SUIVI, false); } else if (OP.recul == 0) fermer(); }
-  else if (OP.recul > 0 && !reculLent) demarrer(CM_LARGE, false);
-  else fermer();
-  majBouton();
+  if (cm == CM_SUIVI) { reglerRecul(0); return; }      // le suivi se termine : retour à la vue normale
+  if (OP.recul < 5) { reglerRecul((uint8_t)(OP.recul + 1)); return; }      // Normal > Reculé > Très reculé > Arbre > Mare > Vieux bâtiments
+  int k = choisirSuivi(); if (k >= 0) { suivi = (int8_t)k; demarrer(CM_SUIVI, false); majBouton(); } else reglerRecul(0);      // puis le suivi d'un corbeau, puis la vue normale
 }
 static void demandeLarge(bool on) { if (!pret) return; if (on && cm == CM_NON) demarrer(CM_LARGE, false); else if (!on && cm != CM_NON) fermer(); }
 static void finSuivi(bool bloque) { if (OP.recul > 0 && !reculLent && !bloque) { suivi = -1; demarrer(CM_LARGE, false); } else fermer(); }      // le suivi se termine : la vue reculée reste (si elle est réglée)
 static void reglerRecul(uint8_t n) {      // recul de la vue : 0 normale, 1 reculée, 2 très reculée (clé cbrecul) ; la vue large et le suivi existants font le travail
-  if (n > 2) n = 2; OP.recul = n; prefs.putUChar("cbrecul", n); reculLent = false; tReculRe = 0.0f;
+  if (n > 5) n = 5; OP.recul = n; prefs.putUChar("cbvue", n); reculLent = false; tReculRe = 0.0f;
   if (!pret) return;
-  if (n == 0) { if (cm == CM_LARGE) fermer(); }
+  if (n == 0) { if (cm != CM_NON) fermer(); }
   else if (cm == CM_NON || cmFin) demarrer(CM_LARGE, false);
   else if (cm == CM_LARGE) { cmAuto = false; cmDur = 1e9f; }
+  else if (cm == CM_SUIVI) { suivi = -1; demarrer(CM_LARGE, false); }
   majBouton();
 }
 static void reculer(int d) {      // pincement à deux doigts : se pincer recule d'un niveau, s'écarter avance d'un niveau
   if (!pret) { demandeLarge(d > 0); return; }
-  int n = (int)OP.recul + d; if (n < 0) n = 0; if (n > 2) n = 2;
+  int n = (OP.recul > 2) ? ((d > 0) ? 2 : 0) : (int)OP.recul + d; if (n < 0) n = 0; if (n > 2) n = 2;      // le pincement va de Normal à Très reculé ; depuis une vue par lieu il rejoint Très reculé ou Normal
   if (n == (int)OP.recul) { if (d < 0 && n == 0 && cm != CM_NON) fermer(); return; }
   reglerRecul((uint8_t)n);
 }
@@ -888,7 +893,8 @@ static bool camPilote(float dt) {
   if (!cmFin) {
     if (cm == CM_LARGE) {
       tz = (OP.recul == 1) ? 0.72f : 0.5f; tx = 190.0f + 28.0f * sinf(cmT * 0.28f); ty = 118.0f;
-      if (LG.on && LG.a >= 0 && LG.b >= 0) { const float xa = cr[LG.a].x, xb = cr[LG.b].x; tx = lerpf(tx, (xa + xb) * 0.5f, 0.85f); tz = (fabsf(xa - xb) < 190.0f) ? 0.6f : 0.5f; }      // l'échange à distance est au centre de l'image
+      if (OP.recul >= 3) { tz = VUE_Z[OP.recul]; tx = VUE_X[OP.recul]; ty = VUE_Y[OP.recul]; }      // vue par lieu : fixe, la caméra ne bouge plus
+      else if (LG.on && LG.a >= 0 && LG.b >= 0) { const float xa = cr[LG.a].x, xb = cr[LG.b].x; tx = lerpf(tx, (xa + xb) * 0.5f, 0.85f); tz = (fabsf(xa - xb) < 190.0f) ? 0.6f : 0.5f; }      // l'échange à distance est au centre de l'image
       if (cmAuto && cmT > cmDur) fermer();
     } else {
       Corbeau& c = cr[suivi < 0 ? 0 : suivi]; Rt& r = rt[suivi < 0 ? 0 : suivi];
@@ -915,7 +921,7 @@ static bool camPilote(float dt) {
       }
     }
   }
-  if (cm == CM_SUIVI && OP.recul > 0) tz = mxf(0.5f, tz * ((OP.recul == 1) ? 0.82f : 0.66f));      // le suivi recule aussi quand la vue est reculée
+  if (cm == CM_SUIVI && OP.recul > 0) tz = mxf(0.5f, tz * ((OP.recul == 1) ? 0.82f : ((OP.recul == 2) ? 0.66f : 1.0f)));      // le suivi recule aussi quand la vue est reculée
   bornes(tz, tx, ty);
   ressort(cz, czv, tz, 3.6f, dt); ressort(cxx, cxv, tx, 3.4f, dt); ressort(cyy, cyv, ty, 3.4f, dt);
   if (cmFin && fabsf(cz - ZN) < 0.003f && fabsf(cxx - 160.0f) < 0.6f && fabsf(cyy - 128.0f) < 0.6f) {

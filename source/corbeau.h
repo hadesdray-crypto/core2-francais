@@ -132,7 +132,7 @@ static void chargerOptions() {
   OP.hor = prefs.getUChar("cbniv", 1); if (OP.hor > 2) OP.hor = 1;      // lumière : Sombre par défaut (nouvelle clé cbniv)
   OP.q = prefs.getUChar("cbqual", 0); if (OP.q > 2) OP.q = 0;      // qualité : Fluide par défaut (nouvelle clé cbqual)
   OP.barre = prefs.getUChar("cbbarre", 1) ? 1 : 0; OP.fiche = prefs.getUChar("cbfiche", 1) ? 1 : 0; OP.lance = prefs.getUChar("cblance", 1) ? 1 : 0;      // fonctions du bloc W : toutes activées par défaut, réglables
-  OP.paume = prefs.getUChar("cbpaume", 1) ? 1 : 0; OP.pvis = prefs.getUChar("cbpvis", 2); if (OP.pvis > 3) OP.pvis = 2; OP.recul = prefs.getUChar("cbrecul", 0); if (OP.recul > 2) OP.recul = 0;      // bloc AA : main paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
+  OP.paume = prefs.getUChar("cbpaume", 1) ? 1 : 0; OP.pvis = prefs.getUChar("cbpvis", 2); if (OP.pvis > 3) OP.pvis = 2; OP.recul = prefs.getUChar("cbvue", prefs.getUChar("cbrecul", 0)); if (OP.recul > 5) OP.recul = 0;      // vue choisie : 0 normale, 1 reculée, 2 très reculée, 3 arbre et rivière, 4 mare, 5 vieux bâtiments (clé cbvue)      // bloc AA : main paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
   OP.taille = prefs.getUChar("cbtaille", 1); if (OP.taille > 2) OP.taille = 1;      // taille : normal par défaut
   nbOeufs = prefs.getUInt("cboeufs", 0);
   appliquerAct(); appliquerAmb(); appliquerSec(); debug = (OP.fps != 0);
@@ -2673,11 +2673,12 @@ static void dessinerPanneau() {
     tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Lumière", OP.hor == 2 ? "Horreur" : (OP.hor == 1 ? "Sombre" : "Clair"));
     tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps ? "Oui" : "Non"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
   } else if (panPage == 6) {      // main et vue : main ouverte paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
-    static const char* const LO[2] = {"Non", "Oui"}; static const char* const LPV[4] = {"Jamais", "Rare", "Normal", "Souvent"}; static const char* const LRC[3] = {"Normal", "Reculé", "Très reculé"};
+    static const char* const LO[2] = {"Non", "Oui"}; static const char* const LPV[4] = {"Jamais", "Rare", "Normal", "Souvent"}; static const char* const LRC[3] = {"Normal", "Reculé", "Très reculé"}; static const char* const LLI[3] = {"Arbre", "Mare", "Bâtiments"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
     g.drawString("Main ouverte, paume vers le haut (mode Main)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, OP.paume, LO);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Visites d'un corbeau dans la paume", 6, 73); segBarre(g, 4, 87, 312, 24, 4, OP.pvis, LPV);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Recul de la vue (pincer l'écran = reculer d'un niveau)", 6, 115); segBarre(g, 4, 129, 312, 24, 3, OP.recul, LRC);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vue (elle reste choisie) : normale / reculée / très reculée", 6, 115); segBarre(g, 4, 129, 312, 24, 3, OP.recul <= 2 ? OP.recul : -1, LRC);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vue par lieu : arbre et rivière / mare / vieux bâtiments", 6, 157); segBarre(g, 4, 171, 312, 24, 3, OP.recul >= 3 ? OP.recul - 3 : -1, LLI);
   } else if (panPage == 5) {      // famille : parent attitré, entraide, protection, croissance du petit (clés cbfam, cbfaid, cbfpro, cbfvit)
     static const char* const LF[2] = {"Désactivée", "Activée"}; static const char* const LA[3] = {"Non", "Selon caractère", "Tous aident"}; static const char* const LP[3] = {"Douce", "Normale", "Forte"}; static const char* const LV[3] = {"Lente", "Normale", "Rapide"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2735,6 +2736,7 @@ static void touchPanneau(int x, int y) {
     if (y >= 42 && y < 72) { OP.paume = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbpaume", OP.paume); }
     else if (y >= 84 && y < 114) { OP.pvis = (uint8_t)constrain((x - 4) * 4 / 312, 0, 3); prefs.putUChar("cbpvis", OP.pvis); }
     else if (y >= 126 && y < 156) { mo::reglerRecul((uint8_t)constrain((x - 4) * 3 / 312, 0, 2)); }
+    else if (y >= 168 && y < 198) { mo::reglerRecul((uint8_t)(3 + constrain((x - 4) * 3 / 312, 0, 2))); }
     else return;
     if (OP.vib) vibrer(40);
     panSale = true; return;
