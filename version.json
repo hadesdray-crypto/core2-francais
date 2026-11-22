@@ -1,5 +1,5 @@
 {
-    "version": "3.1.4",
+    "version": "3.1.5",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -64,6 +64,8 @@
         "Plus lisible et plus fluide : la scène est plus claire par défaut (réglage « Lumière » : Clair, Sombre par défaut, Horreur, dans Réglages des corbeaux), le zoom de base est plus serré (corbeaux et arbre plus gros) et le passage entre la vue normale et la vue large se fait par un fondu rapide, sans saccade.",
         "Réglage « Qualité » (Fluide par défaut, Normal, Riche) : en Fluide, 20 images par seconde fixes, effets réduits (moins de plumes, plus d'ailes fantômes ni de lignes de vitesse), et réduction automatique si l'image prend trop de temps. Les mesures s'affichent en haut à droite quand « Mesures à l'écran » est activé, et sont dans /api/etat.",
         "Le corbeau qui vient taper à la vitre est refait : il saute de sa branche, grossit en battant des ailes, s'arrête net devant la vitre, tourne de face puis de trois quarts, donne un à trois coups de bec marqués (éclair, fissures, tremblement), puis repart en rapetissant. La zone est redessinée par morceaux, comme le reste.",
+        "Main commandée par des traits : le bras (manche et avant-bras) reste immobile ; seuls le poignet et les doigts bougent. On trace des traits au doigt n'importe où sur l'écran (pas besoin de toucher la main) : trait horizontal = le poignet pivote et les doigts s'écartent ou se rapprochent ; trait vers le haut ou le bas = les doigts s'ouvrent ou se replient jusqu'au poing ; cercle = la main se referme doucement sur l'oiseau. Plus le trait est long et rapide, plus le mouvement est ample et vif. Toucher la main ne la déplace plus ni ne la retire (on la retire avec le bouton Main).",
+        "Protection contre les blocages : les dessins ignorent toute valeur aberrante au lieu de bloquer l'écran, et les ressorts de la main sont remis à zéro s'ils dérapent.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
