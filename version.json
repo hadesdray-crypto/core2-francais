@@ -1,6 +1,6 @@
 {
     "version": "3.1.28",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=7530efe26106",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=15e3def0bb1c",
     "changes": [
         "3.1.28 : les corbeaux vont beaucoup moins souvent au bâtiment du fond (tour, stèles, portique) : ces excursions lointaines sont RARES par défaut, et les échanges à longue distance aussi. Ils partent surtout chasser les petites bêtes (escargot, lézard, scarabée) et picorer des graines au champ, et cachent de temps en temps un trésor brillant. Nouveau réglage « Excursions lointaines : Rares / Normales / Fréquentes » (Réglages des corbeaux, page Monde ; Rares par défaut).",
         "3.1.28 : chaque corbeau a ses propres habitudes, tirées de son caractère (audace, calme, curiosité, sociabilité, force), de son rôle et de son rang : les audacieux et les curieux vont plus loin et cherchent plus de trésors, les craintifs et le jeune restent près de l'arbre, les forts et les mieux classés chassent plus, le parent d'un petit chasse davantage, et un sociable part parfois picorer au champ avec son meilleur ami. Ces traits sont déjà mémorisés avec la colonie.",
@@ -123,17 +123,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "7530efe2610653365324c8e1e6207aad8f63d99822c050272fe8b092e083e8b4",
-    "size": 5149296,
+    "sha256": "15e3def0bb1c3e5352870552e3a42592dcb36ae6d52b32391c2f2cee79f51315",
+    "size": 5150640,
     "canal": "test",
     "notes": [
-        "3.1.27 : proportions : oiseaux du fond tres petits (0,40), arbre 12 pour cent plus petits, mare 0,95, vue Vieux batiments recadree",
+        "3.1.28 : excursions lointaines rares (reglage), chasse et champ plus frequents, comportements propres a chaque corbeau",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.27",
-        "run": "45064068336",
-        "commit": "c33e1574a7f4"
+        "version": "3.1.28",
+        "run": "45064892696",
+        "commit": "d9c9644d10f7"
     }
 }
