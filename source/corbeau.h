@@ -109,6 +109,7 @@ static void chargerOptions() {
 struct Oeuf { bool actif; float x, y, t, tc, tp; uint8_t etat; int8_t ponte; };      // etat : 0 posé, 1 qui craque
 static Oeuf OE;
 static float gOeuf = 50.0f, agePous = 0.0f;
+static uint32_t tTestSon = 0;      // fin du bip de test (volume au maximum)
 static float gFeuille = 2.0f, slowT = 0.0f;      // feuilles qui tombent ; ralenti sur les moments forts
 static inline void ralenti(float d) { if (d > slowT) slowT = d; }
 static float gSocial = 14.0f, tAlerte = 0.0f; static int dirAlerte = 1; static bool alerteFuite = false;
@@ -573,7 +574,7 @@ static void choisirOeil(int a) { oeilActif = (uint8_t)a; prefs.putUChar("cbeil",
 static void sauverOeilCu() { prefs.putBytes("dexcr", &oCu, sizeof(OeilCu)); }
 
 static void son(int id, int vol = 200) {
-  if (id < 0 || id >= SN_NB || !R.actif[M_SON] || R.volume == 0) return;
+  if (id < 0 || id >= SN_NB || R.volume == 0) return;
   const uint8_t* d = nullptr; uint32_t n = 0, rate = 16000;
 #ifdef CB_AVEC_REEL
   if (sonsReels) {
@@ -591,13 +592,20 @@ static void son(int id, int vol = 200) {
 #endif
   if (!d || !n) return;
   uint32_t m = millis(); if (m - dernierSon[id] < 150) return; dernierSon[id] = m;
-  if (!M5.Speaker.isEnabled()) {
+  if (!M5.Speaker.isRunning()) {
     if (lectureEnCours) return;      // la Matinale demarre : on ne touche pas au haut-parleur
     M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume);
   }
+  if (!tTestSon) M5.Speaker.setVolume(R.volume);
   static uint8_t canal = 0; canal = (canal + 1) & 3;
-  M5.Speaker.setChannelVolume(canal, vol);
+  M5.Speaker.setChannelVolume(canal, vol * 5 / 4 > 255 ? 255 : vol * 5 / 4);
   M5.Speaker.playRaw(d, n, rate, false, 1, canal, true);
+}
+static void testerSon() {      // bip fort puis cri : pour vérifier que le haut-parleur répond
+  if (!lectureEnCours && !M5.Speaker.isRunning()) { M5.Mic.end(); M5.Speaker.begin(); }
+  M5.Speaker.setVolume(255); tTestSon = millis() + 1800; if (!tTestSon) tTestSon = 1;
+  M5.Speaker.tone(1000.0f, 160);
+  dernierSon[SN_CROA1] = 0; son(SN_CROA1, 255);
 }
 static void sonCri() { static const int ids[7] = {SN_CROA1, SN_CROA2, SN_CROA3, SN_CROASSE1, SN_CROASSE2, SN_ALARME, SN_TETON}; int n = sonsReels ? 7 : 5; son(ids[random(n)], 190); }
 
@@ -2037,12 +2045,13 @@ static void dessinerPanneau() {
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225)); g.drawString("Réglages des corbeaux", 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
-  // volume : - barre +
+  // volume : - barre + et TEST SON
   g.fillRoundRect(4, 30, 312, 32, 8, C(44, 9, 18)); g.drawRoundRect(4, 30, 312, 32, 8, C(160, 40, 48));
-  g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225)); g.drawString("Volume", 12, 46);
-  g.fillRoundRect(108, 33, 48, 26, 6, C(90, 18, 26)); g.drawRoundRect(108, 33, 48, 26, 6, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("-", 132, 46);
-  g.fillRoundRect(264, 33, 48, 26, 6, C(90, 18, 26)); g.drawRoundRect(264, 33, 48, 26, 6, C(255, 120, 90)); g.drawString("+", 288, 46);
-  g.fillRoundRect(162, 41, 96, 10, 4, C(60, 12, 20)); g.fillRoundRect(162, 41, 1 + (int)(95.0f * R.volume / 255.0f), 10, 4, C(80, 230, 130));
+  g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225)); g.drawString("Vol.", 10, 46);
+  g.fillRoundRect(44, 33, 44, 26, 6, C(90, 18, 26)); g.drawRoundRect(44, 33, 44, 26, 6, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("-", 66, 46);
+  g.fillRoundRect(92, 41, 92, 10, 4, C(60, 12, 20)); g.fillRoundRect(92, 41, 1 + (int)(91.0f * R.volume / 255.0f), 10, 4, C(80, 230, 130));
+  g.fillRoundRect(190, 33, 44, 26, 6, C(90, 18, 26)); g.drawRoundRect(190, 33, 44, 26, 6, C(255, 120, 90)); g.drawString("+", 212, 46);
+  g.fillRoundRect(240, 33, 72, 26, 6, C(20, 90, 50)); g.drawRoundRect(240, 33, 72, 26, 6, C(120, 255, 160)); g.drawString("TEST SON", 276, 46);
   const char* VIS[3] = {"Jamais", "Rare", "Souvent"}; const char* SEC[3] = {"Faible", "Normale", "Forte"}; const char* AMB[3] = {"Lune + étoiles", "Brume rouge", "Nuit sombre"};
   char nb[8]; snprintf(nb, sizeof(nb), "%d", OP.nb);
   tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
@@ -2064,8 +2073,9 @@ static void fermerPanneau() {
 static void touchPanneau(int x, int y) {
   if ((y < 28 && x >= 236) || y >= 206) { fermerPanneau(); return; }
   if (y >= 30 && y < 62) {
-    if (x >= 104 && x < 160) { R.volume = constrain((int)R.volume - 24, 0, 255); M5.Speaker.setVolume(R.volume); sauverReglages(); panSale = true; sonCri(); }
-    else if (x >= 260) { R.volume = constrain((int)R.volume + 24, 0, 255); M5.Speaker.setVolume(R.volume); sauverReglages(); panSale = true; sonCri(); }
+    if (x >= 40 && x < 90) { R.volume = constrain((int)R.volume - 24, 0, 255); M5.Speaker.setVolume(R.volume); sauverReglages(); panSale = true; sonCri(); }
+    else if (x >= 238) { testerSon(); }
+    else if (x >= 186) { R.volume = constrain((int)R.volume + 24, 0, 255); M5.Speaker.setVolume(R.volume); sauverReglages(); panSale = true; sonCri(); }
     return;
   }
   if (y < 65 || y >= 202) return;
@@ -2189,7 +2199,8 @@ static void ouvrir() {
   memset(&GP, 0, sizeof(GP)); gVisGP = rnd(50.0f, 90.0f); tToucher = millis();
   memset(&OE, 0, sizeof(OE)); OE.ponte = -1; gOeuf = rnd(40.0f, 70.0f); agePous = 0; panneau = false; panSale = true; ambChange = false; oeufsSale = false; appliquerNb();
   gAction = 3.0f; gPoof = rnd(14, 24); gObjet = rnd(24, 40); gAttrib = 0; choix = 0; presse = -1; tDernier = millis(); tSec = millis(); nImg = 0; fps = 0; msDessin = 0; volVu = false;
-  if (R.actif[M_SON] && !lectureEnCours && !M5.Speaker.isEnabled()) { M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume); }
+  if (prefs.getUChar("cbvol1", 0) == 0) { if (R.volume < 200) { R.volume = 200; sauverReglages(); } prefs.putUChar("cbvol1", 1); }      // volume de départ plus fort, une seule fois
+  if (!lectureEnCours && !M5.Speaker.isRunning()) { M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume); }
   Serial.printf("[corbeau] ouvert : heap=%u psram=%u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
 }
 static void quitter() {
@@ -2197,7 +2208,7 @@ static void quitter() {
   ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
   if (fondLOk) { fondL.deleteSprite(); fondLOk = false; }
   if (fondOk) { fond.deleteSprite(); fondOk = false; }
-  if (!lectureEnCours && M5.Speaker.isEnabled()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); }     // la musique en cours (Matinale) n'est jamais touchée
+  if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); }     // la musique en cours (Matinale) n'est jamais touchée
   Serial.printf("[corbeau] fermé : heap=%u psram=%u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
 }
 
@@ -2208,6 +2219,7 @@ static void dessiner() {
     cv.fillScreen(C(10, 0, 4)); cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 150, 140));
     cv.drawString("Pas assez de mémoire", 160, 110); cv.drawString("pour les corbeaux", 160, 134); cv.setTextDatum(top_left); cv.pushSprite(0, 0); return;
   }
+  if (tTestSon && millis() > tTestSon) { tTestSon = 0; M5.Speaker.setVolume(R.volume); }
   if (panneau) { if (panSale) { panSale = false; dessinerPanneau(); } return; }
   if (oeufsSale) { oeufsSale = false; boutonOeufs(fond); syncUI(); plein = true; }
   uint32_t m0 = millis();

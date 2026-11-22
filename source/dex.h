@@ -6,6 +6,10 @@
 // Rien n'est redessiné tant que rien ne bouge : le toucher reste immédiat.
 
 extern uint32_t finAffVolume;
+#if __has_include("sons_pouvoirs.h")
+#include "sons_pouvoirs.h"
+#define DX_SONS 1
+#endif
 
 namespace dx {
 
@@ -142,6 +146,20 @@ static const char* courtOeil(int i) { return i < 7 ? DEF[i].court : "Ton œil"; 
 static const char* nomOeil(int i) { return i < 7 ? DEF[i].nom : "Ton œil"; }
 static int suivant(int i, int sens) { for (int k = 0; k < 8; k++) { i = (i + sens + 8) % 8; if (decouvert(i)) return i; } return i; }
 
+// ---------- cri du pouvoir de l'œil (touche l'œil sur la fiche, ou à l'ouverture de la fiche) ----------
+static void ecouter(int i) {
+#ifdef DX_SONS
+  static const uint8_t* const D[5] = {POUVOIR_1, POUVOIR_2, POUVOIR_3, POUVOIR_4, POUVOIR_5};
+  static const uint32_t N[5] = {POUVOIR_1_LEN, POUVOIR_2_LEN, POUVOIR_3_LEN, POUVOIR_4_LEN, POUVOIR_5_LEN};
+  static const uint8_t MAPP[8] = {0, 1, 4, 3, 2, 3, 2, 0};
+  if (R.volume == 0 || lectureEnCours) return;
+  if (!M5.Speaker.isRunning()) { M5.Mic.end(); M5.Speaker.begin(); }
+  M5.Speaker.setVolume(R.volume); M5.Speaker.setChannelVolume(5, 255);
+  int p = MAPP[i & 7]; M5.Speaker.playRaw(D[p], N[p], POUVOIRS_RATE, false, 1, 5, true);
+#else
+  (void)i;
+#endif
+}
 // ---------- petits éléments d'interface ----------
 static void etoile(M5Canvas& g, float cx, float cy, float r, uint16_t c) {
   float p[10][2];
@@ -203,6 +221,7 @@ static void fiche(M5Canvas& g, int idx, int ox) {
   entete(g, ox, tit, num);
   int motif, n; float cr, cg, cbv; couleurOeil(idx, motif, cr, cg, cbv, n);
   oeil(g, ox + 78, 69, 70, 38, motif, cr, cg, cbv, n, BGc());
+  { int sx_ = ox + 128, sy_ = 30; uint16_t cs = C(120, 230, 240); g.fillRect(sx_, sy_ + 3, 4, 6, cs); g.fillTriangle(sx_ + 4, sy_ + 3, sx_ + 4, sy_ + 9, sx_ + 9, sy_ + 12, cs); g.fillTriangle(sx_ + 4, sy_ + 3, sx_ + 9, sy_, sx_ + 9, sy_ + 12, cs); g.drawLine(sx_ + 12, sy_ + 3, sx_ + 14, sy_ + 6, cs); g.drawLine(sx_ + 14, sy_ + 6, sx_ + 12, sy_ + 9, cs); g.drawLine(sx_ + 15, sy_ + 1, sx_ + 18, sy_ + 6, cs); g.drawLine(sx_ + 18, sy_ + 6, sx_ + 15, sy_ + 11, cs); }      // icône haut-parleur
   // rareté et danger
   int et = idx < 7 ? DEF[idx].etoiles : 3, da = idx < 7 ? DEF[idx].danger : 2;
   g.fillRoundRect(ox + 4, 116, 148, 42, 6, C(10, 36, 40)); g.drawRoundRect(ox + 4, 116, 148, 42, 6, C(30, 140, 150));
@@ -288,7 +307,7 @@ static void ecranCreer(M5Canvas& g) {
 static void majApercuOeil() { if (ecran == 2) { cb::oeilActif = (uint8_t)(sel + 1); cb::appliquerOeil(); } }
 static void quitterApercu() { cb::chargerOeil(); }      // on revient à l'œil réellement choisi
 static void ouvrir() { ouvert = true; ecran = 0; sel = 0; sale = true; volVu = false; animSens = 0; cbxOk = false; bas = false; cb::chargerOeil(); }
-static void quitter() { if (!ouvert) return; ouvert = false; quitterApercu(); }
+static void quitter() { if (!ouvert) return; ouvert = false; quitterApercu(); if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); } }
 static void pousser() { cv.pushSprite(0, 0); }
 static void dessiner() {
   if (!ouvert) ouvrir();
@@ -342,7 +361,9 @@ static int boutonSous(int x) {
 static void toucherEcran(int x, int y) {
   if (y >= 206) { toucherBouton(boutonSous(x)); return; }
   if (ecran == 0) {
-    for (int i = 0; i < NE; i++) { int c = i % 4, r = i / 4, cx = 6 + c * 78, cy = 27 + r * 48; if (x >= cx && x < cx + 74 && y >= cy && y < cy + 44 && decouvert(i)) { sel = i; ecran = 1; sale = true; return; } }
+    for (int i = 0; i < NE; i++) { int c = i % 4, r = i / 4, cx = 6 + c * 78, cy = 27 + r * 48; if (x >= cx && x < cx + 74 && y >= cy && y < cy + 44 && decouvert(i)) { sel = i; ecran = 1; sale = true; ecouter(i); return; } }
+  } else if (ecran == 1) {
+    if (x < 152 && y >= 26 && y < 112) ecouter(sel);      // toucher l'œil : écouter le cri du pouvoir
   } else if (ecran == 3) {
     if (y >= 128 && y < 162) for (int i = 0; i < 4; i++) { int bx = 12 + i * 41; if (x >= bx && x < bx + 37) { cb::oCu.motif = (uint8_t)i; sale = true; } }
     creerGlisser(x, y);
