@@ -33,6 +33,12 @@ static cb::Corbeau cbx; static bool cbxOk = false; static uint32_t tCb = 0;
 // toucher
 static bool bas = false; static int sx = 0, sy = 0, px = 0, py = 0;
 static int cibleBt = -1;
+// 3.1.32 : glissement et defilement sans tout redessiner
+static int8_t qPas = -1;      // etape de fermeture differee (-1 = aucune)
+static bool saleTxt = false, saleBande = false;      // seul le texte de la fiche / seule la bande de la liste doit etre redessine
+static int8_t cvVue = 0; static int vueSel = -1, vueTab = -1;      // ce que le sprite d'ecran contient encore : 1 = la fiche (vueSel, vueTab) complete, 2 = la liste complete, 0 = autre chose
+static M5Canvas sgA(&M5.Display), sgB(&M5.Display); static bool sgDispo = false, sgEssai = false, sgOk = false, sgInit = false;      // glissement : les deux fiches sont dessinees une seule fois dans deux sprites, puis seulement recopiees
+static M5Canvas* vig[NE + 1]; static bool vigOk[NE + 1];      // vignettes des yeux de la liste (56 x 28), dessinees une seule fois
 
 static inline uint16_t BGc() { return C(20, 3, 8); }
 static inline uint16_t CFl(float r, float g, float b) { return cb::CF(r, g, b); }
@@ -299,14 +305,26 @@ static void batirListe() {      // lignes de la liste : un titre par famille, pu
     else for (int i = 0; i < NE; i++) if (DEF[i].fam == f) { Rt[nR] = 1; Rv[nR] = i; Ry[nR] = y; nR++; y += HE; }
   }
   Ry[nR] = y; hListe = y; scLmax = y + 4 - 180; if (scLmax < 0) scLmax = 0; if (scL > scLmax) scL = scLmax; if (scL < 0) scL = 0;
+  vigOk[NE] = false;      // l'oeil que l'on cree peut avoir change
 }
 static void centrerListe() {
   for (int k = 0; k < nR; k++) if (Rt[k] == 1 && Rv[k] == sel) { scL = Ry[k] - 70; break; }
   if (scL > scLmax) scL = scLmax; if (scL < 0) scL = 0;
 }
-static void ecranListe(M5Canvas& g) {
-  g.fillScreen(BGc());
-  char nb[16]; snprintf(nb, sizeof(nb), "%d yeux", nbOeils()); entete(g, 0, "DEX DES YEUX", nb);
+static const int VW = 56, VH = 28;
+static bool vigPrep(int i) {      // dessine la vignette de l'oeil i (une seule fois) ; faux s'il n'y a pas assez de memoire
+  if (i < 0 || i > NE) return false;
+  if (vigOk[i]) return true;
+  if (!vig[i]) { vig[i] = new M5Canvas(&M5.Display); vig[i]->setColorDepth(16); vig[i]->setPsram(true); if (!vig[i]->createSprite(VW, VH)) { delete vig[i]; vig[i] = nullptr; return false; } }
+  const uint16_t bgc = 0x1818;      // couleur transparente (identique dans les deux ordres d'octets, comme CLE_TR de monde.h) : les pixels de fond de la vignette laissent voir le fond de la ligne
+  vig[i]->fillScreen(bgc);
+  int motif, n; float cr, cg, cbv; couleurOeil(i, motif, cr, cg, cbv, n);
+  oeil(*vig[i], VW / 2, VH / 2, 24, 11, motif, cr, cg, cbv, n, bgc);
+  vigOk[i] = true; return true;
+}
+static void ecranListe(M5Canvas& g, bool bande = false) {      // bande = true : seule la bande de la liste (sous l'entete, au-dessus des boutons) est redessinee pendant le defilement
+  if (bande) g.fillRect(0, 23, 320, 183, BGc());
+  else { g.fillScreen(BGc()); char nb[16]; snprintf(nb, sizeof(nb), "%d yeux", nbOeils()); entete(g, 0, "DEX DES YEUX", nb); }
   g.setClipRect(0, 24, 320, 180);
   for (int k = 0; k < nR; k++) {
     int y = 25 + Ry[k] - scL, h = (Rt[k] == 0) ? HH : HE;
@@ -319,8 +337,8 @@ static void ecranListe(M5Canvas& g) {
     } else {
       int i = Rv[k]; bool actif = (i == sel);
       g.fillRoundRect(4, y, 300, HE - 3, 6, C(34, 6, 14)); g.drawRoundRect(4, y, 300, HE - 3, 6, actif ? C(255, 70, 80) : C(100, 18, 28));
-      int motif, n; float cr, cg, cbv; couleurOeil(i, motif, cr, cg, cbv, n);
-      oeil(g, 34, y + 12, 24, 11, motif, cr, cg, cbv, n, C(34, 6, 14));
+      if (vigPrep(i)) vig[i]->pushSprite(&g, 6, y - 2, (uint16_t)0x1818);      // vignette en cache (transparente sur le fond de la ligne)
+      else { int motif, n; float cr, cg, cbv; couleurOeil(i, motif, cr, cg, cbv, n); oeil(g, 34, y + 12, 24, 11, motif, cr, cg, cbv, n, C(34, 6, 14)); }
       texte(g, 66, y + 12, i < NE ? DEF[i].nom : "Ton œil", C(255, 236, 230), 2, true);
       if (i < NE && DEF[i].approx) texte(g, 296, y + 12, "~", C(150, 120, 120), 3, true);
     }
@@ -330,7 +348,7 @@ static void ecranListe(M5Canvas& g) {
     int th = 178, bh = th * 180 / (hListe + 4); if (bh < 14) bh = 14; int by = 25 + (th - bh) * scL / scLmax;
     g.fillRoundRect(312, 25, 3, th, 1, C(50, 12, 18)); g.fillRoundRect(312, by, 3, bh, 1, C(255, 96, 100));
   }
-  bouton(g, 4, 102, "RETOUR"); bouton(g, 108, 102, "CRÉER"); bouton(g, 212, 102, "CORBEAUX");
+  if (!bande) { bouton(g, 4, 102, "RETOUR"); bouton(g, 108, 102, "CRÉER"); bouton(g, 212, 102, "CORBEAUX"); }
 }
 
 // ---------- écran 1 : la fiche d'un œil, en sections ----------
@@ -369,22 +387,8 @@ static void assurer() {
 }
 static const int TABX[4] = {5, 73, 145, 217}, TABW[4] = {66, 70, 70, 98};
 static const char* const TABN[4] = {"Histoire", "Porteurs", "Pouvoirs", "Le saviez-vous ?"};
-static void fiche(M5Canvas& g, int idx, int ox, int tb, int scrl, Mise& m) {
-  g.fillRect(ox, 0, 320, 240, BGc());
-  char num[12]; if (idx < NE) snprintf(num, sizeof(num), "%d/%d", idx + 1, NE); else num[0] = 0;
-  entete(g, ox, nomOeil(idx), num);
-  int motif, n; float cr, cg, cbv; couleurOeil(idx, motif, cr, cg, cbv, n);
+static void ficheTexte(M5Canvas& g, int ox, int scrl, Mise& m) {      // le cadre de texte (fond, lignes, barre de defilement) : seul morceau redessine quand on fait defiler le texte
   const uint16_t BL = C(255, 236, 230), RS = C(255, 96, 100);
-  oeil(g, ox + 58, 50, 52, 24, motif, cr, cg, cbv, n, BGc());
-  if (idx < NE && DEF[idx].approx) texte(g, ox + 112, 66, "~", C(150, 120, 120), 3, true);
-  texte(g, ox + 120, 27, idx < NE ? FAMILLE[DEF[idx].fam] : "TON ŒIL", RS);
-  if (narrDispo(idx)) { bool on = narrActive(); g.fillRoundRect(ox + 232, 24, 82, 22, 6, on ? C(90, 20, 24) : C(20, 90, 50)); g.drawRoundRect(ox + 232, 24, 82, 22, 6, C(255, 70, 80)); texte(g, ox + 273, 35, on ? "ARRÊTER" : "ÉCOUTER", C(255, 236, 230), 1); }
-  bloc(g, ox + 120, 46, 192, idx < NE ? DEF[idx].qui : "Toi", 14, BL, 2);
-  for (int k = 0; k < 4; k++) {      // les quatre sections
-    bool on = (k == tb);
-    g.fillRoundRect(ox + TABX[k], 78, TABW[k], 19, 5, on ? C(150, 22, 34) : C(40, 7, 14)); g.drawRoundRect(ox + TABX[k], 78, TABW[k], 19, 5, on ? C(255, 96, 100) : C(110, 20, 30));
-    texte(g, ox + TABX[k] + TABW[k] / 2, 88, TABN[k], on ? C(255, 255, 255) : C(220, 170, 170), 1);
-  }
   g.fillRoundRect(ox + 4, TXY, 312, TXH + 5, 6, C(12, 2, 6)); g.drawRoundRect(ox + 4, TXY, 312, TXH + 5, 6, C(120, 22, 32));
   g.setClipRect(ox + 6, TXY + 2, 303, TXH + 1);
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(BL); g.setTextDatum(top_left);
@@ -402,6 +406,24 @@ static void fiche(M5Canvas& g, int idx, int ox, int tb, int scrl, Mise& m) {
     if (scrl < mx) g.fillTriangle(ox + 298, TXY + TXH - 6, ox + 306, TXY + TXH - 6, ox + 302, TXY + TXH - 1, C(255, 205, 80));
     if (scrl > 0) g.fillTriangle(ox + 298, TXY + 8, ox + 306, TXY + 8, ox + 302, TXY + 3, C(255, 205, 80));
   }
+}
+static void fiche(M5Canvas& g, int idx, int ox, int tb, int scrl, Mise& m) {
+  g.fillRect(ox, 0, 320, 240, BGc());
+  char num[12]; if (idx < NE) snprintf(num, sizeof(num), "%d/%d", idx + 1, NE); else num[0] = 0;
+  entete(g, ox, nomOeil(idx), num);
+  int motif, n; float cr, cg, cbv; couleurOeil(idx, motif, cr, cg, cbv, n);
+  const uint16_t BL = C(255, 236, 230), RS = C(255, 96, 100);
+  oeil(g, ox + 58, 50, 52, 24, motif, cr, cg, cbv, n, BGc());
+  if (idx < NE && DEF[idx].approx) texte(g, ox + 112, 66, "~", C(150, 120, 120), 3, true);
+  texte(g, ox + 120, 27, idx < NE ? FAMILLE[DEF[idx].fam] : "TON ŒIL", RS);
+  if (narrDispo(idx)) { bool on = narrActive(); g.fillRoundRect(ox + 232, 24, 82, 22, 6, on ? C(90, 20, 24) : C(20, 90, 50)); g.drawRoundRect(ox + 232, 24, 82, 22, 6, C(255, 70, 80)); texte(g, ox + 273, 35, on ? "ARRÊTER" : "ÉCOUTER", C(255, 236, 230), 1); }
+  bloc(g, ox + 120, 46, 192, idx < NE ? DEF[idx].qui : "Toi", 14, BL, 2);
+  for (int k = 0; k < 4; k++) {      // les quatre sections
+    bool on = (k == tb);
+    g.fillRoundRect(ox + TABX[k], 78, TABW[k], 19, 5, on ? C(150, 22, 34) : C(40, 7, 14)); g.drawRoundRect(ox + TABX[k], 78, TABW[k], 19, 5, on ? C(255, 96, 100) : C(110, 20, 30));
+    texte(g, ox + TABX[k] + TABW[k] / 2, 88, TABN[k], on ? C(255, 255, 255) : C(220, 170, 170), 1);
+  }
+  ficheTexte(g, ox, scrl, m);
   bouton(g, ox + 4, 74, "PRÉC"); bouton(g, ox + 82, 74, "LISTE"); bouton(g, ox + 160, 74, "SUIV"); bouton(g, ox + 238, 74, "CORBEAU");
 }
 
@@ -458,10 +480,37 @@ static void ecranCreer(M5Canvas& g) {
 // ---------- mise en page générale ----------
 static void majApercuOeil() { if (ecran == 2) { cb::oeilActif = (uint8_t)(sel + 1); cb::appliquerOeil(); } }
 static void quitterApercu() { cb::chargerOeil(); }      // on revient à l'œil réellement choisi
-static void ouvrir() { ouvert = true; cb::vitesseEcran(prefs.getUChar("cbecr", 0) != 0); scL = 0; scP = 0; defile = false; zone = 0; flingV = 0; ecran = 0; sel = 0; tab = 0; sale = true; volVu = false; animSens = 0; cbxOk = false; bas = false; mc->idx = mt->idx = -1; cb::chargerOeil(); batirListe(); }
-static void quitter() { if (!ouvert) return; ouvert = false; cb::vitesseEcran(false); narrArreter(); quitterApercu(); if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); } }
+static void ouvrir() { ouvert = true; cb::vitesseEcran(prefs.getUChar("cbecr", 0) != 0); scL = 0; scP = 0; defile = false; zone = 0; flingV = 0; ecran = 0; sel = 0; tab = 0; sale = true; volVu = false; animSens = 0; cbxOk = false; bas = false; mc->idx = mt->idx = -1; qPas = -1; cvVue = 0; saleTxt = saleBande = false; sgInit = false; sgEssai = false; cb::chargerOeil(); batirListe(); }
+static void quitterDebut() { if (!ouvert || qPas >= 0) return; qPas = 0; }      // la fermeture se fait ensuite par etapes, APRES l'affichage de l'ecran suivant
+static void quitterPas() {
+  switch (qPas) {
+    case 0: { ouvert = false; cb::vitesseEcran(false); narrArreter(); } break;
+    case 1: { quitterApercu(); } break;
+    default: {
+      if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); }
+      if (sgDispo) { sgA.deleteSprite(); sgB.deleteSprite(); sgDispo = false; }      // les deux sprites du glissement sont rendus ; les vignettes (88 Ko) restent pour la prochaine ouverture
+      sgEssai = false; sgInit = false; sgOk = false;
+    } break;
+  }
+  if (++qPas > 2) qPas = -1;
+}
+static void quitter() { quitterDebut(); while (qPas >= 0) quitterPas(); }
 static void pousser() { ::pousser(); }      // envoi par zones modifiees (3.1.31)
+static void sgPreparer() {      // glissement : les deux fiches sont dessinees une seule fois (une par sprite), puis seulement recopiees a chaque image
+  sgOk = false;
+  if (!sgEssai) {
+    sgEssai = true;
+    if (ESP.getFreePsram() > 700000UL) {
+      sgA.setColorDepth(cv.getColorDepth()); sgA.setPsram(true); sgB.setColorDepth(cv.getColorDepth()); sgB.setPsram(true);
+      if (sgA.createSprite(320, 240)) { if (sgB.createSprite(320, 240)) sgDispo = true; else sgA.deleteSprite(); }
+    }
+  }
+  if (!sgDispo) return;
+  fiche(sgA, animDe, 0, tab, scAnim, *mc); fiche(sgB, animVers, 0, tab, 0, *mt);
+  sgOk = true;
+}
 static void dessiner() {
+  while (qPas >= 0) quitterPas();      // une fermeture differee est encore en cours : on la termine avant de rouvrir
   if (!ouvert) ouvrir();
   uint32_t m = millis();
   if (m < finAffVolume) volVu = true; else if (volVu) { volVu = false; sale = true; }
@@ -469,26 +518,32 @@ static void dessiner() {
   if (ecran == 1 && nrDepart && (int32_t)(m - nrDepart) >= 0 && animSens == 0) { nrDepart = 0; narrLancer(sel); }
   narrPomper();
   { bool st = narrActive(); if (st != nrAffEtat) { nrAffEtat = st; if (ecran == 1) sale = true; } }
-  if (animSens != 0) {      // glissement d'une fiche à l'autre
+  if (animSens != 0) {      // glissement d'une fiche à l'autre : les deux fiches sont dessinees une fois, puis recopiees avec un decalage
     float e = (m - animT0) / 220.0f; if (e >= 1) { e = 1; }
     float p = cb::pas(e);
-    fiche(cv, animDe, (int)(-animSens * 320 * p), tab, scAnim, *mc); fiche(cv, animVers, (int)(animSens * 320 * (1 - p)), tab, 0, *mt);
-    pousser(); if (e >= 1) { animSens = 0; Mise* x = mc; mc = mt; mt = x; sale = false; }
+    cvVue = 0;
+    if (!sgInit) { sgInit = true; sgPreparer(); }
+    if (sgOk) { sgA.pushSprite(&cv, (int)(-animSens * 320 * p), 0); sgB.pushSprite(&cv, (int)(animSens * 320 * (1 - p)), 0); }
+    else { fiche(cv, animDe, (int)(-animSens * 320 * p), tab, scAnim, *mc); fiche(cv, animVers, (int)(animSens * 320 * (1 - p)), tab, 0, *mt); }
+    pousser();
+    if (e >= 1) { animSens = 0; sgInit = false; Mise* x = mc; mc = mt; mt = x; sale = false; cvVue = 1; vueSel = sel; vueTab = tab; }
     return;
   }
   if (ecran == 0 && flingV != 0 && !bas) {      // la liste continue de glisser un instant après le geste
     float dt = (m - tFling) / 33.0f; if (dt > 3) dt = 3; tFling = m;
     scL += (int)(flingV * dt); flingV *= 0.92f; if (flingV > -0.5f && flingV < 0.5f) flingV = 0;
-    if (scL < 0) { scL = 0; flingV = 0; } if (scL > scLmax) { scL = scLmax; flingV = 0; } sale = true;
+    if (scL < 0) { scL = 0; flingV = 0; } if (scL > scLmax) { scL = scLmax; flingV = 0; } saleBande = true;
   }
   if (ecran == 2 && m - tCb >= 45) { tCb = m; sale = true; }
-  if (!sale) return;
-  sale = false;
+  if (!sale && !saleTxt && !saleBande) return;
+  if (!sale && ecran == 1 && saleTxt && cvVue == 1 && vueSel == sel && vueTab == tab) { saleTxt = false; ficheTexte(cv, 0, scP, *mc); pousser(); return; }      // defilement du texte : seul le cadre de texte est redessine
+  if (!sale && ecran == 0 && saleBande && cvVue == 2) { saleBande = false; ecranListe(cv, true); pousser(); return; }      // defilement de la liste : seule la bande est redessinee
+  sale = saleTxt = saleBande = false;
   switch (ecran) {
-    case 0: ecranListe(cv); break;
-    case 1: assurer(); fiche(cv, sel, 0, tab, scP, *mc); break;
-    case 2: ecranCorbeau(cv); break;
-    default: ecranCreer(cv); break;
+    case 0: ecranListe(cv); cvVue = 2; break;
+    case 1: assurer(); fiche(cv, sel, 0, tab, scP, *mc); cvVue = 1; vueSel = sel; vueTab = tab; break;
+    case 2: ecranCorbeau(cv); cvVue = 0; break;
+    default: ecranCreer(cv); cvVue = 0; break;
   }
   pousser();
 }
@@ -552,8 +607,8 @@ static void toucher(const m5::touch_detail_t& t) {
     int ancienY = py; px = x; py = y; if (ecran == 3 && sy < 206) creerGlisser(x, y);
     if (zone && (defile || abs(py - sy) > 7) && (defile || abs(py - sy) >= abs(px - sx))) {      // glisser vers le haut / le bas : la liste ou le texte défile
       defile = true; vy = 0.6f * vy + 0.4f * (float)(ancienY - py);
-      if (zone == 3) { int v = sc0 - (py - sy); v = v < 0 ? 0 : (v > scLmax ? scLmax : v); if (v != scL) { scL = v; sale = true; } }
-      else { int v = sc0 - (py - sy), mx = scPmax; v = v < 0 ? 0 : (v > mx ? mx : v); if (v != scP) { scP = v; sale = true; } }
+      if (zone == 3) { int v = sc0 - (py - sy); v = v < 0 ? 0 : (v > scLmax ? scLmax : v); if (v != scL) { scL = v; saleBande = true; } }
+      else { int v = sc0 - (py - sy), mx = scPmax; v = v < 0 ? 0 : (v > mx ? mx : v); if (v != scP) { scP = v; saleTxt = true; } }
     }
   }
   if (t.wasReleased() && bas) {
@@ -570,3 +625,6 @@ static void toucher(const m5::touch_detail_t& t) {
 static inline void dexDessiner() { dx::dessiner(); }
 static inline void dexToucher(const m5::touch_detail_t& t) { dx::toucher(t); }
 static inline void dexQuitter() { dx::quitter(); }
+static inline void dexQuitterDebut() { dx::quitterDebut(); }
+static inline bool dexQuitterEnCours() { return dx::qPas >= 0; }
+static inline void dexQuitterPas() { dx::quitterPas(); }

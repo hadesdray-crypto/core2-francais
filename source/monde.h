@@ -36,6 +36,7 @@ enum { CM_NON = 0, CM_LARGE, CM_SUIVI };
 
 static M5Canvas sCiel(&M5.Display), sNear(&M5.Display);      // ciel fixe + le plan principal (un seul sprite de 411 Ko au lieu de trois bandes : 216 Ko de PSRAM en moins)
 static bool pret = false, tentee = false, vigFort = true;
+static uint32_t sigBakeOk = 0; static bool bakeSaut = false;      // 3.1.32 : empreinte du paysage cuit (si elle n'a pas change, le paysage garde a la fermeture est reutilise)
 static uint8_t* vigK = nullptr;                            // table du vignettage (un octet par pixel de la scène)
 static float tMonde = 0.0f;
 
@@ -234,12 +235,14 @@ static void dessinerZoneDroite(M5Canvas& g, bool bas) {      // petit ruisseau, 
 static void decorNormal(M5Canvas& g) {      // la vue normale : le bord droit de la mare a gauche, le ruisseau et l'herbe a droite (dessin unique dans le fond)
   dessinerMare(g); dessinerZoneDroite(g, false);
 }
-static void bakeProche() {
+static void bakeProchePh(int ph) {      // le plan principal est cuit en trois morceaux (un par image pendant le chargement des corbeaux)
   VueId v_; fixerVue(MX0, NY0);
-  M5Canvas& g = sNear; g.fillScreen(CLE_TR); int h = g.height();
+  M5Canvas& g = sNear; const uint16_t noir = C(4, 1, 3);
+  if (ph == 0) {
+  g.fillScreen(CLE_TR); int h = g.height();
   bakeLoin(g);      // collines et arbres lointains, puis le sol par-dessus
   for (int x = 0; x < g.width(); x++) { float ys = solHaut((x - ztx) / zs) * zs + zty; g.drawFastVLine(x, (int)ys, h - (int)ys, C(5, 2, 4)); }
-  const uint16_t noir = C(4, 1, 3);
+  } else if (ph == 1) {
   // champ : sillons qui convergent vers l'horizon (perspective)
   { const float vx = (CH0 + CH1) * 0.5f, vy = 150.0f;
     for (int i = 0; i <= 8; i++) {
@@ -254,10 +257,13 @@ static void bakeProche() {
     for (int i = 0; i < 5; i++) stele(g, STL[i][0], STL[i][1], STL[i][2]);
     cloture(g, 520.0f, 548.0f, 13.0f, noir);
   } else cloture(g, 360.0f, 392.0f, 13.0f, noir);
+  } else {
   dessinerEpouvantail(g, (CH0 + CH1) * 0.5f, solHaut((CH0 + CH1) * 0.5f), 1.0f, noir);
   brumeBasse(g, (RGM.tour ? 520 : 260) >> OP.dec);      // décor allégé : moitié moins de traits de brume ; minimal : le quart
   arbre(g);      // l'arbre au premier plan, dans le même plan principal
+  }
 }
+static void bakeProche() { for (int ph = 0; ph < 3; ph++) bakeProchePh(ph); }
 static void bakeVig() {
   if (ambVig <= 0.0f) { if (vigK) { free(vigK); vigK = nullptr; } return; }
   if (!vigK) vigK = (uint8_t*)ps_malloc((size_t)H_SCENE * 320);
@@ -290,21 +296,38 @@ static bool creer(M5Canvas& s, int w, int h) { s.setColorDepth(cv.getColorDepth(
 static void libererSprites() {
   if (sCiel.getBuffer()) sCiel.deleteSprite(); if (sNear.getBuffer()) sNear.deleteSprite();
   if (vigK) { free(vigK); vigK = nullptr; }
-  pret = false;
+  pret = false; sigBakeOk = 0;
 }
 static void chargerMon();
-static void rebake() {      // appelé par construireFond : première fois = création des bandes, ensuite = redessin (changement d'ambiance ou de décor)
+static uint32_t sigBake() {      // tout ce dont dependent le ciel et le plan principal cuits
+  uint32_t h = 2166136261u;
+  h = (h ^ (uint32_t)OP.hor) * 16777619u; h = (h ^ (uint32_t)OP.amb) * 16777619u; h = (h ^ (uint32_t)OP.dec) * 16777619u; h = (h ^ (uint32_t)RGM.tour) * 16777619u;
+  h = (h ^ (uint32_t)(int)(ambVig * 1000.0f)) * 16777619u; h = (h ^ (uint32_t)ambEt) * 16777619u; h = (h ^ (uint32_t)bpp) * 16777619u;
+  return h;
+}
+static bool gardeMonde() { return sCiel.getBuffer() && sNear.getBuffer(); }      // les sprites du paysage sont encore en memoire (gardes a la fermeture)
+// Cuisson PROGRESSIVE (3.1.32) : une etape par image pendant l'ecran de chargement. 0 : memoire + lecture des reglages ; 1 : ciel ; 2 a 4 : plan principal (3 morceaux) ; 5 : vignettage.
+// Si le paysage garde en memoire a la fermeture correspond encore aux reglages, toutes les etapes sont sautees (bakeSaut).
+static void bakePas(int p) {
   if (bpp != 2) return;
-  chargerMon();
-  if (!pret) {
-    if (tentee) return;
-    tentee = true;
-    if (ESP.getFreePsram() < 1300000UL) return;
-    if (!creer(sCiel, 320, H_SCENE) || !creer(sNear, WL, HN)) { libererSprites(); return; }
-    sNear.drawPixel(0, 0, C(248, 0, 0)); vigFort = (((const uint8_t*)sNear.getBuffer())[0] == 0xF8);      // ordre des octets : détecté par un essai
-    pret = true;
+  if (p == 0) {
+    chargerMon(); bakeSaut = false;
+    if (!pret) {
+      if (sCiel.getBuffer() && sNear.getBuffer()) { pret = true; if (sigBake() == sigBakeOk) bakeSaut = true; return; }      // paysage garde a la fermeture
+      if (tentee) { bakeSaut = true; return; }
+      tentee = true;
+      if (ESP.getFreePsram() < 1300000UL) { bakeSaut = true; return; }
+      if (!creer(sCiel, 320, H_SCENE) || !creer(sNear, WL, HN)) { libererSprites(); bakeSaut = true; return; }
+      sNear.drawPixel(0, 0, C(248, 0, 0)); vigFort = (((const uint8_t*)sNear.getBuffer())[0] == 0xF8);      // ordre des octets : détecté par un essai
+      pret = true; sigBakeOk = 0;
+    } else if (sigBake() == sigBakeOk) bakeSaut = true;
+    return;
   }
-  bakeCiel(); bakeProche(); bakeVig();
+  if (bakeSaut) return;
+  if (p == 1) { sigBakeOk = 0; bakeCiel(); } else if (p == 2) bakeProchePh(0); else if (p == 3) bakeProchePh(1); else if (p == 4) bakeProchePh(2); else { bakeVig(); sigBakeOk = sigBake(); }
+}
+static void rebake() {      // tout d'un coup (ancien comportement ; le chargement progressif appelle bakePas)
+  for (int p = 0; p <= 5; p++) bakePas(p);
 }
 
 // ---------- effets vivants : fumée, fenêtre, eau, ondes, gouttes ----------
@@ -1294,6 +1317,6 @@ static void reinit() {
   reculLent = false; tReculRe = 0.0f; suiviRet = -1; cm = CM_NON; cmFin = false; suivi = -1; lpBird = -1; cz = ZN; cxx = 160.0f; cyy = 128.0f; czv = cxv = cyv = 0.0f;
   gLarge = rnd(40.0f, 70.0f); gTrip = rnd(10.0f, 20.0f); tMonde = 0.0f;
 }
-static void fermerMonde() { tresFlush(); tK = -1; tObj = -1; libererSprites(); tentee = false; cm = CM_NON; cmFin = false; suivi = -1; memset(rt, 0, sizeof(rt)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); }
+static void fermerMonde(bool garder = false) { tresFlush(); tK = -1; tObj = -1; if (garder) { pret = false; tentee = false; } else { libererSprites(); tentee = false; } cm = CM_NON; cmFin = false; suivi = -1; memset(rt, 0, sizeof(rt)); memset(halo, 0, sizeof(halo)); memset(&LG, 0, sizeof(LG)); }
 
 }  // namespace mo

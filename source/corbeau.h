@@ -77,6 +77,10 @@ static M5Canvas* camC = &camA; static M5Canvas* camN = &camB;
 static bool camCache = false, camTente = false, cOk = false, nEnCours = false, camRapide = true; static int nBande = 0;
 static float cAZ = 1.0f, cAX = 0.0f, cAY = 0.0f, nCz = 1.0f, nCx = 160.0f, nCy = 128.0f, cPZ = 1.0f, cPX = 0.0f, cPY = 0.0f;      // cA : transformation du paysage affiché ; nC : caméra du paysage en cours ; cP : transformation voulue à l'image précédente
 static bool ouvert = false, fondOk = false, debug = false, plein = true, sec = false;
+// ouverture et fermeture progressives (3.1.32)
+static int8_t ldPas = -1; static uint8_t ldMode = 0; static bool ldAff = false, ldFondSaut = false;      // ldPas : etape de chargement en cours (-1 = aucun) ; ldMode : 0 ouverture complete, 1 reconstruction du decor apres un changement d'ambiance
+static bool fondGarde = false; static uint32_t fondSig = 0, tQuit = 0;      // le fond (sprite) est garde en memoire apres la fermeture tant que les reglages visuels n'ont pas change
+static int8_t qPas = -1; static bool qGarder = false;      // etape de fermeture differee en cours (-1 = aucune)
 static int bpp = 2;
 static bool creerCamCache() {
   if (camCache) return true; if (camTente) return false; camTente = true;
@@ -2832,7 +2836,7 @@ static void ouvrirPanneau() {
 }
 static void fermerPanneau() {
   panneau = false; plein = true; tDernier = millis();
-  if (ambChange) { ambChange = false; construireFond(); if (fondLOk) construireFondLarge(); }
+  if (ambChange) { ambChange = false; ldMode = 1; ldPas = 0; ldAff = false; }      // 3.1.32 : le decor est reconstruit par etapes, sous un ecran de chargement, au lieu de geler l'image
 }
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
@@ -3110,15 +3114,63 @@ static void dessinerFiche(M5Canvas& g) {
   g.fillRoundRect(x0 + 6, y0 + fbb, 66, 16, 6, C(50, 100, 60)); g.fillRoundRect(x0 + 78, y0 + fbb, 66, 16, 6, C(100, 50, 40));      // boutons : Lui donner / Lui lancer
   g.setTextDatum(middle_center); g.setTextColor(C(255, 250, 240)); g.drawString("Lui donner", x0 + 39, y0 + fbb + 8); g.drawString("Lui lancer", x0 + 111, y0 + fbb + 8); g.setTextDatum(top_left);
 }
-static void ouvrir() {
-  ouvert = true; fondOk = false; plein = true; chargerSons(); chargerOeil(); chargerOptions();
-  bpp = cv.getColorDepth() / 8; if (bpp < 1) bpp = 1;
-  if (ESP.getFreePsram() < 300000UL && ESP.getFreeHeap() < 260000UL) return;
-  fond.setColorDepth(cv.getColorDepth()); fond.setPsram(true);
-  if (!fond.createSprite(320, 240)) return;
-  if (!cmdB) { cmdB = (Cmd*)ps_malloc(sizeof(Cmd) * CMDMAX); cmdMax = cmdB ? CMDMAX : 0; }      // 64 Ko en PSRAM ; sans lui le dessin recalcule tout comme avant
-  fondOk = true; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondLOk = false; fondAct = &fond;
-  construireFond();
+// ---------- ouverture et fermeture PROGRESSIVES (3.1.32) ----------
+// Avant : ouvrir() faisait tout dans UNE image (decor, paysage de 411 Ko cuit en PSRAM, reglages, colonie, haut-parleur) : plus d'une demi-seconde (estime) d'ecran fige quand on touche « Corbeaux ».
+// Maintenant : un ecran de chargement leger s'affiche tout de suite, puis chaque etape (une par tour de boucle) fait un morceau ; le fond et le paysage gardes en memoire a la fermeture sont reutilises
+// quand les reglages visuels n'ont pas change (reouverture bien plus rapide). La fermeture est faite APRES l'affichage de l'ecran suivant, en quatre etapes.
+static const int LD_FIN0 = 14, LD_FIN1 = 11;      // nombre d'etapes : ouverture complete / reconstruction du decor
+static inline uint32_t hmS(uint32_t h, uint32_t v) { return (h ^ v) * 16777619u; }
+static uint32_t sigFond() {      // tout ce dont depend le fond (ciel, arbre, decor, vignettage)
+  uint32_t h = 2166136261u;
+  h = hmS(h, OP.hor); h = hmS(h, OP.amb); h = hmS(h, OP.dec); h = hmS(h, (uint32_t)mo::RGM.tour); h = hmS(h, (uint32_t)(int)(ambVig * 1000.0f)); h = hmS(h, (uint32_t)ambEt); h = hmS(h, (uint32_t)bpp);
+  return h;
+}
+static void chargerEcran(bool premier) {      // ecran de chargement : seule la barre est renvoyee a l'ecran apres la premiere image
+  const int fin = ldMode ? LD_FIN1 : LD_FIN0; const int w = (ldPas <= 0) ? 0 : (ldPas >= fin ? 194 : 194 * ldPas / fin);
+  M5Canvas& g = cv;
+  if (premier) {
+    g.fillScreen(C(10, 0, 4)); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 150, 140));
+    g.drawString(ldMode ? "Mise à jour du décor" : "Les corbeaux", 160, 98);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(170, 100, 100)); g.drawString("Chargement...", 160, 160); g.setTextDatum(top_left);
+    g.drawRoundRect(60, 120, 200, 14, 7, C(110, 24, 30));
+  }
+  if (w > 0) g.fillRoundRect(63, 123, w, 8, 4, C(214, 60, 52));
+  M5.Display.startWrite();
+  if (premier) g.pushSprite(0, 0); else { M5.Display.setClipRect(56, 116, 208, 24); g.pushSprite(0, 0); M5.Display.clearClipRect(); }
+  M5.Display.endWrite();
+}
+static void chargerPas() {
+  if (!ldAff) { ldAff = true; chargerEcran(true); return; }      // premiere image : l'ecran de chargement, rien d'autre
+  const int fin = ldMode ? LD_FIN1 : LD_FIN0;
+  switch (ldPas) {
+    case 0: {
+      if (ldMode == 0) {
+        plein = true; chargerSons(); chargerOeil(); chargerOptions();
+        bpp = cv.getColorDepth() / 8; if (bpp < 1) bpp = 1;
+        if (!fondGarde && ESP.getFreePsram() < 300000UL && ESP.getFreeHeap() < 260000UL) { ldPas = -1; return; }      // fondOk reste faux : message « pas assez de memoire »
+        if (!fondGarde) { if (fond.getBuffer()) fond.deleteSprite(); fond.setColorDepth(cv.getColorDepth()); fond.setPsram(true); if (!fond.createSprite(320, 240)) { ldPas = -1; return; } }
+        if (!cmdB) { cmdB = (Cmd*)ps_malloc(sizeof(Cmd) * CMDMAX); cmdMax = cmdB ? CMDMAX : 0; }      // 64 Ko en PSRAM ; sans lui le dessin recalcule tout comme avant
+        zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondLOk = false; fondAct = &fond;
+      }
+      mo::chargerMon();
+      ldFondSaut = fondGarde && fondSig == sigFond();      // le fond garde est encore le bon : ciel, arbre, decor et vignettage sautes
+    } break;
+    case 1: { if (!ldFondSaut) { fondGarde = false; VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); } } break;      // le fond va etre redessine : l'ancien n'est plus garde (si on part en cours de route, il est rendu)
+    case 2: { if (!ldFondSaut) { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); arbre(fond); } } break;
+    case 3: { if (!ldFondSaut) { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); mo::decorNormal(fond); vignette(fond); } } break;
+    case 4: mo::bakePas(0); break;
+    case 5: mo::bakePas(1); break;
+    case 6: mo::bakePas(2); break;
+    case 7: mo::bakePas(3); break;
+    case 8: mo::bakePas(4); break;
+    case 9: mo::bakePas(5); break;
+    case 10: {
+      menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
+      cOk = false; nEnCours = false; fondSig = sigFond(); fondGarde = true;      // le paysage en cache de la camera n'est plus valable
+      if (ldMode) { if (fondLOk) construireFondLarge(); }
+      else fondOk = true;
+    } break;
+    case 11: {
   memset(cr, 0, sizeof(cr)); memset(ob, 0, sizeof(ob)); memset(pl, 0, sizeof(pl)); memset(fx, 0, sizeof(fx)); memset(anc, 0, sizeof(anc)); memset(dernierSon, 0, sizeof(dernierSon));
   static const float tailles[NCB] = {1.42f, 1.26f, 1.19f, 1.34f, 1.23f, 1.30f, 1.28f, 1.21f, 0.62f};      // adulte posé ≈ 1/6 de la hauteur de l'arbre (~31 unités pour ~185) ; le petit est plus petit
   for (int k = 0; k < NCB; k++) initCorbeau(cr[k], tailles[k] * tailleF());
@@ -3130,6 +3182,8 @@ static void ouvrir() {
   appelOn = false; modeCb = 0; choixL = 0; appelSub = 0; tpCible = 0; gVisite = delaiVisite(true); tAnim = millis() * 0.001f;
   for (int k = 3; k < NAD; k++) { cr[k].etat = E_DEHORS; cr[k].visible = false; cr[k].t = 0; cr[k].tfin = (k == 3) ? 1.2f : 3.0f + 3.0f * (k - 3); }
   cr[PC].etat = E_OFF; cr[PC].visible = false;
+    } break;
+    case 12: {
   zoomC = 0.0f; zoomU = 0.0f; pinceOn = false; mo::reinit(); fam::apresMonde();
   if (zoomC > 0.5f) { if (creerLarge()) { zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs); fondAct = &fondL; } else { zoomC = zoomU = 0.0f; } }
   if (zoomC < 0.5f) { zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); }
@@ -3139,18 +3193,54 @@ static void ouvrir() {
   fpsHN = 0; fpsMoy10 = 0; fpsMin = 0; msMax = 0.0f; maxIntervalle = 0; tPrecImg = 0; qDeg = qMin = false; tQ = tBon = millis();      // compteur d'images/s et allègement : on repart de zéro
   vitesseEcran(OP.ecr != 0);      // écran rapide (80 MHz) seulement s'il a été essayé puis gardé dans Réglages > Fluidité
   if (prefs.getUChar("cbvol1", 0) == 0) { if (R.volume < 200) { R.volume = 200; sauverReglages(); } prefs.putUChar("cbvol1", 1); }      // volume de départ plus fort, une seule fois
+      barreCb(fond, choix, -1);      // la barre du fond montre le mode de depart (nourrir)
+    } break;
+    case 13: {
   if (!lectureEnCours && !M5.Speaker.isRunning()) { M5.Mic.end(); M5.Speaker.begin(); M5.Speaker.setVolume(R.volume); }
   Serial.printf("[corbeau] ouvert : heap=%u psram=%u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
+    } break;
+    default: break;
+  }
+  ldPas++;
+  while (ldPas < fin && ((ldPas >= 1 && ldPas <= 3 && ldFondSaut) || (ldPas >= 5 && ldPas <= 9 && mo::bakeSaut))) ldPas++;      // etapes inutiles : sautees dans le meme tour
+  if (ldPas >= fin) { ldPas = -1; plein = true; tDernier = millis(); tSec = millis(); tPrecImg = 0; tToucher = millis(); return; }
+  chargerEcran(false);
 }
-static void quitter() {
-  if (!ouvert) return;
-  if (nbOeufsSale) { prefs.putUInt("cboeufs", nbOeufs); nbOeufsSale = false; }
-  libererCamCache(); if (cmdB) { free(cmdB); cmdB = nullptr; cmdMax = 0; } fam::sauver(true); fam::pret = false; mo::fermerMonde(); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
-  vitesseEcran(false); ecrEssaiFin = 0;      // les autres pages gardent la vitesse d'écran d'usine (40 MHz)
-  if (fondLOk) { fondL.deleteSprite(); fondLOk = false; }
-  if (fondOk) { fond.deleteSprite(); fondOk = false; }
-  if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); }     // la musique en cours (Matinale) n'est jamais touchée
-  Serial.printf("[corbeau] fermé : heap=%u psram=%u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
+static void quitterDebut() { if (!ouvert || qPas >= 0) return; ldPas = -1; qPas = 0; }      // la fermeture se fait ensuite par etapes (quitterPas), apres l'affichage de l'ecran suivant
+static void quitterPas() {
+  switch (qPas) {
+    case 0: {
+      if (nbOeufsSale) { prefs.putUInt("cboeufs", nbOeufs); nbOeufsSale = false; }
+      fam::sauver(true);      // ecritures en memoire de la colonie : une etape a elles seules
+    } break;
+    case 1: {
+      libererCamCache(); if (cmdB) { free(cmdB); cmdB = nullptr; cmdMax = 0; } fam::pret = false;
+      qGarder = (fondGarde && mo::gardeMonde() && ESP.getFreePsram() >= 600000UL);      // le fond et le paysage restent en memoire (reouverture rapide) s'il reste assez de PSRAM
+      mo::fermerMonde(qGarder); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
+    } break;
+    case 2: {
+      vitesseEcran(false); ecrEssaiFin = 0;      // les autres pages gardent la vitesse d'écran d'usine (40 MHz)
+      if (fondLOk) { fondL.deleteSprite(); fondLOk = false; }
+      if (!qGarder) { if (fond.getBuffer()) fond.deleteSprite(); fondGarde = false; }
+      fondOk = false; tQuit = millis();
+    } break;
+    default: {
+      if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); }     // la musique en cours (Matinale) n'est jamais touchée
+      Serial.printf("[corbeau] fermé (garde=%d) : heap=%u psram=%u\n", (int)qGarder, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
+    } break;
+  }
+  if (++qPas > 3) qPas = -1;
+}
+static void quitter() { quitterDebut(); while (qPas >= 0) quitterPas(); }
+static void libererCache() {      // rend la memoire du fond et du paysage gardes
+  if (ouvert || qPas >= 0 || ldPas >= 0) return;
+  if (fond.getBuffer()) fond.deleteSprite();
+  fondGarde = false; mo::libererSprites(); mo::tentee = false;
+}
+static void surveillerCache(bool force) {      // appele toutes les 2 s hors du mode Corbeaux : memoire rare, mise a jour en cours ou plus de 15 min sans revenir = on rend la memoire
+  if (ouvert || qPas >= 0 || ldPas >= 0) return;
+  if (!fondGarde && !mo::gardeMonde()) return;
+  if (force || ESP.getFreePsram() < 450000UL || (uint32_t)(millis() - tQuit) > 900000UL) libererCache();
 }
 
 // ---------- présence : absence = vie minimale et peu coûteuse ; retour de l'utilisateur = la scène s'éveille, et ce qui s'est passé « hors écran » est rattrapé ----------
@@ -3202,7 +3292,9 @@ static void allegement() {
 }
 // ---------- une image ----------
 static void dessiner() {
-  if (!ouvert) ouvrir();
+  while (qPas >= 0) quitterPas();      // une fermeture differee est encore en cours : on la termine avant de rouvrir
+  if (!ouvert) { ouvert = true; fondOk = false; ldMode = 0; ldPas = 0; ldAff = false; }      // ouverture progressive : ecran de chargement tout de suite, puis une etape par tour de boucle
+  if (ldPas >= 0) { chargerPas(); return; }
   if (!fondOk) {
     cv.fillScreen(C(10, 0, 4)); cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 150, 140));
     cv.drawString("Pas assez de mémoire", 160, 110); cv.drawString("pour les corbeaux", 160, 134); cv.setTextDatum(top_left); cv.pushSprite(0, 0); return;
@@ -3440,7 +3532,7 @@ static void relache() {
   }
 }
 static void toucher(const m5::touch_detail_t& t) {
-  if (!ouvert || !fondOk) return;
+  if (!ouvert || !fondOk || ldPas >= 0) return;
   if (panneau) { if (t.wasPressed()) touchPanneau(t.x, t.y); return; }
   if (t.isPressed() || t.wasPressed()) tToucher = millis();
   if (GP.ph >= 3) { if (t.wasPressed() && GP.ph != 5) departGP(); return; }
@@ -3457,5 +3549,11 @@ static void toucher(const m5::touch_detail_t& t) {
 static inline void corbeauDessiner() { cb::dessiner(); }
 static inline void corbeauToucher(const m5::touch_detail_t& t) { cb::toucher(t); }
 static inline void corbeauQuitter() { cb::quitter(); }
+static inline bool corbeauChargement() { return cb::qPas < 0 && (!cb::ouvert || cb::ldPas >= 0); }      // l'ouverture progressive est en cours (ou va commencer) : la boucle la fait avancer sans attendre la cadence
+static inline bool corbeauPret() { return cb::ouvert && cb::ldPas < 0 && cb::qPas < 0; }
+static inline void corbeauQuitterDebut() { cb::quitterDebut(); }
+static inline bool corbeauQuitterEnCours() { return cb::qPas >= 0; }
+static inline void corbeauQuitterPas() { cb::quitterPas(); }
+static inline void corbeauSurveillerCache(bool force) { cb::surveillerCache(force); }
 static inline bool corbeauOccupe() { return cb::occupe(); }
 static inline void corbeauSonVolume() { cb::son(cb::SN_CROC, 255); }

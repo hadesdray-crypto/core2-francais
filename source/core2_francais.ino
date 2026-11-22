@@ -856,7 +856,7 @@ void dessinerObjetMur() {        // l'objet du mur de gauche, différent pour ch
   }
 }
 static const char* NOMS_HABITAT[3] = {"Ville néon", "Laboratoire", "Atelier forge"};
-void dessinerBoite() {
+static void boiteDessiner(int phase) {      // phase 0 : fond de la piece (mis en cache par fondAccueil) ; phase 1 : surcouche animee (meteo, croisillon, lit, gamelle)
   const int L = 320, H = 200;           // zone de la boîte (le bas est pour les boutons)
   const int ix = 52, iy = 36;
   int bx0 = ix + (int)parX, by0 = iy + (int)parY, bx1 = L - ix + (int)parX, by1 = H - iy + (int)parY, bw = bx1 - bx0, bh = by1 - by0;   // le fond se décale quand on penche : effet de profondeur
@@ -864,18 +864,21 @@ void dessinerBoite() {
   uint16_t cyan = C(0, 230, 255), rose = C(255, 40, 170);
   uint16_t mur = hab == 1 ? C(30, 40, 46) : (hab == 2 ? C(36, 20, 16) : C(14, 12, 34)), murCote = hab == 1 ? C(38, 50, 56) : (hab == 2 ? C(48, 26, 20) : C(18, 14, 44)), sol = hab == 1 ? C(40, 46, 52) : (hab == 2 ? C(40, 30, 26) : C(22, 16, 46));
   uint16_t grille = hab == 1 ? C(80, 100, 110) : (hab == 2 ? C(90, 60, 40) : C(70, 30, 120)), arete = hab == 2 ? C(255, 140, 40) : rose;
-  cv.fillScreen(C(6, 6, 16));
+  if (phase == 0) cv.fillScreen(C(6, 6, 16));
   bool jour = R.actif[M_HEURE] && W.heureValide && !W.nuit;
   // la vue du dehors : tout le mur du fond (ville) ou une fenêtre (laboratoire, atelier)
   int fx = bx0, fy = by0, fw = bw, fh = bh;
   if (hab != 0) {
+   if (phase == 0) {
     cv.fillRect(bx0, by0, bw, bh, hab == 1 ? C(200, 215, 210) : C(110, 50, 36));
     if (hab == 1) { for (int k = 0; k < bw; k += 14) cv.drawFastVLine(bx0 + k, by0, bh, C(170, 185, 180)); for (int k = 0; k < bh; k += 14) cv.drawFastHLine(bx0, by0 + k, bw, C(170, 185, 180));
       for (int s = 0; s < 2; s++) { int sy = by0 + 70 + s * 30; cv.fillRect(bx0 + 110, sy, 90, 4, C(120, 90, 60)); for (int f = 0; f < 4; f++) cv.fillRoundRect(bx0 + 116 + f * 21, sy - 14, 9, 14, 3, (f + s) % 3 == 0 ? C(80, 255, 140) : ((f + s) % 3 == 1 ? C(255, 80, 180) : C(80, 160, 255))); } }   // étagères de fioles
     else { for (int r = 0; r < bh; r += 10) for (int k = ((r / 10) % 2) * 10; k < bw; k += 20) cv.drawRect(bx0 + k, by0 + r, 20, 10, C(80, 34, 24));
       int fx2 = bx0 + 140, fy2 = by0 + 60; cv.fillRoundRect(fx2, fy2, 56, 58, 6, C(60, 30, 26)); cv.fillRoundRect(fx2 + 10, fy2 + 18, 36, 30, 10, ((millis() / 200) % 2) ? C(255, 140, 30) : C(255, 90, 20)); }   // le four de la forge
+   }
     fx = bx0 + 16; fy = by0 + 12; fw = 80; fh = 54;
   }
+  if (phase == 0) {
   cv.fillRect(fx, fy, fw, fh, jour ? C(30, 70, 130) : C(10, 8, 28));
   if (jour) { int sx = fx + fw - 26, sy = fy + 18; cv.fillCircle(sx, sy, 8, C(255, 225, 90)); }
   else { int sx = fx + fw - 26, sy = fy + 18; cv.fillCircle(sx, sy, 7, C(225, 225, 255)); cv.fillCircle(sx + 4, sy - 2, 6, C(10, 8, 28)); }
@@ -889,10 +892,11 @@ void dessinerBoite() {
     }
     cv.drawRect(bx0 + 150, by0 + 8, 40, 12, rose); cv.drawFastHLine(bx0 + 154, by0 + 14, 32, rose);
   }
-  if (R.actif[M_METEO] && W.meteoValide) {      // le temps qu'il fait dehors
+  }      // fin de la phase 0 (fond)
+  if (phase == 1 && R.actif[M_METEO] && W.meteoValide) {      // le temps qu'il fait dehors
     int cm = W.codeMeteo, x0 = fx + 1, y0 = fy + 1, lw = fw - 2, lh = fh - 2; uint32_t tm = millis();
     bool nuages = (cm >= 1 && cm <= 3) || cm >= 45, pluie = (cm >= 51 && cm <= 67) || (cm >= 80 && cm <= 82) || cm >= 95, neige = (cm >= 71 && cm <= 77) || cm == 85 || cm == 86, brouillard = (cm == 45 || cm == 48);
-    cv.setClipRect(fx, fy, fw, fh);
+    cv.setClipRect(fx + 1, fy + 1, fw - 2, fh - 2);      // sans le cadre : il est dans le fond en cache
     if (nuages) { uint16_t cn = jour ? C(200, 205, 225) : C(70, 70, 100); int n = (cm >= 3) ? 4 : 2; for (int k = 0; k < n; k++) { int cx = x0 + (int)((k * 67 + tm / 120) % (lw + 40)) - 20, cy = y0 + 12 + (k % 2) * 14; cv.fillCircle(cx, cy, 8, cn); cv.fillCircle(cx + 9, cy - 3, 10, cn); cv.fillCircle(cx + 19, cy, 8, cn); } }
     if (pluie) for (int k = 0; k < 18; k++) { int rx = x0 + (k * 37 + tm / 9) % max(1, lw), ry = y0 + (k * 23 + tm / 4) % max(1, lh); cv.drawLine(rx, ry, rx - 2, ry + 6, C(130, 170, 255)); }
     if (neige) for (int k = 0; k < 16; k++) { int rx = x0 + (k * 41 + (int)(6 * sinf(tm / 700.0f + k))) % max(1, lw), ry = y0 + (k * 29 + tm / 25) % max(1, lh); cv.fillCircle(rx, ry, 1, C(240, 245, 255)); }
@@ -901,7 +905,8 @@ void dessinerBoite() {
     cv.clearClipRect();
     cv.setFont(&fonts::lgfxJapanGothic_12); cv.setTextDatum(top_right); cv.setTextColor(C(255, 255, 255)); cv.drawString(String((int)roundf(W.temperature)) + " °C", fx + fw - 3, fy + 2); cv.setTextDatum(top_left);
   }
-  if (hab != 0) { cv.drawRect(fx, fy, fw, fh, C(220, 220, 230)); cv.drawFastVLine(fx + fw / 2, fy, fh, C(220, 220, 230)); }
+  if (hab != 0) { if (phase == 0) cv.drawRect(fx, fy, fw, fh, C(220, 220, 230)); cv.drawFastVLine(fx + fw / 2, fy, fh, C(220, 220, 230)); }      // le croisillon est redessine apres la meteo
+  if (phase == 0) {
   // les murs, le plafond et le sol : la boîte en profondeur
   cv.fillTriangle(0, 0, L, 0, bx1, by0, mur); cv.fillTriangle(0, 0, bx0, by0, bx1, by0, mur);
   cv.fillTriangle(0, H, L, H, bx1, by1, sol); cv.fillTriangle(0, H, bx0, by1, bx1, by1, sol);
@@ -914,6 +919,8 @@ void dessinerBoite() {
   cv.drawLine(0, 0, bx0, by0, arete); cv.drawLine(L, 0, bx1, by0, arete);
   cv.drawLine(0, H, bx0, by1, arete); cv.drawLine(L, H, bx1, by1, arete);
   dessinerObjetMur();
+  }
+  if (phase == 1) {
   // le lit et la gamelle, au pied du mur du fond
   int lx = LIT_X + (int)(parX * 0.95f), gx = GAM_X + (int)(parX * 0.95f), dy = (int)(parY * 0.95f);
   cv.fillRoundRect(lx, 146 + dy, LIT_W, 18, 5, C(36, 28, 76)); cv.drawRoundRect(lx, 146 + dy, LIT_W, 18, 5, rose);
@@ -922,7 +929,9 @@ void dessinerBoite() {
   cv.fillCircle(gx + GAM_W / 2, 132 + dy, 2, ((millis() / 600) % 2) ? C(80, 255, 140) : C(20, 80, 50));
   cv.fillRoundRect(gx, 150 + dy, GAM_W, 14, 5, C(30, 28, 60)); cv.drawRoundRect(gx, 150 + dy, GAM_W, 14, 5, cyan);
   for (int g = 0; g < 4; g++) cv.fillCircle(gx + 9 + g * 9, 150 + dy, 2, C(80, 255, 140));
+  }
 }
+void dessinerBoite() { boiteDessiner(0); boiteDessiner(1); }
 
 
 // Vue d'en haut (Core2 posé à plat) : on voit le sol de la pièce, le lit et la gamelle par-dessus.
@@ -1600,9 +1609,56 @@ static void dessinerPieceVide() {      // ABSENCE : personne dans la piece, lumi
   dessinerInfos(); dessinerBarre();
   pousserAccueil();
 }
+// ---------- Fond de l'accueil en cache (3.1.32) ----------
+// Avant : la piece entiere (fond, murs, grille, fenetre, objet du mur) etait redessinee a CHAQUE image (15 a 25 ms estimes, dans un sprite en PSRAM).
+// Maintenant : le fond est dessine une fois puis recopie (un memcpy de 130 Ko) tant que rien n'a change ; seule la surcouche animee (meteo, croisillon, lit, gamelle) est redessinee a chaque image.
+// Un nouveau fond n'est range en cache qu'apres deux images identiques de suite (si l'appareil penche en continu, aucun cout en plus).
+static M5Canvas fondAcc(&M5.Display);
+static bool fondAccTente = false, fondAccOk = false, fondAccValide = false;
+static uint32_t fondAccSigC = 0, fondAccSigPrev = 0xFFFFFFFFu;
+static const int FOND_ACC_H = 208;
+static uint32_t boiteSig(bool dessus) {
+  uint32_t h = 2166136261u;
+#define HM_(v) h = (h ^ (uint32_t)(int32_t)(v)) * 16777619u
+  const uint32_t m = millis();
+  HM_(dessus ? 1 : 0); HM_(FA.forme); HM_(R.habitat);
+  if (dessus) {
+    const bool sol = FA.forme >= 1;
+    int lx = 160 + (int)((sol ? cibleSolX[1] : cibleX[1]) * 130), ly = 100 + (int)((sol ? cibleSolY[1] : cibleY[1]) * 80);
+    int gx = 160 + (int)((sol ? cibleSolX[2] : cibleX[2]) * 130), gy = 100 + (int)((sol ? cibleSolY[2] : cibleY[2]) * 80);
+    ly = min(ly, 174); gy = min(gy, 176);
+    HM_(lx); HM_(ly); HM_(gx); HM_(gy);
+  } else {
+    const int hab = constrain(R.habitat, 0, 2); const bool jour = R.actif[M_HEURE] && W.heureValide && !W.nuit;
+    HM_((int)floorf(parX * 4.0f)); HM_((int)floorf(parY * 4.0f)); HM_(jour ? 1 : 0);
+    if (hab == 0 && !jour) HM_(m / 3000u);      // fenetres allumees des immeubles
+    if (hab == 2) HM_((m / 200u) % 2u);      // le four de la forge
+    if (FA.forme == 0) HM_(m / 400u);      // les etoiles du hublot
+    else if (FA.forme == 1) { HM_((int)(sinf(sacAngle) * 46.0f)); HM_((int)(cosf(sacAngle) * 46.0f)); }      // le sac de frappe
+    else HM_(lignesTableau < 6 ? lignesTableau : 6);      // les formules du tableau
+  }
+#undef HM_
+  return h;
+}
+static void fondAccueil(bool dessus) {
+  const uint32_t sig = boiteSig(dessus);
+  const int bp = cv.getColorDepth() >> 3;
+  if (fondAccOk && fondAccValide && sig == fondAccSigC && cv.getBuffer()) {
+    memcpy(cv.getBuffer(), fondAcc.getBuffer(), (size_t)320 * FOND_ACC_H * bp);
+    cv.fillRect(0, FOND_ACC_H, 320, 240 - FOND_ACC_H, C(6, 6, 16));
+  } else {
+    if (dessus) dessinerBoiteDessus(); else boiteDessiner(0);
+    if (sig == fondAccSigPrev && cv.getBuffer()) {      // deux images identiques de suite : on garde ce fond
+      if (!fondAccTente) { fondAccTente = true; fondAcc.setColorDepth(cv.getColorDepth()); fondAcc.setPsram(true); fondAccOk = fondAcc.createSprite(320, FOND_ACC_H); }
+      if (fondAccOk) { memcpy(fondAcc.getBuffer(), cv.getBuffer(), (size_t)320 * FOND_ACC_H * bp); fondAccSigC = sig; fondAccValide = true; }
+    }
+  }
+  fondAccSigPrev = sig;
+  if (!dessus) boiteDessiner(1);
+}
 void dessinerAccueil() {
   bool sol = (FA.forme >= 1 && phase() != OEUF), dessus = (vue == 1 && rotEcran == 0);
-  if (dessus) dessinerBoiteDessus(); else dessinerBoite();
+  fondAccueil(dessus);
   int px, py; float e; positionEcran(px, py, e);
   const bool oeufP = (phase() == OEUF);      // un oeuf ne marche pas : seule la lumiere change
   if (!oeufP && !pr::persoVisible()) { dessinerPieceVide(); return; }      // presence : personne, piece vide
@@ -2897,6 +2953,26 @@ void toucheMatinale(int x, int y) {
 
 #include "corbeau.h"      // mode Corbeaux (page 32)
 #include "dex.h"          // Dex des yeux (page 33)
+// ---------- Mesure des transitions et des blocages (3.1.32) ----------
+// transMs : temps entre le changement d'ecran et la premiere image complete du nouvel ecran (pour les corbeaux : fin du chargement progressif) ;
+// transGelMs : plus long tour de boucle (donc plus long gel de l'ecran) pendant la transition et la seconde et demie qui suit ; « transitions » : les 8 dernieres ; boucleMsMax : pire tour de boucle sur 5 s.
+struct TransH { int8_t de, vers; uint16_t ms, gel; };
+static TransH histTrans[8]; static uint8_t posTrans = 0, nbTrans = 0; static int8_t transSlot = -1;
+static uint32_t transT0 = 0, transFinT = 0, transMs = 0, transGelMs = 0, transNb = 0, loopT0 = 0, boucleMsMax = 0;
+static int transDe = -1, transVers = -1;
+static int reveilF = 0;      // images restantes de l'animation de reveil de l'ecran (dessinee par la boucle : plus aucun blocage)
+static void transDebut(int de, int vers) { transT0 = millis(); transFinT = 0; transDe = de; transVers = vers; transGelMs = 0; transSlot = -1; }
+static void transNote(uint32_t dl) {
+  if (!transT0 && !(transFinT && millis() - transFinT < 1500u)) return;
+  if (dl > transGelMs) { transGelMs = dl; if (transSlot >= 0) histTrans[transSlot].gel = (uint16_t)(dl > 65535u ? 65535u : dl); }
+}
+static void transFin() {
+  if (!transT0) return;
+  transMs = millis() - transT0; transNb++;
+  TransH& h = histTrans[posTrans]; transSlot = (int8_t)posTrans; posTrans = (uint8_t)((posTrans + 1) % 8); if (nbTrans < 8) nbTrans++;
+  h.de = (int8_t)transDe; h.vers = (int8_t)transVers; h.ms = (uint16_t)(transMs > 65535u ? 65535u : transMs); h.gel = 0;
+  transT0 = 0; transFinT = millis(); transNote(millis() - loopT0);
+}
 static void ajouterMesuresEcran(JsonDocument& d) {
   d["ecran"] = nomEcran(page); d["ecranNo"] = page;
   const EcranStat& c = ST[page < 40 && page >= 0 ? page : 0];
@@ -2904,6 +2980,8 @@ static void ajouterMesuresEcran(JsonDocument& d) {
   d["ecranMs"] = (page == 32) ? (float)cb::emaTot : c.ms;      // duree d'une image : dessin + envoi a l'ecran
   d["ecranMsEnvoi"] = (page == 32) ? (float)cb::emaPush : c.msEnvoi;      // dont comparaison + envoi a l'ecran
   d["ecranMsMax"] = (page == 32) ? (float)cb::msMax : (float)(c.pire ? c.pire : c.pireCourant);
+  d["transMs"] = transMs; d["transGelMs"] = transGelMs; d["transNb"] = transNb; d["transDe"] = nomEcran(transDe); d["transVers"] = nomEcran(transVers); d["boucleMsMax"] = boucleMsMax;      // derniere transition d'ecran (ms), son plus long gel (ms), pire tour de boucle sur 5 s
+  { JsonArray ta = d["transitions"].to<JsonArray>(); for (int i = 0; i < nbTrans; i++) { const TransH& t = histTrans[(posTrans + 8 - 1 - i) % 8]; JsonObject o = ta.add<JsonObject>(); o["de"] = nomEcran(t.de); o["vers"] = nomEcran(t.vers); o["ms"] = t.ms; o["gel"] = t.gel; } }
   d["ecranEnvoiPct"] = (page == 32) ? 0 : (int)c.pct;      // part de l'ecran renvoyee (100 = tout l'ecran)
   JsonObject o = d["ecrans"].to<JsonObject>();
   for (int p = 0; p < 36; p++) if (ST[p].n > 5) { JsonObject e = o[nomEcran(p)].to<JsonObject>(); e["fps"] = ST[p].ecart > 0 ? 1000.0f / ST[p].ecart : 0.0f; e["ms"] = ST[p].ms; e["envoi"] = ST[p].msEnvoi; e["max"] = ST[p].pire ? ST[p].pire : ST[p].pireCourant; e["pct"] = (int)ST[p].pct; }
@@ -3006,14 +3084,16 @@ void endormirEcran() {
   veille = true; M5.Display.setBrightness(0); M5.Display.sleep(); appliquerEconomie();
   if (!brancheUsb && !lectureEnCours) { if (M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); } M5.Mic.end(); }      // écran éteint sur pile : micro et haut-parleur arrêtés (ils redémarrent à la demande)
 }
+// Reveil de l'ecran : l'anneau qui se resserre est maintenant dessine par la boucle (14 images a 30 images/s), au lieu de 8 images bloquantes de ~100 ms chacune (dessin + envoi + delay) = ~0,8 s d'ecran et de toucher figes.
+static void reveilDessiner() {
+  dessinerBoite(); dessinerPerso1();
+  int px, py; float e; positionEcran(px, py, e);
+  int f = 14 - reveilF; int r = 64 - f * 4; if (r > 0) { cv.drawCircle(px, py, r, C(0, 230, 255)); cv.drawCircle(px, py, r + 3, C(255, 40, 170)); }
+  pousser();
+}
 void reveillerEcran() {
   veille = false; appliquerEconomie(); M5.Display.wakeup(); M5.Display.setBrightness(R.luminosite); activiteReelle();
-  for (int f = 0; f < 8 && page != 32 && page != 33; f++) {
-    dessinerBoite(); dessinerPerso1();
-    int px, py; float e; positionEcran(px, py, e);
-    int r = 64 - f * 8; if (r > 0) { cv.drawCircle(px, py, r, C(0, 230, 255)); cv.drawCircle(px, py, r + 3, C(255, 40, 170)); }
-    pousser(); esp_task_wdt_reset(); delay(32);
-  }
+  if (page != 32 && page != 33) reveilF = 14;
   jouer(S_REVEIL);
 }
 
@@ -3483,6 +3563,7 @@ void loop() {
   sonPomper();
   static uint32_t tLent = 0, tSon = 0, tDessin = 0, tPhysique = millis();
   uint32_t m = millis();
+  loopT0 = m; bool dessineBoucle = false;
   if (finVibre && m > finVibre) { finVibre = 0; M5.Power.setVibration(0); }
   if (m - tLent > 2000) {
     tLent = m;
@@ -3490,6 +3571,7 @@ void loop() {
     cacheTensionMv = (int)M5.Power.getBatteryVoltage(); cacheCourantMa = (int)M5.Power.getBatteryCurrent();
     { static uint32_t tSerie = 0; if (m - tSerie > 30000) { tSerie = m; Serial.printf("[energie] pourcent=%d pile=%dmV usb=%dmV courant=%dmA charge=%d veille=%d\n", W.batterie, cacheTensionMv, (int)M5.Power.getVBUSVoltage(), cacheCourantMa, (int)W.charge, (int)veille); } }      // trace rare : un Serial.printf bloque la boucle une dizaine de ms
     moduleBatterie();
+    corbeauSurveillerCache(page == 34 || page == 35 || demandeMaj);      // le fond et le paysage des corbeaux gardes en memoire sont rendus si la memoire manque ou apres 15 min
     { float ma = -(float)cacheCourantMa; if (brancheUsb) consoMa = 0; else { if (ma < 0) ma = 0; consoMa = (consoMa == 0) ? ma : consoMa * 0.85f + ma * 0.15f; } }
     if (M5.In_I2C.readRegister8(0x34, 0x62, 400000) != 8) { M5.In_I2C.writeRegister8(0x34, 0x61, 4, 400000); M5.In_I2C.writeRegister8(0x34, 0x62, 8, 400000); }
     if (brancheUsb != avantUsb) appliquerEconomie();
@@ -3525,8 +3607,8 @@ void loop() {
     float dt = (m - tPhysique) / 1000.0f; tPhysique = m; if (dt > 0.1f) dt = 0.1f;
     physique(dt); objetsPhysique(dt);
     finModule();
-    gererTactile();
-    if (page != pageAvant) { if (pageAvant == 32) corbeauQuitter(); if (pageAvant == 33) dexQuitter(); if (pageAvant == 8 && sniffActif) arreterSniff(); if (pageAvant == 9 && detection) arreterDetection(); pageAvant = page; }
+    if (reveilF == 0) gererTactile();      // pendant l'animation de reveil (0,5 s) le toucher est ignore, comme avant
+    if (page != pageAvant) { transDebut(pageAvant, page); invaliderImage(); if (pageAvant == 32) corbeauQuitterDebut(); if (pageAvant == 33) dexQuitterDebut(); if (pageAvant == 8 && sniffActif) arreterSniff(); if (pageAvant == 9 && detection) arreterDetection(); pageAvant = page; }
     if (sniffActif) { if (m - dernierHop > 300) { dernierHop = m; canalSniff = canalSniff % 13 + 1; esp_wifi_set_channel(canalSniff, WIFI_SECOND_CHAN_NONE); } if (m - sniffDerniereSec > 1000) { sniffDerniereSec = m; sniffParSeconde = sniffTotal - sniffDernierTotal; sniffDernierTotal = sniffTotal; } }
     if (detection && m - detDerniere > 500) {
       detDerniere = m;
@@ -3546,17 +3628,25 @@ void loop() {
     if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;      // personne ne touche : 15 images/s, puis 8
     if (page == 0 || page == 32) periode = pr::periode(periode);      // presence : en absence 4 images/s (la scene d'entree ou de sortie garde la cadence normale)
     if (!veille) {
+      if (reveilF > 0 && (page == 32 || page == 33)) reveilF = 0;
       if (page == 32) {      // corbeaux : cadence fixe (pas de dérive : 30 images/s tiennent vraiment 30 images/s quand le dessin suit) ; s'il prend du retard on repart de maintenant
         const uint32_t ecoule = m - tDessin;
-        if (ecoule >= periode) { tDessin = (ecoule < periode * 2u) ? tDessin + periode : m; dessinerPage(); afficherVolume(); }
+        if (ecoule >= periode || corbeauChargement()) { tDessin = (ecoule < periode * 2u) ? tDessin + periode : m; dessinerPage(); afficherVolume(); dessineBoucle = true; if (transT0 && corbeauPret()) transFin(); }      // pendant le chargement progressif : une etape par tour de boucle, sans attendre la cadence
       } else {      // autres ecrans : 30 images/s a pas fixe (la cadence ne derive plus : 33 ms entre deux images, pas 33 ms + le temps de dessin) ; mesure par ecran
         const uint32_t ecoule = m - tDessin;
-        if (ecoule >= periode) { tDessin = (ecoule < periode * 2u) ? tDessin + periode : m; imgPousse = false; const uint32_t u0 = micros(); dessinerPage(); if (imgPousse) compterEcran(page, micros() - u0); afficherVolume(); }
+        if (ecoule >= periode) {
+          tDessin = (ecoule < periode * 2u) ? tDessin + periode : m;
+          if (reveilF > 0) { reveilDessiner(); reveilF--; }
+          else { imgPousse = false; const uint32_t u0 = micros(); dessinerPage(); if (imgPousse) compterEcran(page, micros() - u0); if (transT0) transFin(); }
+          afficherVolume(); dessineBoucle = true;
+        }
       }
     }
     if (sniffActif || detection || page == 11 || page == 13 || ((page == 34 || page == 35) && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (int32_t)delaiVeilleEcran()) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
+  if ((dessineBoucle || veille) && corbeauQuitterEnCours() && page != 32) corbeauQuitterPas();      // la fermeture des corbeaux se fait APRES l'affichage du nouvel ecran, une etape par tour de boucle
+  else if ((dessineBoucle || veille) && dexQuitterEnCours() && page != 33) dexQuitterPas();
   if (page == 31 && !matVisible) page = 6;
   vieDuPerso();
   {   // reconnexion automatique : toutes les 12 s sans Wi-Fi, on cherche les réseaux et on prend le réseau connu qui capte le mieux
@@ -3598,5 +3688,6 @@ void loop() {
   }
   serveur.handleClient();
   validerSiStable();
+  { static uint32_t bCourant = 0, bT0 = 0; const uint32_t dl = millis() - m; if (dl > bCourant) bCourant = dl; if (millis() - bT0 > 5000u) { bT0 = millis(); boucleMsMax = bCourant; bCourant = 0; } transNote(dl); }      // duree du tour de boucle (sans l'attente finale)
   delay(veille ? 40 : ((brancheUsb || (page == 32 && palierEco == 0)) ? (page == 32 && !brancheUsb ? 2 : 1) : (palierEco >= 2 ? 25 : (palierEco == 1 ? 12 : 4))));      // corbeaux en plein régime : attente courte (2 ms sur pile) pour ne pas retarder l'image suivante
 }
