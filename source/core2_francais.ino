@@ -20,6 +20,7 @@
 #include <AudioGeneratorMP3.h>
 #include <AudioOutput.h>
 #include "page_web.h"
+#include "BluetoothA2DPSource.h"      // essai : taille et memoire de la sortie Bluetooth
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
@@ -3028,7 +3029,10 @@ void demarrerReseau() {
 }
 
 // ---------- Programme principal ----------
+static BluetoothA2DPSource a2dpEssai;
+static int32_t donneesBTEssai(Frame* f, int32_t n) { for (int i = 0; i < n; i++) { f[i].channel1 = 0; f[i].channel2 = 0; } return n; }
 void setup() {
+  { Preferences p_; p_.begin("bttest", true); bool on = p_.getBool("btx", false); p_.end(); if (on) { a2dpEssai.set_auto_reconnect(true); a2dpEssai.start("essai", donneesBTEssai); } }
   auto cfg = M5.config();
   M5.begin(cfg);
   // courant de charge : la puce arrivait avec 0 mA, la pile ne se chargeait donc pas
