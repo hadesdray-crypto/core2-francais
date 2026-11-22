@@ -52,7 +52,7 @@ static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {22
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
 enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE, B_MONDE, B_FAM };      // B_FAM : mission d'un parent (famille.h)
-namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); static void decorChange(); }      // monde.h : paysage, camera, excursions
+namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); static void decorChange(); static bool vueFixe(); static void cibler(int b); }      // monde.h : paysage, camera, excursions
 static void syncUI();
 enum { T_GRAINE = 0, T_VIANDE, T_NOIX, T_PAIN, T_BAIES, T_BRILLANT, T_BAGUE, T_KUNAI, T_SHURIKEN, T_PARCHEMIN, T_OEUF, T_NB };
 
@@ -81,8 +81,8 @@ static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 
 
 // ---------- réglages du mode (nouvelles clés mémoire : cbnb, cbvis, cbsec, cbvib, cbamb, cbfps, cboeufs) ----------
 // nouvelles clés (2.9.0) : cbact (activité 1 à 5), cbgp (visites au gros plan 0 à 3), cboefq (fréquence des œufs 0 à 3), cbhor (ambiance Horreur)
-struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul; };      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
-static Opt OP = {4, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0, 1, 1, 1, 1, 1, 2, 0};      // paume : main ouverte paume vers le haut (1 oui) ; pvis : visites dans la paume (0 jamais, 1 rare, 2 normales, 3 souvent) ; recul : vue reculée (0 normale, 1 reculée, 2 très reculée)
+struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cauto; };      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
+static Opt OP = {4, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0, 1, 1, 1, 1, 1, 2, 0, 0};      // paume : main ouverte paume vers le haut (1 oui) ; pvis : visites dans la paume (0 jamais, 1 rare, 2 normales, 3 souvent) ; recul : vue reculée (0 normale, 1 reculée, 2 très reculée)
 static inline float tailleF() { static const float F[3] = {1.0f, 1.10f, 1.25f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux : petit (comme avant), normal (+10 %), grand (+25 %)
 static bool qDeg = false;      // fluidité : quand l'image prend trop de temps, effets encore réduits (automatique)      // nombre de corbeaux (3 à 6), visiteur (0 jamais, 1 rare, 2 souvent), secousse, vibration, ambiance, images/s, activité (1 à 5), gros plan (0 jamais, 1 rare, 2 normale, 3 souvent), œufs (idem), horreur
 static bool panneau = false, panSale = true, ambChange = false, oeufsSale = false;
@@ -132,7 +132,7 @@ static void chargerOptions() {
   OP.hor = prefs.getUChar("cbniv", 1); if (OP.hor > 2) OP.hor = 1;      // lumière : Sombre par défaut (nouvelle clé cbniv)
   OP.q = prefs.getUChar("cbqual", 0); if (OP.q > 2) OP.q = 0;      // qualité : Fluide par défaut (nouvelle clé cbqual)
   OP.barre = prefs.getUChar("cbbarre", 1) ? 1 : 0; OP.fiche = prefs.getUChar("cbfiche", 1) ? 1 : 0; OP.lance = prefs.getUChar("cblance", 1) ? 1 : 0;      // fonctions du bloc W : toutes activées par défaut, réglables
-  OP.paume = prefs.getUChar("cbpaume", 1) ? 1 : 0; OP.pvis = prefs.getUChar("cbpvis", 2); if (OP.pvis > 3) OP.pvis = 2; OP.recul = prefs.getUChar("cbvue", prefs.getUChar("cbrecul", 0)); if (OP.recul > 5) OP.recul = 0;      // vue choisie : 0 normale, 1 reculée, 2 très reculée, 3 arbre et rivière, 4 mare, 5 vieux bâtiments (clé cbvue)      // bloc AA : main paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
+  OP.paume = prefs.getUChar("cbpaume", 1) ? 1 : 0; OP.pvis = prefs.getUChar("cbpvis", 2); if (OP.pvis > 3) OP.pvis = 2; OP.recul = prefs.getUChar("cbvue", prefs.getUChar("cbrecul", 0)); if (OP.recul > 5) OP.recul = 0; OP.cauto = prefs.getUChar("cbcam", 0) ? 1 : 0;      // caméra automatique : Non par défaut (clé cbcam) ;      // vue choisie : 0 normale, 1 reculée, 2 très reculée, 3 arbre et rivière, 4 mare, 5 vieux bâtiments (clé cbvue)      // bloc AA : main paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
   OP.taille = prefs.getUChar("cbtaille", 1); if (OP.taille > 2) OP.taille = 1;      // taille : normal par défaut
   nbOeufs = prefs.getUInt("cboeufs", 0);
   appliquerAct(); appliquerAmb(); appliquerSec(); debug = (OP.fps != 0);
@@ -2216,7 +2216,7 @@ static void lancerVisite() {
 static void majGP(float dt) {
   gVisGP -= dt;
   if (!GP.ph) {
-    if (gVisGP <= 0) { float rep = (millis() - tToucher) / 1000.0f; bool ok = rep > 20.0f || random(100) < 20; gVisGP = ((rep > 20.0f) ? rnd(40.0f, 90.0f) : rnd(110.0f, 190.0f)) * multFreq(OP.gp); if (ok && OP.gp > 0) lancerVisite(); }      // réglage « Visites au gros plan »
+    if (gVisGP <= 0) { float rep = (millis() - tToucher) / 1000.0f; bool ok = rep > 20.0f || random(100) < 20; gVisGP = ((rep > 20.0f) ? rnd(40.0f, 90.0f) : rnd(110.0f, 190.0f)) * multFreq(OP.gp); if (ok && OP.gp > 0 && !mo::vueFixe()) lancerVisite(); }      // réglage « Visites au gros plan »
     return;
   }
   GP.t += dt; vcb.phase += ((GP.ph == 1) ? lerpf(2.6f, 1.8f, lim(GP.t / GP.dur, 0.0f, 1.0f)) : (GP.ph == 5 ? 2.6f : 1.5f)) * dt; if (vcb.phase >= 1) vcb.phase -= 1;      // grands battements qui ralentissent à l'approche
@@ -2483,7 +2483,7 @@ static void majGlobal(float dt) {
     } else if (p.x < bordG() - 6.0f || p.x > bordD() + 6.0f || p.y > 260 || p.t > 6.0f) p.actif = false;
   }
   if (appelOn) { static float tRec = 0; tRec -= dt; if (tRec <= 0) { tRec = 0.8f; for (int k = 0; k < NCB; k++) { Corbeau& c = cr[k]; if ((c.etat == E_PERCHE && c.perch < 10 && c.objet == 0) || c.etat == E_DEHORS) { mettreEnOrbite(c); c.ray = rnd(24, 46); } } } }
-  gVisite -= dt; if (gVisite <= 0 && V.ph == V_RIEN && !cbAbsent) { if (nbDehors() < 3) invoquer(); else gVisite = 10.0f; }
+  gVisite -= dt; if (gVisite <= 0 && V.ph == V_RIEN && !cbAbsent && !mo::vueFixe()) { if (nbDehors() < 3) invoquer(); else gVisite = 10.0f; }
   if (gPoof <= 0) {
     gPoof = rnd(20, 42);
     int k = random(NCB); for (int j = 0; j < NCB; j++) { Corbeau& c = cr[(k + j) % NCB]; if (c.etat == E_PERCHE && c.objet == 0 && c.perch < 10) { declencherPoof(c); break; } }
@@ -2672,6 +2672,12 @@ static void dessinerPanneau() {
     tuile(g, 4, 100, 153, 32, "Secousse", SEC[OP.sec]); tuile(g, 163, 100, 153, 32, "Vibration", OP.vib ? "Oui" : "Non");
     tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Lumière", OP.hor == 2 ? "Horreur" : (OP.hor == 1 ? "Sombre" : "Clair"));
     tuile(g, 4, 170, 153, 32, "Images par seconde", OP.fps ? "Oui" : "Non"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
+  } else if (panPage == 7) {      // caméra : vues spontanées (clé cbcam)
+    static const char* const LO[2] = {"Non", "Oui"};
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Caméra automatique (vue d'ensemble pendant les échanges)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, OP.cauto, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Non : la vue choisie reste, sans gros plan ni visiteur spontanés.", 6, 77);
+    g.drawString("Le bouton Vue ou la page Main et vue changent de vue.", 6, 93); g.drawString("En Suivi, touche un corbeau pour le suivre.", 6, 109);
   } else if (panPage == 6) {      // main et vue : main ouverte paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
     static const char* const LO[2] = {"Non", "Oui"}; static const char* const LPV[4] = {"Jamais", "Rare", "Normal", "Souvent"}; static const char* const LRC[3] = {"Normal", "Reculé", "Très reculé"}; static const char* const LLI[3] = {"Arbre", "Mare", "Bâtiments"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2718,7 +2724,7 @@ static void dessinerPanneau() {
   g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
   g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
-  g.drawString(panPage == 6 ? "< Réglages" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
+  g.drawString(panPage == 7 ? "< Réglages" : panPage == 6 ? "Caméra >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
@@ -2731,7 +2737,13 @@ static void fermerPanneau() {
 }
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
-  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 7); panSale = true; } return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 8); panSale = true; } return; }
+  if (panPage == 7) {      // caméra automatique (clé cbcam)
+    if (y >= 42 && y < 72) { OP.cauto = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbcam", OP.cauto); }
+    else return;
+    if (OP.vib) vibrer(40);
+    panSale = true; return;
+  }
   if (panPage == 6) {      // main et vue (clés cbpaume, cbpvis, cbrecul)
     if (y >= 42 && y < 72) { OP.paume = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbpaume", OP.paume); }
     else if (y >= 84 && y < 114) { OP.pvis = (uint8_t)constrain((x - 4) * 4 / 312, 0, 3); prefs.putUChar("cbpvis", OP.pvis); }
@@ -3160,7 +3172,7 @@ static void appui(int x, int y) {
   switch (modeCb) {
     case 0: {
       int b = trouverCorbeau((float)x, (float)y, 1.0f / zs);
-      if (b >= 0) { mo::armer(b); if (OP.fiche) { pendOn = true; pendK = (int8_t)b; pendX = (float)x; pendY = (float)y; pendT = m; } else reagirToucher(cr[b], (float)x, (float)y); D.bas = false; return; }
+      if (b >= 0) { mo::armer(b); mo::cibler(b); if (OP.fiche) { pendOn = true; pendK = (int8_t)b; pendX = (float)x; pendY = (float)y; pendT = m; } else reagirToucher(cr[b], (float)x, (float)y); D.bas = false; return; }
       if (V.ph == V_RIEN && !GP.ph && hypotf((float)(sxp - 160), (float)(syp - 95)) < 42.0f) { tpCible = 3; tpT0 = m; tpX = (float)x; if (OP.lance) { D.type = 7; visType = (int8_t)choix; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; } else D.bas = false; return; }      // toucher long au centre : un corbeau vient
       if (V.ph == V_RIEN && x >= 70 && x < 244 && fabsf(y - ytop((float)x)) < 14) { tpCible = 2; tpT0 = m; tpX = (float)x; if (OP.lance) { D.type = 7; visType = (int8_t)choix; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; } else D.bas = false; return; }
       if (OP.lance) { D.type = 7; visType = (int8_t)choix; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; } else { lacher(choix, (float)x); D.bas = false; }      // toucher = poser ici ; glisser = lancer
