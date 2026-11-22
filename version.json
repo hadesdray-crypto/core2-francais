@@ -1,6 +1,6 @@
 {
     "version": "3.1.27",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=e3f4f6617d0a",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=7530efe26106",
     "changes": [
         "3.1.27 : proportions corrigées. Quand un corbeau part vers le bâtiment du fond (portique, stèles, vieille tour), il devient BEAUCOUP plus petit (environ 40 % de la taille d'un corbeau de l'arbre, au lieu de 70 à 88 %) : il rapetisse progressivement pendant le vol en s'éloignant et regrossit au retour, sans saut. Vers la mare et le champ à gauche, un peu plus petit aussi.",
         "3.1.27 : corbeaux de l'arbre encore environ 12 % plus petits (la main, le petit corbeau et le couple gardent leurs proportions) ; la vue Vieux bâtiments est un peu plus serrée (zoom 1,0) pour voir les petits oiseaux du fond.",
@@ -121,17 +121,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "e3f4f6617d0a9357a1fcef853d14fa1472cf31f788e244fd5cb4e5d9836fa331",
-    "size": 5149264,
+    "sha256": "7530efe2610653365324c8e1e6207aad8f63d99822c050272fe8b092e083e8b4",
+    "size": 5149296,
     "canal": "test",
     "notes": [
-        "3.1.26 : correction de compilation (commentaire en fin de ligne, declaration de la cache)",
+        "3.1.27 : proportions : oiseaux du fond tres petits (0,40), arbre 12 pour cent plus petits, mare 0,95, vue Vieux batiments recadree",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.26",
-        "run": "45063067925",
-        "commit": "dcf3e1402bad"
+        "version": "3.1.27",
+        "run": "45064068336",
+        "commit": "c33e1574a7f4"
     }
 }
