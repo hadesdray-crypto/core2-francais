@@ -1,5 +1,5 @@
 {
-    "version": "2.9.3",
+    "version": "3.0.0",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -43,6 +43,9 @@
         "Nouveau son quand un corbeau apparaît ou disparaît (et quand le visiteur arrive ou part) : un souffle qui balaie, un claquement sourd et un battement d'ailes, fabriqués par le programme (aucun extrait d'œuvre).",
         "Main complète : en mode Main, la main sort davantage dans l'écran et on la voit en entier : doigts, paume, poignet, avant-bras nu et manche. Un seul corbeau se pose dessus à la fois (entier, bien visible) ; le suivant ne vient qu'après le départ du premier.",
         "Nouvelle visite d'un corbeau au gros plan : il arrive du lointain en grossissant, avec trois ou quatre grands battements d'ailes, ralentit, se cabre devant la vitre, frappe du bec (un à trois coups, avec choc, fissures dans la vitre et tremblement), puis repart en s'éloignant et en rapetissant. Le mouvement est continu, sans saut de taille ni coupure.",
+        "Monde ?largi dans le mode Corbeaux : au-del? de l'arbre, une maison isol?e (toit, chemin?e qui fume, fen?tre faiblement ?clair?e), une mare avec des roseaux, un champ avec un ?pouvantail, des cl?tures, des poteaux et des fils, d'autres arbres tous diff?rents et des collines en plusieurs plans qui d?filent ? des vitesses diff?rentes (parallaxe).",
+        "Les corbeaux partent en excursion : l'un va se poser sur le toit de la maison et observe, un autre va boire ? la mare (la t?te plonge, remonte et avale, parfois un bain avec ?claboussures), un autre picore dans le champ ; puis ils reviennent ? l'arbre. Ils rapetissent vers la maison et grossissent vers la mare (perspective).",
+        "Nouvelle cam?ra : le bouton ? Vue ? en haut change de vue : ? Large ? (vue d'ensemble en zoom arri?re, avec perspective) puis ? Suivi ? (la cam?ra suit un oiseau dans sa vie, zoome quand il boit ou picore) puis retour. Un toucher long sur un corbeau le suit aussi. Parfois la vue d'ensemble appara?t toute seule quelques secondes.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",

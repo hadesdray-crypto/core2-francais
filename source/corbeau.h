@@ -51,7 +51,9 @@ static const float SOL_Y = 201.0f;
 static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {224, 125.6f}, {88, 62.5f}, {24, 94.5f}};
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
-enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE };
+enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE, B_MONDE };
+namespace mo { static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); }      // monde.h : paysage, camera, excursions
+static void syncUI();
 enum { T_GRAINE = 0, T_VIANDE, T_NOIX, T_PAIN, T_BAIES, T_BRILLANT, T_BAGUE, T_KUNAI, T_SHURIKEN, T_PARCHEMIN, T_OEUF, T_NB };
 
 // ---------- petits outils ----------
@@ -492,7 +494,7 @@ static void boutonOeufs(M5Canvas& g) {      // compteur discret des œufs éclos
 
 static void boutonVue(M5Canvas& g) {
   g.fillRoundRect(238, 2, 32, 20, 8, C(14, 4, 8)); g.drawRoundRect(238, 2, 32, 20, 8, C(110, 22, 30));
-  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Vue", 254, 12); g.setTextDatum(top_left);
+  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString(mo::etiquette(), 254, 12); g.setTextDatum(top_left);
 }
 static void cielLarge(M5Canvas& g);
 static void vignette(M5Canvas& g) {      // horreur : bords noirs (dessiné une seule fois dans le fond, rien à recalculer à chaque image)
@@ -514,7 +516,7 @@ static void vignette(M5Canvas& g) {      // horreur : bords noirs (dessiné une 
   }
 }
 static void construireFond() {
-  { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond); vignette(fond); }      // les arbres lointains sont dessinés dans cielLarge, derrière les collines
+  { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond); vignette(fond); } mo::rebake();      // les arbres lointains sont dessinés dans cielLarge, derrière les collines
   menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
 }
 
@@ -559,6 +561,7 @@ struct Plume { float x, y, vx, vy, rot, vr, vie, dur; bool actif; };
 struct Eclat { float x, y, t, dur, taille; bool actif; };
 
 static Corbeau cr[NCB];
+namespace mo { static bool partir(Corbeau& c); }
 struct VisiteGP { uint8_t ph; float t, dur, sx, sy, ex, ey, th, choc, tCl, cl, tCri, ouv, sc, dy, tChoc; int8_t k, n, nf, mir; bool jeune, impact, cri;
   float px, py, ps, dvv, pit, pk, x0, y0, s0, dv0, p0, ix[3], iy[3]; int8_t fis; uint32_t gr; };      // px..pit : position, taille, orientation actuelles ; x0..p0 : départ de la sortie ; ix, iy : points d'impact (fissures)      // visite d'un corbeau devant l'écran
 static VisiteGP GP; static Corbeau vcb; static float gVisGP = 60.0f; static uint32_t tToucher = 0;
@@ -1255,7 +1258,7 @@ static int perchLibre() {
   int n = 0, l[NPE]; for (int i = 0; i < NPE; i++) if (!perchOccupe(i)) l[n++] = i;
   return n ? l[random(n)] : -1;
 }
-static int nbDehors() { int n = 0; for (int k = 0; k < NCB; k++) if (cr[k].etat == E_DEHORS || (cr[k].etat == E_VOL && cr[k].but == B_SORTIR)) n++; return n; }
+static int nbDehors() { int n = 0; for (int k = 0; k < NCB; k++) if (cr[k].etat == E_DEHORS || (cr[k].etat == E_VOL && cr[k].but == B_SORTIR) || cr[k].but == B_MONDE) n++; return n; }
 
 static void posture(Corbeau& c) {      // posture perchée : tronc redressé (45 à 65 degrés), poitrine en avant, queue qui pend, tête dégagée
   switch (random(4)) {
@@ -1288,6 +1291,7 @@ static void entrer(Corbeau& c, float tx, float ty, uint8_t but) {      // arrive
   c.vitesse = rnd(82, 108); c.hz = rnd(2.7f, 3.0f); c.restBat = 4 + random(3); c.planeT = 0; c.phase = rnd01(); c.wl = c.wlC = 1; c.fan = c.fanC = 0; c.pitch = c.pitchC = 0.1f; c.pose = c.poseC = A_BAS;
 }
 static void sortir(Corbeau& c) {
+  if (c.etat != E_DEHORS && mo::partir(c)) return;      // monde.h : la sortie devient une excursion (maison, mare, champ)
   c.perch = -1; c.item = -1;
   float tx = (rnd01() < 0.5f) ? bordG() - 16.0f : bordD() + 16.0f;
   if (c.x < 100) tx = bordG() - 16.0f; else if (c.x > 220) tx = bordD() + 16.0f;
@@ -1425,6 +1429,8 @@ static void attraper(Corbeau& c) {      // il attrape l'objet lancé, puis le ra
   c.aWp = false; c.pj = -1;
 }
 
+#include "monde.h"
+
 static void majCorbeau(Corbeau& c, int idx, float dt) {
   c.t += dt; c.resp += dt;
   c.tClin -= dt; if (c.tClin <= 0) { c.clin = 1; c.tClin = rnd(2.2f, 5.5f); }
@@ -1527,11 +1533,12 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         if (c.but == B_PERCHOIR) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(5, 13); c.ox = c.oy = 0; posture(c); }
         else if (c.but == B_VISITEUR) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(5, 13); c.ox = c.oy = 0; c.d = (c.perch == 14) ? (H.gauche ? 1 : -1) : ((c.perch == 10) ? -1 : 1); if (c.perch == 14) posture(c); }
         else if (c.but == B_NOUR || c.but == B_OBJET || c.but == B_FOURRAGE || c.but == B_BAIN) { c.etat = E_SOL; c.sub = 0; c.peck = 0; c.om = 0; }
+        else if (c.but == B_MONDE) { mo::arrivee(c); }
         else { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = 4; }
       }
     } break;
     case E_SOL: {
-      c.pied = true; c.pitchC = c.pr * 0.45f; c.haC = c.pitchC - 0.35f; c.hbC = c.haC + 0.49f;
+      c.pied = true; c.pitchC = c.pr * 0.45f; c.haC = c.pitchC - 0.35f; c.hbC = c.haC + 0.49f; if (c.but == B_MONDE) mo::sol(c, idx, dt);
       if (c.but == B_NOUR && c.sub <= 1) {
         Obj* o = (c.item >= 0 && c.item < NOB && ob[c.item].actif && ob[c.item].reserve == idx) ? &ob[c.item] : nullptr;
         if (!o) { c.but = B_RIEN; c.item = -1; apresSol(c); break; }
@@ -2256,7 +2263,7 @@ static void contacts(float dt) {
   }
 }
 static void majGlobal(float dt) {
-  contacts(dt);
+  contacts(dt); mo::maj(dt);
   gAction -= dt * actFreq; gPoof -= dt * actFreq; gObjet -= dt * actFreq; gAttrib -= dt; gCalme -= dt;
   if (OP.hor) {      // horreur : lueur des yeux instable (très discret), de rares battements de lumière et éclairs rouges lointains
     float n = sinf(tAnim * 9.0f) * sinf(tAnim * 2.3f + 1.0f) + 0.5f * sinf(tAnim * 23.0f); lueurOeil = 1.0f + 0.07f * n;
@@ -2613,8 +2620,8 @@ static void pincer() {      // pincement à deux doigts : se pincer = dézoom, s
     auto a = M5.Touch.getDetail(0), b = M5.Touch.getDetail(1); float d = hypotf((float)(a.x - b.x), (float)(a.y - b.y));
     if (!pinceOn) { pinceOn = true; pinceFait = false; pinceD0 = d; D.bas = false; VS.on = false; if (appelOn) appelFin(); }
     else if (!pinceFait && pinceD0 > 24.0f) {
-      if (d < pinceD0 * 0.72f && zoomC < 0.5f) { zoomC = 1.0f; pinceFait = true; prefs.putUChar("cbvue", 1); }
-      else if (d > pinceD0 * 1.35f && zoomC > 0.5f) { zoomC = 0.0f; pinceFait = true; prefs.putUChar("cbvue", 0); }
+      if (d < pinceD0 * 0.72f) { mo::demandeLarge(true); pinceFait = true; }
+      else if (d > pinceD0 * 1.35f) { mo::demandeLarge(false); pinceFait = true; }
     }
   } else pinceOn = false;
 }
@@ -2639,7 +2646,7 @@ static void ouvrir() {
   cr[4].etat = E_DEHORS; cr[4].visible = false; cr[4].t = 0; cr[4].tfin = 6.0f;
   cr[5].etat = E_DEHORS; cr[5].visible = false; cr[5].t = 0; cr[5].tfin = 9.0f;
   cr[PC].etat = E_OFF; cr[PC].visible = false;
-  zoomC = prefs.getUChar("cbvue", 0) ? 1.0f : 0.0f; zoomU = zoomC; pinceOn = false;
+  zoomC = 0.0f; zoomU = 0.0f; pinceOn = false; mo::reinit();
   if (zoomC > 0.5f) { if (creerLarge()) { zs = 0.6f; ztx = zax * (1 - zs); zty = zay * (1 - zs); fondAct = &fondL; } else { zoomC = zoomU = 0.0f; } }
   if (zoomC < 0.5f) { zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); }
   memset(&GP, 0, sizeof(GP)); gVisGP = rnd(50.0f, 90.0f) * multFreq(OP.gp); tToucher = millis(); gEcl = rnd(30.0f, 70.0f); gBatt = rnd(35.0f, 80.0f); eclT = 0.0f; battT = 0.0f;
@@ -2651,7 +2658,7 @@ static void ouvrir() {
 }
 static void quitter() {
   if (!ouvert) return;
-  ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
+  mo::fermerMonde(); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
   if (fondLOk) { fondL.deleteSprite(); fondLOk = false; }
   if (fondOk) { fond.deleteSprite(); fondOk = false; }
   if (!lectureEnCours && M5.Speaker.isRunning()) { M5.Speaker.stop(); M5.Speaker.end(); M5.Mic.begin(); }     // la musique en cours (Matinale) n'est jamais touchée
@@ -2679,6 +2686,7 @@ static void dessiner() {
   else if (zoomU != zoomC) { zoomU = zoomC; plein = true; }
   { float zn = lerpf(ZN, 0.6f, pas(zoomU)); if (zn != zs) { zs = zn; ztx = zax * (1 - zs); zty = zay * (1 - zs); plein = true; } }
   fondAct = (zoomU > 0.5f && fondLOk) ? &fondL : &fond;
+  if (mo::camPilote(dt)) { fondAct = &fond; plein = true; }      // monde.h : vue d'ensemble ou suivi d'un oiseau
   if (GP.ph) plein = true;
   // volume affiché par le programme sur l'écran : on redessine tout quand il disparaît
   if (millis() < finAffVolume) volVu = true; else if (volVu) { volVu = false; plein = true; }
@@ -2690,7 +2698,7 @@ static void dessiner() {
   nListe = 0;
   dessinerEntites(cv, true);        // 1) boîtes englobantes (rien n'est dessiné)
   if (plein) {
-    if (anim) composerTransition(); else memcpy(cv.getBuffer(), fondAct->getBuffer(), (size_t)320 * 240 * bpp);
+    if (mo::camOn()) mo::composer(); else if (anim) composerTransition(); else memcpy(cv.getBuffer(), fondAct->getBuffer(), (size_t)320 * 240 * bpp);
   } else {
     for (int e = 0; e < NENT; e++) { if (anc[e].x1 > anc[e].x0) ajoutRect(anc[e]); if (nouv[e].x1 > nouv[e].x0) ajoutRect(nouv[e]); }
     fusionner();
@@ -2741,7 +2749,7 @@ static void appui(int x, int y) {
   D.bas = true; D.x0 = D.x = (float)x; D.y0 = D.y = (float)y; D.vx = D.vy = 0; D.t0 = D.tp = m; D.cible = -1; D.type = 0; D.fait = false; D.grab = false; tpCible = 0; tpFait = false;
   if (syp >= H_SCENE) { D.bas = false; touchBarre(sxp); return; }
   if (sxp < 50 && syp < 24) { D.bas = false; page = 6; bip(700, 40); return; }
-  if (sxp >= 238 && sxp < 270 && syp < 24) { D.bas = false; zoomC = (zoomC > 0.5f) ? 0.0f : 1.0f; prefs.putUChar("cbvue", zoomC > 0.5f ? 1 : 0); return; }
+  if (sxp >= 238 && sxp < 270 && syp < 24) { D.bas = false; mo::basculer(); return; }
   if (sxp >= 52 && sxp < 140 && syp < 24) {
     D.bas = false;
     ouvrirPanneau();
@@ -2754,7 +2762,7 @@ static void appui(int x, int y) {
   switch (modeCb) {
     case 0: {
       int b = trouverCorbeau((float)x, (float)y, 1.0f / zs);
-      if (b >= 0) { reagirToucher(cr[b], (float)x, (float)y); D.bas = false; return; }
+      if (b >= 0) { mo::armer(b); reagirToucher(cr[b], (float)x, (float)y); D.bas = false; return; }
       if (V.ph == V_RIEN && !GP.ph && hypotf((float)(sxp - 160), (float)(syp - 95)) < 42.0f) { tpCible = 3; tpT0 = m; tpX = (float)x; D.bas = false; return; }      // toucher long au centre : un corbeau vient
       if (V.ph == V_RIEN && x >= 70 && x < 244 && fabsf(y - ytop((float)x)) < 14) { tpCible = 2; tpT0 = m; tpX = (float)x; D.bas = false; return; }
       lacher(choix, (float)x); D.bas = false;
@@ -2833,6 +2841,7 @@ static void toucher(const m5::touch_detail_t& t) {
   if (t.isPressed() || t.wasPressed()) tToucher = millis();
   if (GP.ph >= 3) { if (t.wasPressed() && GP.ph != 5) departGP(); return; }
   if (pinceOn) return;
+  mo::appuiLong(t);
   if (tpCible && t.isPressed() && !tpFait && millis() - tpT0 > 600) { tpFait = true; if (tpCible == 1) bras(); else if (tpCible == 3) lancerVisite(); else invoquer(); }
   if (t.wasReleased()) { if (tpCible && !tpFait) { if (tpCible == 1) gerbe(); else lacher(choix, tpX); } tpCible = 0; relache(); }
   if (t.wasPressed()) appui(t.x, t.y);
