@@ -429,7 +429,7 @@ static const uint8_t BT_K[NBT] = {BT_ESC, BT_LEZ, BT_SCA, BT_ESC};
 static const float BT_Z0[NBT] = {40.0f, 252.0f, 150.0f, -92.0f};      // zones : pied de l'arbre, pierres a droite, sous l'arbre, berge gauche de la mare
 static const float BT_Z1[NBT] = {112.0f, 314.0f, 238.0f, -54.0f};
 static float gBete = 12.0f, repT = 0.0f; static int8_t repK = -1, repB = 0, beteVisee = -1;
-static int nbBetes() { return RGM.bet == 0 ? 0 : (RGM.bet == 1 ? 2 : 4); }
+static int nbBetes() { const int n = RGM.bet == 0 ? 0 : (RGM.bet == 1 ? 2 : 4), l = decLvl(); return l >= 2 ? 0 : ((l == 1 && n > 2) ? 2 : n); }      // decor allege : 2 betes au plus ; decor minimal (reglage ou allegement automatique) : aucune
 static void mangeBete(Corbeau& c, int idx, int kind);
 static bool beteDispo() { for (int i = 0; i < nbBetes(); i++) if (bt[i].on && bt[i].res < 0 && bt[i].ap > 0.9f && bt[i].fuite <= 0.0f) return true; return false; }
 static int beteChoix() { int l[NBT], n = 0; for (int i = 0; i < nbBetes(); i++) if (bt[i].on && bt[i].res < 0 && bt[i].ap > 0.9f && bt[i].fuite <= 0.0f) l[n++] = i; return n ? l[random(n)] : -1; }
@@ -489,8 +489,8 @@ static void dessinBete(M5Canvas& g, const Bete& b) {
   }
 }
 static void dessinBetes(M5Canvas& g) {
-  const int n = nbBetes(); if (!pret || n == 0) return;
-  for (int i = 0; i < NBT && i < n; i++) if (bt[i].on && vis(bt[i].x - 14.0f, bt[i].x + 14.0f)) dessinBete(g, bt[i]);
+  if (!pret) return;
+  for (int i = 0; i < NBT; i++) if (bt[i].on && vis(bt[i].x - 14.0f, bt[i].x + 14.0f)) dessinBete(g, bt[i]);      // une bete deja prise en chasse reste dessinee jusqu'au bout
 }
 
 static int8_t rang[NAD];
