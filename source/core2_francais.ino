@@ -23,7 +23,7 @@
 #include "types.h"
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "2.3.1"
+#define VERSION_PROGRAMME "2.4.0"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -394,7 +394,7 @@ void moduleWifi() {
 void moduleSon() {
   debutModule(M_SON);
   static int16_t tampon[256];
-  if (lectureEnCours) { finModule(); return; }      // le haut-parleur joue la Matinale : le micro attend
+  if (lectureEnCours || page == 32) { finModule(); return; }      // le haut-parleur joue la Matinale (ou les corbeaux) : le micro attend
   if (!M5.Mic.isEnabled()) { M5.Mic.begin(); }
   if (M5.Mic.record(tampon, 256, 16000)) {
     long somme = 0; for (int i = 0; i < 256; i++) somme += abs(tampon[i]);
@@ -1717,14 +1717,15 @@ static const Tuile TUILES[] = {
   {"Détection", 9, 0x021F}, {"Météo", 10, 0x0C7A}, {"Horloge", 11, 0x6A1F},
   {"Niveau", 12, 0x05EB}, {"Sonomètre", 13, 0xFB40}, {"Lampe", 14, 0x8420},
   {"Réglages", 1, 0x4A4F}, {"Matériel", 5, 0x3269}, {"Apparence", 15, 0xC1E8}, {"Jeux", 20, 0x2D6B}, {"Wi-Fi", 2, 0x03B5},
+  {"Corbeaux", 32, 0x7000},
 };
 static const int NB_TUILES = sizeof(TUILES) / sizeof(TUILES[0]);
 void dessinerMenu() {
   cadrePage("Menu — tout ce que je sais faire");
   for (int i = 0; i < NB_TUILES; i++) {
-    int c = i % 3, r = i / 3; int x = 6 + c * 104, y = 28 + r * 40;
-    cv.fillRoundRect(x, y, 100, 36, 8, TUILES[i].coul); cv.drawRoundRect(x, y, 100, 36, 8, C(120, 160, 220));
-    cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString(TUILES[i].nom, x + 50, y + 18);
+    int c = i % 3, r = i / 3; int x = 6 + c * 104, y = 26 + r * 35;
+    cv.fillRoundRect(x, y, 100, 32, 8, TUILES[i].coul); cv.drawRoundRect(x, y, 100, 32, 8, C(120, 160, 220));
+    cv.setFont(&fonts::lgfxJapanGothic_16); cv.setTextDatum(middle_center); cv.setTextColor(C(255, 255, 255)); cv.drawString(TUILES[i].nom, x + 50, y + 16);
   }
   cv.setTextDatum(top_left); cv.pushSprite(0, 0);
 }
@@ -2610,6 +2611,7 @@ void toucheMatinale(int x, int y) {
   matErreur = ""; matUrl = u; matJouant = k; matDuree = (k == 0) ? matFlashD : (k == 1) ? matFullD : matSujets[k - 2].d; matCommande = 3;
 }
 
+#include "corbeau.h"      // mode Corbeaux (page 32)
 void dessinerPage() {
   switch (page) {
     case 0: dessinerAccueil(); break;
@@ -2635,6 +2637,7 @@ void dessinerPage() {
     case 23: dessinerJeuPFC(); break;
     case 24: dessinerMenuPerso(); break;
     case 31: dessinerMatinale(); break;
+    case 32: corbeauDessiner(); break;
     case 25: dessinerMenuCerveau(); break;
     case 26: case 27: case 28: case 29: case 30: dessinerExercice(); break;
     default: dessinerWifi(); break;
@@ -2647,9 +2650,10 @@ void gererTactilePages(const m5::touch_detail_t& t) {
   if (page >= 20 && page <= 23) { gererTactileJeux(t); return; }
   if (page >= 24 && page <= 30) { gererTactilePersoCerveau(t); return; }
   if (page == 31) { if (clic) toucheMatinale(x, y); return; }
+  if (page == 32) { corbeauToucher(t); return; }
   if (page == 6) {
     if (!clic) return;
-    for (int i = 0; i < NB_TUILES; i++) { int c = i % 3, r = i / 3; int tx = 6 + c * 104, ty = 28 + r * 40; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 36) { page = TUILES[i].page; pageRetourPerso = 6; retourSous = 15; if (page == 2) lancerScan(); if (page == 31 && matEtat != 2) matCommande = 1; bip(700, 40); return; } }
+    for (int i = 0; i < NB_TUILES; i++) { int c = i % 3, r = i / 3; int tx = 6 + c * 104, ty = 26 + r * 35; if (x >= tx && x < tx + 100 && y >= ty && y < ty + 32) { page = TUILES[i].page; pageRetourPerso = 6; retourSous = 15; if (page == 2) lancerScan(); if (page == 31 && matEtat != 2) matCommande = 1; bip(700, 40); return; } }
     return;
   }
   if (page == 14) { if (clic && y >= 180 && y < 206 && x < 100) { page = 6; bip(700, 40); } else if (t.isPressed()) lampeNiveau = constrain((int)(255.0f * x / 320.0f), 10, 255); return; }
@@ -3084,7 +3088,7 @@ void loop() {
     physique(dt); objetsPhysique(dt);
     finModule();
     gererTactile();
-    if (page != pageAvant) { if (pageAvant == 8 && sniffActif) arreterSniff(); if (pageAvant == 9 && detection) arreterDetection(); pageAvant = page; }
+    if (page != pageAvant) { if (pageAvant == 32) corbeauQuitter(); if (pageAvant == 8 && sniffActif) arreterSniff(); if (pageAvant == 9 && detection) arreterDetection(); pageAvant = page; }
     if (sniffActif) { if (m - dernierHop > 300) { dernierHop = m; canalSniff = canalSniff % 13 + 1; esp_wifi_set_channel(canalSniff, WIFI_SECOND_CHAN_NONE); } if (m - sniffDerniereSec > 1000) { sniffDerniereSec = m; sniffParSeconde = sniffTotal - sniffDernierTotal; sniffDernierTotal = sniffTotal; } }
     if (detection && m - detDerniere > 500) {
       detDerniere = m;
@@ -3099,8 +3103,8 @@ void loop() {
       int h = (int)constrain(dev * 14.0f, 0.0f, 86.0f);
       histMvt[histMvtPos] = (uint8_t)h; histMvtPos = (histMvtPos + 1) % (int)sizeof(histMvt);
     }
-    if (!veille && m - tDessin > (brancheUsb ? 33u : 50u)) { tDessin = m; dessinerPage(); afficherVolume(); }
-    if (sniffActif || detection || page == 11 || page == 13 || (page >= 21 && page <= 31) || lectureEnCours) activite();
+    if (!veille && m - tDessin > (page == 32 ? 28u : (brancheUsb ? 33u : 50u))) { tDessin = m; dessinerPage(); afficherVolume(); }
+    if (sniffActif || detection || page == 11 || page == 13 || (page >= 21 && page <= 32) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - derniereActivite) > 300000) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
   vieDuPerso();

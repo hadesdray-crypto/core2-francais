@@ -2,7 +2,7 @@ name: Compiler le programme du Core2
 on:
   workflow_dispatch:
   push:
-    branches: [perso]
+    branches: [perso, corbeau]
     paths: ['source/**', '.github/workflows/compiler.yml']
 permissions:
   contents: write
