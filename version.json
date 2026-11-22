@@ -1,6 +1,6 @@
 {
-    "version": "3.1.16",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=f0c76e5a004a",
+    "version": "3.1.17",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=8d97ace1a379",
     "changes": [
         "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -115,17 +115,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "f0c76e5a004aad591a33ad2cb5652b4eae274daf4bafd8f08ef566b67d49fb81",
-    "size": 5122800,
+    "sha256": "8d97ace1a379aa868f9d54e7f7432a2c252218933ab3dd737a995a36d625c452",
+    "size": 5129184,
     "canal": "test",
     "notes": [
-        "3.1.16 : Main ouverte, paume vers le haut (mode Main) : la main se tourne, une ondulation sombre-rouge et quelques braises s'offrent, et le corbeau le plus apprivoisé ralentit, bat des ailes et se pose dans la paume avant de repartir. Vue reculée à 3 niveaux (Normal, Reculé, Très reculé : pincer l'écran). Réglages des corbeaux > page Main et vue.",
+        "3.1.17 : fluidite des corbeaux : compteur d'images/s (reglage et /api/etat), 30 images/s tenues sans derive, allegement automatique des details, dessi",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.16",
-        "run": "45050722035",
-        "commit": "1cc6411e3890"
+        "version": "3.1.17",
+        "run": "45052248089",
+        "commit": "51009b026707"
     }
 }
