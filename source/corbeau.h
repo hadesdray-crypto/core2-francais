@@ -1480,12 +1480,14 @@ static void retourLibre(Corbeau& c) {      // le corbeau en vol cherche un perch
 }
 static void naissance(float x, float y, bool rare);
 static void minisEnvol(float x, float y, int n);
+static bool petitGrand();      // famille.h : le petit est grand (ou la famille coupée) : un nouvel œuf peut le remplacer
+static void designerParent(int k);      // famille.h : le corbeau k sera le parent attitré du prochain petit
 static void oeufAttrape(Corbeau& c) {      // l'œuf lancé est attrapé en vol : il ne casse pas, il éclot en nouveau corbeau (ou en petits corbeaux s'il n'y a plus de place)
   Proj& p = proj[c.pj]; ralenti(0.35f); p.actif = false; c.flash = 1.0f; c.bec = 1; c.surs = 0.3f;
   son(SN_CROC, 230); sonCri(); plumes(c.x, c.y, 10); eclat(c.x, c.y, 0.3f, 1.5f); vib(50);
   nbOeufs++; prefs.putUInt("cboeufs", nbOeufs); oeufsSale = true;
   int i = perchLibre();
-  if ((cr[PC].etat == E_OFF || fam::grand()) && i >= 0) { fam::pNext = (int8_t)(&c - cr); naissance(PERCH[i][0], perchY(i), rnd01() < 0.2f); }      // celui qui attrape l'œuf devient le parent attitré du petit
+  if ((cr[PC].etat == E_OFF || petitGrand()) && i >= 0) { designerParent((int)(&c - cr)); naissance(PERCH[i][0], perchY(i), rnd01() < 0.2f); }      // celui qui attrape l'œuf devient le parent attitré du petit
   else { minisEnvol(c.x, c.y - 4.0f, 7); son(SN_POP_DISP, 190); }
   c.pj = -1; retourLibre(c);
 }

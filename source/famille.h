@@ -895,4 +895,6 @@ static void maj(float dt) {
 }  // namespace fam
 
 static int perchPour(const Corbeau& c) { return fam::perchPour(c); }
+static bool petitGrand() { return fam::grand(); }
+static void designerParent(int k) { fam::pNext = (int8_t)k; }
 static float rangPoids(int k) { return (fam::pret && k >= 0 && k < NCB) ? 12.0f * fam::S.rang[k] - ((fam::soinOn() && k == fam::PE.par && fam::faimP > 0.3f) ? 90.0f : 0.0f) : 0.0f; }      // le parent attitré d'un petit qui a faim est servi le premier
