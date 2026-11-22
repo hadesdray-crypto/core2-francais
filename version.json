@@ -1,6 +1,6 @@
 {
     "version": "3.1.31",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=2dfbda4e30b1",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=8a7209dd9565",
     "changes": [
         "3.1.31 : fluidité de tous les écrans autres que le mode Corbeaux (accueil et pièce, jeux, exercices, Dex, réglages, Wi-Fi, mise à jour, menus, radar, horloge...). L'image n'est plus renvoyée en entier à chaque fois : seuls les morceaux d'écran qui changent sont envoyés (rien du tout quand rien ne bouge), ce qui libère le processeur et le bus de l'écran ; cadence régulière de 30 images par seconde sur pile comme en USB tant que tu regardes.",
         "3.1.31 : les sons ne figent plus l'image : les bips des touches, les petits sons du personnage (caresse, choc, nourriture), les notes des jeux et des exercices attendaient leur fin et bloquaient l'écran de 50 à 250 ms ; ils sont maintenant joués en arrière-plan. La recherche des réseaux Wi-Fi ne fait plus de pause bloquante, le clavier du mot de passe n'est plus reconstruit à chaque image, et plus aucune lecture de mémoire ou du circuit de charge n'a lieu pendant le dessin des pages Réglages, Matériel et Mise à jour.",
@@ -128,17 +128,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "2dfbda4e30b1b3f7127582f0f69cd55d2adebf6479e6c53fa326ff9437ffca7e",
-    "size": 5150784,
+    "sha256": "8a7209dd956595d1e3109cbb58a07193859fbec8a8e1b4642c818cd536608cd0",
+    "size": 5153664,
     "canal": "test",
     "notes": [
-        "3.1.30 : un objet brillant va toujours a la tour (plus de repartition tour/mare)",
+        "3.1.31 : fluidite hors corbeaux (envoi d'ecran par zones, sons non bloquants, scan Wi-Fi sans pause, mesure par ecran)",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.30",
-        "run": "45066155433",
-        "commit": "091040aa9288"
+        "version": "3.1.31",
+        "run": "45067604616",
+        "commit": "8341edc3cf8d"
     }
 }
