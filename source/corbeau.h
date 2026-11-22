@@ -160,37 +160,79 @@ static void dessinerObjet(M5Canvas& g, int type, float x, float y, float r, floa
 }
 
 // ---------- décor (dessiné une seule fois dans « fond ») ----------
-static void ciel(M5Canvas& g) {
-  struct S { float y; uint8_t r, gg, b; };
-  static const S st[5] = {{0, 10, 1, 5}, {72, 72, 6, 12}, {125, 140, 14, 20}, {192, 104, 11, 16}, {240, 30, 3, 8}};
-  for (int y = 0; y < 240; y++) {
-    int k = 0; while (k < 3 && y >= st[k + 1].y) k++;
-    float u = (y - st[k].y) / (st[k + 1].y - st[k].y);
-    g.drawFastHLine(0, y, 320, C((uint8_t)lerpf(st[k].r, st[k + 1].r, u), (uint8_t)lerpf(st[k].gg, st[k + 1].gg, u), (uint8_t)lerpf(st[k].b, st[k + 1].b, u)));
+// ---------- ciel, lune, etoiles, brume (dessines une seule fois dans « fond ») ----------
+static inline uint16_t CF(float r, float g, float b) { return C((uint8_t)lim(r, 0, 255), (uint8_t)lim(g, 0, 255), (uint8_t)lim(b, 0, 255)); }
+struct StopC { float y; float r, g, b; };
+static const StopC STC[5] = {{0, 10, 1, 5}, {72, 72, 6, 12}, {125, 140, 14, 20}, {192, 104, 11, 16}, {240, 30, 3, 8}};
+static void cielRGB(float y, float& r, float& g, float& b) {
+  int k = 0; while (k < 3 && y >= STC[k + 1].y) k++;
+  float u = (y - STC[k].y) / (STC[k + 1].y - STC[k].y);
+  r = lerpf(STC[k].r, STC[k + 1].r, u); g = lerpf(STC[k].g, STC[k + 1].g, u); b = lerpf(STC[k].b, STC[k + 1].b, u);
+}
+static const float MX = 274.0f, MY = 40.0f, MR = 20.0f;      // lune petite, dans le coin en haut a droite
+struct Crat { float ox, oy, r, dk; };
+static const Crat CRAT[6] = {{-6.5f, -4.5f, 4.2f, 0.20f}, {5.5f, 3.0f, 5.0f, 0.16f}, {-2.5f, 8.5f, 3.0f, 0.16f}, {8.0f, -8.0f, 2.6f, 0.14f}, {-10.5f, 4.0f, 2.4f, 0.12f}, {1.5f, -9.5f, 2.2f, 0.10f}};
+static void fondRGB(float x, float y, float& r, float& g, float& b) {      // couleur exacte du ciel (halo + lune) en un point
+  cielRGB(y, r, g, b);
+  float dx = x - MX, dy = y - MY, d = sqrtf(dx * dx + dy * dy);
+  float w = expf(-mxf(d - MR, 0.0f) / 17.0f) * 0.50f * lim(1.0f - (d - MR) / 58.0f, 0.0f, 1.0f);
+  r += 105 * w; g += 13 * w; b += 11 * w;
+  if (d < MR) {
+    float ed = d / MR, sh = 1.0f - 0.20f * lim((dx * 0.45f + dy * 0.75f) / MR, -1, 1);
+    float e3 = ed * ed * ed, f0 = lerpf(1.0f, 0.8f, e3);
+    float cr_ = 206 * sh * f0, cg_ = 38 * sh * f0, cb_ = 30 * sh * f0;
+    for (int i = 0; i < 6; i++) {
+      float ddx = x - (MX + CRAT[i].ox), ddy = y - (MY + CRAT[i].oy), dd = sqrtf(ddx * ddx + ddy * ddy);
+      if (dd < CRAT[i].r) { float f = 1.0f - CRAT[i].dk * (1.0f - 0.5f * dd / CRAT[i].r); cr_ *= f; cg_ *= f; cb_ *= f; }
+    }
+    float a = lim((MR - d) / 1.3f, 0, 1);
+    r = lerpf(r, cr_, a); g = lerpf(g, cg_, a); b = lerpf(b, cb_, a);
   }
-  // grande lune rouge, avec un halo par couronnes
-  const float mx = 225, my = 82, mr = 56;
-  for (int ring = 4; ring >= 1; ring--) {
-    float rr = mr + ring * 9.0f, w = 0.13f * (5 - ring);
-    for (int y = (int)(my - rr); y <= (int)(my + rr); y++) {
-      if (y < 0 || y >= H_SCENE) continue;
-      float dy = y - my, h = rr * rr - dy * dy; if (h <= 0) continue; float dx = sqrtf(h);
-      int x0 = (int)(mx - dx), x1 = (int)(mx + dx); if (x0 < 0) x0 = 0; if (x1 > 319) x1 = 319; if (x1 < x0) continue;
-      int k = 0; while (k < 3 && y >= st[k + 1].y) k++;
-      float u = (y - st[k].y) / (st[k + 1].y - st[k].y);
-      float r0 = lerpf(st[k].r, st[k + 1].r, u), g0 = lerpf(st[k].gg, st[k + 1].gg, u), b0 = lerpf(st[k].b, st[k + 1].b, u);
-      g.drawFastHLine(x0, y, x1 - x0 + 1, C((uint8_t)lim(r0 + 70 * w, 0, 255), (uint8_t)lim(g0 + 10 * w, 0, 255), (uint8_t)lim(b0 + 8 * w, 0, 255)));
+}
+static void brume(M5Canvas& g, float cx, float cy, float w, float h, float a) {
+  for (int dy = -(int)h; dy <= (int)h; dy++) {
+    float ay = 1.0f - (float)(dy * dy) / (h * h); int y = (int)cy + dy;
+    if (y < 0 || y >= H_SCENE) continue;
+    for (int x = (int)(cx - w); x < (int)(cx + w); x += 4) {
+      float ax = 1.0f - fabsf((x + 2 - cx) / w); ax = ax * ax; float al = a * ay * ax;
+      if (al < 0.03f || x < 0 || x > 316) continue;
+      float r, gg, b; fondRGB(x + 2.0f, (float)y, r, gg, b);
+      g.drawFastHLine(x, y, 4, CF(r * (1 - al) + 24 * al, gg * (1 - al) + 1 * al, b * (1 - al) + 9 * al));
     }
   }
-  g.fillCircle((int)mx, (int)my, (int)mr, C(214, 36, 28));
-  g.fillCircle((int)mx + 12, (int)my + 14, 22, C(204, 33, 26));
-  g.fillCircle((int)mx - 18, (int)my - 20, 15, C(207, 34, 27));
-  g.fillCircle((int)mx + 20, (int)my - 24, 11, C(221, 40, 31));
-  // collines lointaines puis sol noir
+}
+static float solHaut(float x) { return 202.0f + 1.2f * sinf(x / 37.0f) + 0.8f * sinf(x / 13.0f + 1.0f); }
+static void ciel(M5Canvas& g) {
+  for (int y = 0; y < 240; y++) { float r, gg, b; cielRGB((float)y, r, gg, b); g.drawFastHLine(0, y, 320, CF(r, gg, b)); }
+  const int R = (int)(MR + 58);
+  for (int y = (int)MY - R; y <= (int)MY + R; y++) {
+    if (y < 0 || y >= H_SCENE) continue;
+    for (int x = (int)MX - R; x <= (int)MX + R;) {
+      float dx = x - MX, dy = y - MY, dd = sqrtf(dx * dx + dy * dy);
+      int step = dd < MR + 3 ? 1 : 3;
+      if (x >= 0 && x < 320 - step && dd < R) {
+        float r, gg, b; fondRGB(x + (step - 1) * 0.5f, (float)y, r, gg, b);
+        if (step == 1) g.drawPixel(x, y, CF(r, gg, b)); else g.drawFastHLine(x, y, step, CF(r, gg, b));
+      }
+      x += step;
+    }
+  }
+  uint32_t seed = 12345;     // etoiles : toujours les memes
+  for (int i = 0; i < 34; i++) {
+    seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sx = 3 + (int)((seed >> 8) % 314);
+    seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sy = 3 + (int)((seed >> 8) % 100);
+    if (hypotf(sx - MX, sy - MY) < MR + 30) continue;
+    int v = (int)((seed >> 4) % 100);
+    if (v < 70) g.drawPixel(sx, sy, C(150, 62, 74));
+    else if (v < 93) g.drawPixel(sx, sy, C(205, 112, 120));
+    else { g.drawPixel(sx, sy, C(240, 170, 170)); g.drawPixel(sx - 1, sy, C(150, 50, 60)); g.drawPixel(sx + 1, sy, C(150, 50, 60)); g.drawPixel(sx, sy - 1, C(150, 50, 60)); g.drawPixel(sx, sy + 1, C(150, 50, 60)); }
+  }
+  brume(g, 230, 70, 100, 3, 0.40f); brume(g, 120, 34, 80, 2, 0.35f); brume(g, 236, 96, 120, 4, 0.40f);
+  brume(g, 90, 118, 110, 4, 0.40f); brume(g, 230, 160, 130, 5, 0.40f); brume(g, 60, 176, 110, 5, 0.40f);
   for (int x = 0; x < 320; x++) {
     float yl = 190.0f + 4.0f * sinf(x / 50.0f + 2.0f) + 3.0f * sinf(x / 21.0f);
     g.drawFastVLine(x, (int)yl, 240 - (int)yl, C(46, 6, 11));
-    float ys = 203.0f + 3.0f * sinf(x / 37.0f) + 2.0f * sinf(x / 13.0f + 1.0f);
+    float ys = solHaut((float)x);
     g.drawFastVLine(x, (int)ys, 240 - (int)ys, C(5, 2, 4));
   }
 }
@@ -291,15 +333,24 @@ static float coup(float p) {      // 0 = ailes en haut, 1 = en bas : anticipatio
   if (p < 0.40f) return lerpf(-0.24f, 1.0f, pas((p - 0.14f) / 0.26f));
   return 1.0f - pas((p - 0.40f) / 0.60f);
 }
+static inline void ressort(float& x, float& v, float cible, float w, float dt) {      // ressort amorti : démarre et s'arrête en douceur
+  v += ((cible - x) * w * w - 2.0f * w * v) * dt; x += v * dt;
+}
+enum { A_REPOS = 0, A_IMMO, A_REGARDE, A_LISSE_DOS, A_LISSE_POIT, A_GRATTE, A_SECOUE };
+static float gCalme = 0.0f;       // un seul corbeau à la fois fait sa toilette ou se gratte
 
 struct Corbeau {
-  float x, y, vx, vy, s; int8_t d; uint8_t etat, but; int8_t perch, item, sub; bool visible, rapporte;
-  float t, tfin, tx, ty, wx, wy; bool aWp;
-  float phase, hz, planeT, vitesse, surs; bool fuite; int8_t restBat;
-  float tx_, ty_, tCx, tCy, tTete, clin, tClin, bec, tCri, flash, pitch, pitchC, fan, wl, bob, hop, peck;
+  float x, y, vx, vy, s, dv;      // dv : direction visuelle (-1..1), se retourne en douceur
+  int8_t d; uint8_t etat, but, act; int8_t perch, item, sub; bool visible, rapporte, fuite, pied, aWp;
+  float t, tfin, tx, ty, wx, wy;
+  float phase, hz, planeT, vitesse, surs; int8_t restBat;
+  float ha, hav, haC, hb, hbv, hbC, look, tLook;      // tête : angle du cou, angle du bec (ressorts)
+  float pitch, pv, pitchC, pr;                        // inclinaison du corps (ressort) ; pr = posture perchée
+  float bec, clin, tClin, flash;
+  float fan, fanC, wl, wlC, bob, hop, peck, resp, ruf, grat, gratC, tAct, dAct;
+  float fx, fy, fp, ox, oy;                           // point d'appui des pattes (x, y, pente) ; décalage d'atterrissage
   uint8_t objet;
-  Aile pose;
-  Rect anc; bool ancOk;
+  Aile pose, poseC;
 };
 struct Obj { bool actif; uint8_t type; float x, y, vy, t; bool repos; int8_t reserve; };
 struct Plume { float x, y, vx, vy, rot, vr, vie, dur; bool actif; };
@@ -377,125 +428,151 @@ static void eclat(float x, float y, float dur, float taille) {
   for (int i = 0; i < NFX; i++) { if (!fx[i].actif) { idx = i; pire = -1; break; } if (fx[i].dur - fx[i].t < pire) { pire = fx[i].dur - fx[i].t; idx = i; } }
   fx[idx].x = x; fx[idx].y = y; fx[idx].t = 0; fx[idx].dur = dur; fx[idx].taille = taille; fx[idx].actif = true;
 }
+static const float JAMBE = 5.6f;     // longueur des pattes visibles (sous le ventre)
+static void hancheC(float s, float pitch, float dv, float& hx, float& hy) {      // position de la hanche par rapport au centre du corps
+  float ct = cosf(pitch), st = sinf(pitch);
+  hx = dv * s * (0.8f * ct + 4.7f * st); hy = s * (-0.8f * st + 4.7f * ct);
+}
+static void cible(const Corbeau& c, float sx, float sy, float dir, float& tx, float& ty) {      // centre du corps quand les pattes sont sur (sx, sy)
+  float hx, hy; hancheC(c.s, c.pr, dir, hx, hy); tx = sx - hx; ty = sy - JAMBE * c.s - hy;
+}
 static void posOeil(const Corbeau& c, float& X, float& Y) {
-  float ct = cosf(c.pitch), st = sinf(c.pitch), u = 13.6f + c.tx_, v = -4.4f + c.ty_;
-  X = c.x + c.d * c.s * (u * ct + v * st); Y = c.y + c.bob + c.s * (-u * st + v * ct);
+  float ct = cosf(c.pitch), st = sinf(c.pitch);
+  float hu = 8.2f + 4.8f * cosf(c.ha), hv = -2.0f + 4.8f * sinf(c.ha), cb = cosf(c.hb), sb = sinf(c.hb);
+  float u = hu + 1.6f * cb + 1.0f * sb, v = hv + 1.6f * sb - 1.0f * cb;
+  X = c.x + c.dv * c.s * (u * ct + v * st); Y = c.y + c.bob + c.s * (-u * st + v * ct);
 }
 
 // ---------- dessin d'un corbeau : silhouette noire, seuls les yeux brillent ----------
 struct Rep { float cx, cy, d, s, ct, st; void p(float u, float v, float& X, float& Y) const { X = cx + d * s * (u * ct + v * st); Y = cy + s * (-u * st + v * ct); } };
-
+static void polyS(M5Canvas& g, const float* p, int n, uint16_t c) {      // éventail depuis le premier point (pour les formes en étoile)
+  for (int i = 1; i < n - 1; i++) tri(g, p[0], p[1], p[i * 2], p[i * 2 + 1], p[i * 2 + 2], p[i * 2 + 3], c);
+}
 static void dirAile(float e, float sw, float& du, float& dv) {
   float er = e * 0.0174533f; float a = -sw * cosf(er), b = -sinf(er); float l = sqrtf(a * a + b * b); if (l < 0.001f) l = 1; du = a / l; dv = b / l;
 }
 static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, float wl, uint16_t col) {
-  if (wl < 0.12f) return;
+  // panneau de l'avant-bras + 6 grandes plumes qui s'écartent en éventail
+  if (wl < 0.04f) return;
   float dau, dav, dhu, dhv; dirAile(a.ea, a.sa, dau, dav); dirAile(a.eh, a.sh, dhu, dhv);
-  float la = 19.0f * wl, lh = 24.0f * wl;
+  float la = 17.0f * wl, lh = 23.0f * wl;
   float tau = -dav, tav = dau; if (tau > 0.05f || (fabsf(tau) <= 0.05f && tav < 0)) { tau = -tau; tav = -tav; }
   float thu = -dhv, thv = dhu; if (thu > 0.05f || (fabsf(thu) <= 0.05f && thv < 0)) { thu = -thu; thv = -thv; }
-  float Eu = su + dau * la, Ev = sv + dav * la, Tu = Eu + dhu * lh, Tv = Ev + dhv * lh;
-  float L[28];
-  int n = 0;
-  auto add = [&](float u, float v) { R_.p(u, v, L[n * 2], L[n * 2 + 1]); n++; };
-  add(su, sv);                                                    // épaule
-  add(Eu - tau * 1.6f, Ev - tav * 1.6f);                          // coude, bord d'attaque
-  add(Tu, Tv);                                                    // bout de l'aile
-  add(Tu - dhu * 4.0f + thu * 4.5f, Tv - dhv * 4.0f + thv * 4.5f);
-  add(Tu - dhu * 7.5f + thu * 2.6f, Tv - dhv * 7.5f + thv * 2.6f);     // creux entre deux plumes
-  add(Tu - dhu * 9.0f + thu * 8.5f, Tv - dhv * 9.0f + thv * 8.5f);
-  add(Tu - dhu * 12.5f + thu * 5.5f, Tv - dhv * 12.5f + thv * 5.5f);
-  add(Tu - dhu * 15.0f + thu * 11.0f, Tv - dhv * 15.0f + thv * 11.0f);
-  add(Eu + tau * 12.0f * wl, Ev + tav * 12.0f * wl);
-  add(su + dau * la * 0.5f + tau * 11.0f * wl, sv + dav * la * 0.5f + tav * 11.0f * wl);
-  add(su + tau * 6.5f * wl, sv + tav * 6.5f * wl);
-  poly(g, L, n, col);
+  float Wu = su + dau * la, Wv = sv + dav * la;
+  float q[10];
+  R_.p(su, sv, q[0], q[1]); R_.p(Wu - tau * 1.3f, Wv - tav * 1.3f, q[2], q[3]); R_.p(Wu + tau * 9.0f * wl, Wv + tav * 9.0f * wl, q[4], q[5]);
+  R_.p(su + dau * la * 0.45f + tau * 10.0f * wl, sv + dav * la * 0.45f + tav * 10.0f * wl, q[6], q[7]); R_.p(su + tau * 6.0f * wl, sv + tav * 6.0f * wl, q[8], q[9]);
+  polyS(g, q, 5, col);
+  for (int k = 0; k < 6; k++) {
+    float phi = k * 0.15f, cph = cosf(phi), sph = sinf(phi);
+    float du = dhu * cph + thu * sph, dv = dhv * cph + thv * sph, L = lh * (1.0f - 0.05f * k);
+    float ru = Wu + dhu * 0.75f * k + tau * 0.6f * k, rv = Wv + dhv * 0.75f * k + tav * 0.6f * k, w = 3.0f * wl + 0.8f;
+    float x1, y1, x2, y2, x3, y3;
+    R_.p(ru - thu * w, rv - thv * w, x1, y1); R_.p(ru + thu * w, rv + thv * w, x2, y2); R_.p(ru + du * L, rv + dv * L, x3, y3);
+    tri(g, x1, y1, x2, y2, x3, y3, col);
+  }
 }
 
 static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   const uint16_t NOIR = C(4, 3, 6);
-  Rep R_; R_.cx = c.x; R_.cy = c.y + c.bob; R_.d = (float)c.d; R_.s = c.s; R_.ct = cosf(c.pitch); R_.st = sinf(c.pitch);
-  float q[24];
+  Rep R_; R_.cx = c.x; R_.cy = c.y + c.bob; R_.d = c.dv; R_.s = c.s; R_.ct = cosf(c.pitch); R_.st = sinf(c.pitch);
+  const float s = c.s, dv = c.dv;
+  float q[32];
   auto P = [&](float u, float v, float& X, float& Y) { R_.p(u, v, X, Y); };
-  // pattes (en repère de l'écran : elles restent verticales)
-  bool poseSol = (c.etat == E_PERCHE || c.etat == E_SOL || (c.etat == E_ATTERRIT && c.t > 0.18f) || (c.etat == E_DECOLLE));
-  if (poseSol) {
-    float fy = c.y + 10.5f * c.s, hy0 = c.y + c.bob + 3.5f * c.s;       // les pieds restent posés, le corps monte et descend
-    float hx = c.x + c.d * c.s * 1.0f;
+  // pattes : le pied reste posé sur le support, la hanche suit le corps (les orteils agrippent la branche)
+  if (c.pied) {
+    float hx, hy; P(0.8f, 4.7f, hx, hy); float sg = dv >= 0 ? 1.0f : -1.0f;
     for (int k = 0; k < 2; k++) {
-      float lx = hx + (k ? 3.2f : -3.0f) * c.s * c.d;
-      tri(g, lx - 1.0f, hy0, lx + 1.0f, hy0, lx, fy, NOIR);
-      ligne(g, lx, fy, lx + c.d * 3.4f * c.s, fy + 0.4f, NOIR); ligne(g, lx, fy, lx - c.d * 1.8f * c.s, fy + 0.6f, NOIR);
+      float sk = k ? 1.0f : -1.0f;
+      float hipx = hx + sk * 1.3f * s * dv, hipy = hy - 0.4f;
+      float fxk = c.fx + sk * 2.0f * s * dv, fyk = c.fy + c.fp * (fxk - c.fx);
+      if (k == 1 && c.grat > 0.02f) {      // il se gratte : une patte monte vers la tête
+        float sx_, sy_; P(7.0f, -0.5f, sx_, sy_); float a = pas(c.grat), wob = sinf(c.tAct * 26.0f) * 0.8f * a;
+        fxk = lerpf(fxk, sx_ + wob, a); fyk = lerpf(fyk, sy_ + wob * 0.6f, a);
+      }
+      tri(g, hipx - 1.1f, hipy, hipx + 1.1f, hipy, fxk, fyk, NOIR);
+      ligne(g, hipx, hipy, fxk, fyk, NOIR);
+      ligne(g, fxk, fyk, fxk + sg * 3.4f * s, fyk + 0.3f, NOIR); ligne(g, fxk, fyk, fxk + sg * 2.4f * s, fyk - 0.7f, NOIR); ligne(g, fxk, fyk, fxk - sg * 1.8f * s, fyk + 0.3f, NOIR);
     }
-  } else if (c.etat == E_ATTERRIT) {
-    float hx = c.x + c.d * c.s * 3.0f; float fy = c.y + 9.0f * c.s + c.bob;       // pattes en avant à l'atterrissage
-    ligne(g, hx, c.y + c.bob + 3.5f * c.s, hx + c.d * 4.0f * c.s, fy, NOIR); ligne(g, hx - 3.0f * c.d, c.y + c.bob + 3.5f * c.s, hx + c.d * 1.0f * c.s, fy, NOIR);
+  } else if (c.fan > 0.3f) {      // approche d'un atterrissage : les pattes pendent vers l'avant
+    float hx, hy; P(0.8f, 4.7f, hx, hy); float e = c.fan;
+    for (int k = 0; k < 2; k++) { float sk = k ? 1.0f : -1.0f; ligne(g, hx + sk * 1.3f * s * dv, hy, hx + dv * (3.0f + sk * 1.5f) * s, hy + 6.0f * s * e, NOIR); }
   }
-  // aile lointaine puis aile proche
-  if (c.wl > 0.12f) {
+  // ailes ouvertes (vol)
+  if (c.wl > 0.04f) {
     Aile a2 = c.pose; a2.ea += 14; a2.eh += 10;
     aile(g, R_, 3.2f, -3.8f, a2, c.wl * 0.92f, NOIR);
     aile(g, R_, 1.6f, -3.2f, c.pose, c.wl, NOIR);
   }
-  // queue en coin (s'ouvre en éventail à l'atterrissage)
-  { float f = c.fan; float t[10] = {-9, -2.2f, -24.5f, 1.4f - 6.0f * f, -26.0f, 1.6f, -24.5f, 1.8f + 6.0f * f, -9, 3.6f};
-    for (int i = 0; i < 5; i++) P(t[i * 2], t[i * 2 + 1], q[i * 2], q[i * 2 + 1]); poly(g, q, 5, NOIR); }
-  // corps
-  for (int i = 0; i < 12; i++) { float a = i * 0.5236f; P(cosf(a) * 11.8f, sinf(a) * 5.9f, q[i * 2], q[i * 2 + 1]); }
-  poly(g, q, 12, NOIR);
-  // poitrine et dos, pour une silhouette plus de corbeau que d'œuf
-  { float x1, y1, x2, y2, x3, y3; P(8, -5.5f, x1, y1); P(13, -0.5f, x2, y2); P(2, 5.6f, x3, y3); tri(g, x1, y1, x2, y2, x3, y3, NOIR); }
-  // tête
-  float hu = 12.2f + c.tx_, hv = -3.9f + c.ty_;
-  { float X, Y; P(hu, hv, X, Y); disque(g, X, Y, 4.5f * c.s, NOIR); }
-  { float x1, y1, x2, y2, x3, y3; P(hu - 4.5f, hv + 1.0f, x1, y1); P(hu + 0.5f, hv + 4.2f, x2, y2); P(hu - 5.5f, hv + 6.4f, x3, y3); tri(g, x1, y1, x2, y2, x3, y3, NOIR); }   // gorge hirsute
-  { float x1, y1, x2, y2, x3, y3; P(hu - 3.0f, hv - 2.0f, x1, y1); P(hu - 3.0f, hv + 3.0f, x2, y2); P(2.0f, -1.0f, x3, y3); tri(g, x1, y1, x2, y2, x3, y3, NOIR); }       // cou
-  // bec lourd, qui s'ouvre quand il croasse
-  { float o = c.bec; float ax, ay, mx, my, tx, ty, bx_, by_, lx, ly;
-    P(hu + 2.0f, hv - 1.9f, ax, ay); P(hu + 2.2f, hv + 2.9f, bx_, by_); P(hu + 2.4f, hv + 0.2f, mx, my);
-    P(hu + 12.0f, hv + 0.9f - 3.2f * o, tx, ty); P(hu + 11.0f, hv + 1.6f + 3.4f * o, lx, ly);
-    tri(g, ax, ay, mx, my, tx, ty, NOIR); tri(g, mx, my, bx_, by_, lx, ly, NOIR); }
+  // queue en coin (s'ouvre en éventail ; elle bat quand il se secoue)
+  { float wag = (c.ruf <= 0.01f) ? 0.0f : 1.2f * c.ruf * sinf(c.tAct * 38.0f), f = c.fan;
+    const float t[10] = {-8.0f, -2.6f, -24.5f, 2.0f - 6.0f * f + wag, -26.8f, 3.8f + wag, -24.5f, 5.4f + 6.0f * f + wag, -8.0f, 3.8f};
+    for (int i = 0; i < 5; i++) P(t[i * 2], t[i * 2 + 1], q[i * 2], q[i * 2 + 1]);
+    poly(g, q, 5, NOIR); }
+  // corps : la respiration gonfle la poitrine, le secouement hérisse les plumes
+  float br = 1.0f + 0.05f * sinf(c.resp * 2.7f) + 0.09f * c.ruf * sinf(c.tAct * 46.0f);
+  for (int i = 0; i < 14; i++) { float a = i * (6.2832f / 14.0f); P(cosf(a) * 11.8f * (1.0f + 0.02f * (br - 1.0f) * 5.0f), sinf(a) * 5.9f * br, q[i * 2], q[i * 2 + 1]); }
+  poly(g, q, 14, NOIR);
+  for (int i = 0; i < 10; i++) { float a = i * 0.6283f; P(6.6f + cosf(a) * 5.4f * (0.5f + 0.5f * br), 1.4f + sinf(a) * 5.2f * br, q[i * 2], q[i * 2 + 1]); }      // poitrine bombée
+  poly(g, q, 10, NOIR);
+  if (c.wl < 0.6f) {      // aile repliée sur le flanc, par-dessus la queue
+    const float wp[12] = {5.5f, -5.6f, -5.0f, -6.6f, -17.0f, -2.0f, -23.0f, 3.6f, -13.0f, 3.4f, -2.0f, 3.6f};
+    for (int i = 0; i < 6; i++) P(wp[i * 2], wp[i * 2 + 1], q[i * 2], q[i * 2 + 1]);
+    poly(g, q, 6, NOIR);
+  }
+  // cou et tête : la tête tourne (angle du cou ha, angle du bec hb)
+  float hu = 8.2f + 4.8f * cosf(c.ha), hv = -2.0f + 4.8f * sinf(c.ha), cb = cosf(c.hb), sb = sinf(c.hb);
+  auto PH = [&](float p, float qq, float& X, float& Y) { P(hu + p * cb - qq * sb, hv + p * sb + qq * cb, X, Y); };
+  float n1x, n1y, n2x, n2y, hhx, hhy; P(3.5f, -5.2f, n1x, n1y); P(7.5f, 3.8f, n2x, n2y); P(hu, hv, hhx, hhy);
+  tri(g, n1x, n1y, n2x, n2y, hhx, hhy, NOIR);
+  disque(g, hhx, hhy, 5.0f * s, NOIR);
+  { float a1x, a1y, a2x, a2y, a3x, a3y; PH(-3.8f, 1.5f, a1x, a1y); PH(0.8f, 4.0f, a2x, a2y); PH(-4.6f, 6.0f, a3x, a3y); tri(g, a1x, a1y, a2x, a2y, a3x, a3y, NOIR); }      // gorge hirsute
+  { float o = c.bec, Ax, Ay, Bx, By, Mx, My, Tx, Ty, Lx, Ly, Ux, Uy;      // bec lourd, qui s'ouvre quand il croasse
+    PH(2.4f, -2.8f, Ax, Ay); PH(2.6f, 3.3f, Bx, By); PH(2.8f, 0.2f, Mx, My); PH(13.5f, 1.0f - 3.4f * o, Tx, Ty); PH(11.8f, 2.2f + 3.6f * o, Lx, Ly); PH(7.6f, -3.0f, Ux, Uy);
+    tri(g, Ax, Ay, Mx, My, Tx, Ty, NOIR); tri(g, Mx, My, Bx, By, Lx, Ly, NOIR); tri(g, Ax, Ay, Ux, Uy, Tx, Ty, NOIR); }
   // objet porté dans le bec
   if (c.objet) {
-    float X, Y; P(hu + 11.0f, hv + 2.0f, X, Y);
+    float X, Y; PH(11.0f, 2.6f, X, Y);
     float tw = (sinf(millis() * 0.0081f) > 0.6f) ? 1.0f : 0.0f;
-    dessinerObjet(g, c.objet - 1, X + c.d * 2.0f, Y + 2.0f, 3.6f * c.s + 0.8f, c.d > 0 ? 0.4f : 2.7f, tw);
+    dessinerObjet(g, c.objet - 1, X + dv * 1.5f, Y + 2.0f, 3.6f * s + 0.8f, dv > 0 ? 0.4f : 2.7f, tw);
   }
   // œil rouge qui brille
-  if (c.clin < 0.5f) {
-    float X, Y; P(hu + 1.6f, hv - 0.7f, X, Y);
-    disque(g, X, Y, 2.5f * c.s + 0.6f, C(120, 8, 12)); disque(g, X, Y, 1.5f * c.s + 0.3f, C(255, 58, 40)); disque(g, X, Y, 0.7f, C(255, 215, 190));
-  } else { float X, Y; P(hu + 1.6f, hv - 0.7f, X, Y); ligne(g, X - 1.5f, Y, X + 1.5f, Y, C(70, 8, 12)); }
-  if (c.flash > 0.01f) { float X, Y; posOeil(c, X, Y); disque(g, X, Y, 3.0f + 7.0f * c.flash, C(255, (uint8_t)(60 + 120 * c.flash), (uint8_t)(40 + 90 * c.flash))); disque(g, X, Y, 1.8f, C(255, 240, 225)); }
+  { float ex, ey; PH(1.6f, -1.0f, ex, ey);
+    if (c.clin < 0.5f) { disque(g, ex, ey, 1.7f * s + 0.6f, C(130, 8, 12)); disque(g, ex, ey, 1.1f * s + 0.2f, C(255, 58, 40)); }
+    else ligne(g, ex - 1.5f, ey, ex + 1.5f, ey, C(70, 8, 12));
+    if (c.flash > 0.01f) { disque(g, ex, ey, 3.0f + 7.0f * c.flash, CF(255, 60 + 120 * c.flash, 40 + 90 * c.flash)); disque(g, ex, ey, 1.8f, C(255, 240, 225)); } }
 }
 
 // ---------- logique ----------
+static float perchY(int i) { return i < 4 ? ytop(PERCH[i][0]) + 0.4f : PERCH[i][1]; }
+static float perchP(int i) { static const float PT_[2] = {-0.33f, 0.43f}; return i < 4 ? (ytop(PERCH[i][0] + 4) - ytop(PERCH[i][0] - 4)) / 8.0f : PT_[i - 4]; }
 static bool perchOccupe(int i) { for (int k = 0; k < NCB; k++) if (cr[k].perch == i) return true; return false; }
 static int perchLibre() {
   int n = 0, l[NPE]; for (int i = 0; i < NPE; i++) if (!perchOccupe(i)) l[n++] = i;
   return n ? l[random(n)] : -1;
 }
 static int nbDehors() { int n = 0; for (int k = 0; k < NCB; k++) if (cr[k].etat == E_DEHORS || (cr[k].etat == E_VOL && cr[k].but == B_SORTIR)) n++; return n; }
-static float pieds(const Corbeau& c) { return c.s * 10.5f; }
 
-static void nouvTete(Corbeau& c) { c.tCx = rnd(-1.6f, 1.6f); c.tCy = rnd(-1.2f, 1.2f); c.tTete = rnd(0.6f, 2.8f); }
 static void initCorbeau(Corbeau& c, float s) {
-  memset(&c, 0, sizeof(c)); c.s = s; c.d = 1; c.visible = true; c.perch = -1; c.item = -1; c.wl = 0; c.pose = A_PLANE; c.pitch = 0.2f; c.pitchC = 0.2f;
-  c.tClin = rnd(1.0f, 4.0f); c.tTete = rnd(0.5f, 2.0f);
+  memset(&c, 0, sizeof(c)); c.s = s; c.d = 1; c.dv = 1; c.visible = true; c.perch = -1; c.item = -1;
+  c.pr = 0.34f + rnd(-0.04f, 0.06f); c.pitch = c.pitchC = c.pr; c.ha = c.haC = -0.42f; c.hb = c.hbC = 0.07f;
+  c.pose = c.poseC = A_PLANE; c.tClin = rnd(1.0f, 4.0f); c.resp = rnd(0, 6.28f); c.act = A_IMMO; c.dAct = rnd(1.0f, 5.0f);
 }
-static void placer(Corbeau& c, int i) {
-  c.perch = i; c.x = PERCH[i][0]; c.y = PERCH[i][1] - pieds(c); c.vx = c.vy = 0; c.etat = E_PERCHE; c.but = B_RIEN; c.t = 0; c.tfin = rnd(4, 11);
-  c.visible = true; c.wl = 0; c.fan = 0; c.hop = 0; c.bob = 0; c.sub = 0;
+static void placer(Corbeau& c, int i) {      // posé sur la branche : les pattes sur le dessus, le corps déduit
+  c.perch = i; c.fx = PERCH[i][0]; c.fy = perchY(i); c.fp = perchP(i); c.pied = true; c.vx = c.vy = 0; c.etat = E_PERCHE; c.but = B_RIEN; c.t = 0; c.tfin = rnd(4, 11);
+  c.visible = true; c.wl = c.wlC = 0; c.fan = c.fanC = 0; c.hop = 0; c.bob = 0; c.sub = 0; c.dv = (float)c.d; c.pitch = c.pitchC = c.pr; c.pv = 0; c.ox = c.oy = 0;
+  c.act = A_IMMO; c.tAct = 0; c.dAct = rnd(1.0f, 5.0f); c.grat = c.gratC = 0; c.ha = c.haC = -0.42f; c.hb = c.hbC = 0.07f; c.hav = c.hbv = 0;
+  float hx, hy; hancheC(c.s, c.pitch, c.dv, hx, hy); c.x = c.fx - hx; c.y = c.fy - JAMBE * c.s - hy;
 }
-static void decoller(Corbeau& c, float tx, float ty, uint8_t but) {
-  c.etat = E_DECOLLE; c.t = 0; c.tx = tx; c.ty = ty; c.but = but; c.aWp = false; c.sub = 0;
+static void decoller(Corbeau& c, float tx, float ty, uint8_t but) {      // pour B_SORTIR tx,ty = point à atteindre ; sinon = appui des pattes visé
+  c.etat = E_DECOLLE; c.t = 0; c.tx = tx; c.ty = ty; c.but = but; c.aWp = false; c.sub = 0; c.act = A_REPOS; c.tAct = 0;
   c.d = (tx >= c.x) ? 1 : -1; c.vitesse = rnd(82, 108); c.hz = rnd(2.7f, 3.0f); c.restBat = 4 + random(3); c.planeT = 0; c.phase = 0.9f;
 }
 static void entrer(Corbeau& c, float tx, float ty, uint8_t but) {      // arrive par un bord de l'écran
   bool gauche = (tx < 160) ? (rnd01() < 0.7f) : (rnd01() < 0.3f);
-  c.x = gauche ? -34.0f : 354.0f; c.y = rnd(18, 110); c.d = gauche ? 1 : -1; c.vx = c.d * 90.0f; c.vy = 0;
-  c.etat = E_VOL; c.t = 1.5f; c.tx = tx; c.ty = ty; c.but = but; c.aWp = false; c.visible = true; c.sub = 0;
-  c.vitesse = rnd(82, 108); c.hz = rnd(2.7f, 3.0f); c.restBat = 4 + random(3); c.planeT = 0; c.phase = rnd01(); c.wl = 1; c.fan = 0; c.pitchC = 0.1f;
+  c.x = gauche ? -34.0f : 354.0f; c.y = rnd(18, 110); c.d = gauche ? 1 : -1; c.dv = (float)c.d; c.vx = c.d * 90.0f; c.vy = 0; c.pied = false;
+  c.etat = E_VOL; c.t = 1.5f; c.tx = tx; c.ty = ty; c.but = but; c.aWp = false; c.visible = true; c.sub = 0; c.act = A_REPOS;
+  c.vitesse = rnd(82, 108); c.hz = rnd(2.7f, 3.0f); c.restBat = 4 + random(3); c.planeT = 0; c.phase = rnd01(); c.wl = c.wlC = 1; c.fan = c.fanC = 0; c.pitch = c.pitchC = 0.1f; c.pose = c.poseC = A_BAS;
 }
 static void sortir(Corbeau& c) {
   c.perch = -1; c.item = -1;
@@ -505,8 +582,8 @@ static void sortir(Corbeau& c) {
 }
 static void versPerchoir(Corbeau& c) {
   int i = perchLibre();
-  if (i < 0) { if (nbDehors() < 3) sortir(c); else { c.etat = E_SOL; c.but = B_RIEN; c.sub = 2; c.t = 0; } return; }
-  c.perch = i; c.item = -1; decoller(c, PERCH[i][0], PERCH[i][1] - pieds(c), B_PERCHOIR);
+  if (i < 0) { if (nbDehors() < 3) sortir(c); else { c.t = 0; if (c.etat == E_SOL) { c.but = B_RIEN; c.sub = 2; } } return; }
+  c.perch = i; c.item = -1; decoller(c, PERCH[i][0], perchY(i), B_PERCHOIR);
 }
 static void apresSol(Corbeau& c) {
   if (rnd01() < 0.3f && nbDehors() < 2) sortir(c); else versPerchoir(c);
@@ -519,9 +596,9 @@ static void lacher(int type, float x) {       // une nourriture tombe du ciel
   Obj& o = ob[idx]; o.actif = true; o.type = (uint8_t)type; o.x = lim(x, 12, 308); o.y = -6; o.vy = 20; o.t = 0; o.repos = false; o.reserve = -1;
   for (int k = 0; k < NCB; k++) if (cr[k].item == idx) { cr[k].item = -1; if (cr[k].but == B_NOUR) cr[k].but = B_RIEN; }
   son(SN_CROC, 110);
-  for (int k = 0; k < NCB; k++) {      // les corbeaux perches tournent la tete vers la nourriture tout de suite
+  for (int k = 0; k < NCB; k++) {      // les corbeaux perchés tournent la tête vers la nourriture tout de suite
     Corbeau& c = cr[k]; if (c.etat != E_PERCHE || !c.visible) continue;
-    c.d = (o.x >= c.x) ? 1 : -1; c.tCx = 1.5f; c.tCy = 0.6f; c.tTete = 1.4f; c.clin = 0; c.tClin = rnd(1.5f, 3.0f);
+    c.d = (o.x >= c.x) ? 1 : -1; c.look = lim(atan2f(solHaut(o.x) - c.y, fabsf(o.x - c.x) + 8.0f) * 0.7f, -0.3f, 0.8f); c.tLook = 1.6f; c.clin = 0; c.tClin = rnd(1.5f, 3.0f);
   }
   attribuer(idx);                      // et l'un d'eux part sans attendre
 }
@@ -538,7 +615,7 @@ static void attribuer(int iO) {       // un corbeau libre vient chercher la nour
   if (best < 0) return;
   Corbeau& c = cr[best]; float x0 = (c.etat == E_DEHORS) ? ((best % 2) ? 354.0f : -34.0f) : c.x;
   int dsg = (o.x >= x0) ? 1 : -1;
-  float gx = lim(o.x - dsg * 19.0f * c.s, 10, 310), gy = SOL_Y - pieds(c);
+  float gx = lim(o.x - dsg * 19.0f * c.s, 10, 310), gy = solHaut(gx);
   c.perch = -1; c.item = iO; o.reserve = best; c.objet = 0;
   if (c.etat == E_PERCHE || c.etat == E_SOL) { c.sub = 0; decoller(c, gx, gy, B_NOUR); }
   else { entrer(c, gx, gy, B_NOUR); }
@@ -546,50 +623,85 @@ static void attribuer(int iO) {       // un corbeau libre vient chercher la nour
 }
 
 static void atterrir(Corbeau& c) {
-  c.x = c.tx; c.y = c.ty; c.vx = c.vy = 0; c.etat = E_ATTERRIT; c.t = 0; c.bob = 0; c.pitchC = 0.2f; son(SN_ATTERRIT, 170);
-  if (c.but == B_PERCHOIR || c.but == B_NOUR || c.but == B_OBJET) c.pose = A_FLARE;
+  if (c.but == B_PERCHOIR && c.perch >= 0) { c.fx = PERCH[c.perch][0]; c.fy = perchY(c.perch); c.fp = perchP(c.perch); }
+  else { c.fx = c.tx; c.fy = c.ty; c.fp = 0; }
+  float hx, hy; hancheC(c.s, c.pitch, c.dv, hx, hy);
+  c.ox = c.x - (c.fx - hx); c.oy = c.y - (c.fy - JAMBE * c.s - hy);      // l'écart restant se résorbe en douceur
+  c.pied = true; c.etat = E_ATTERRIT; c.t = 0; c.vx = c.vy = 0; son(SN_ATTERRIT, 170);
+}
+
+// ----- moments de calme d'un corbeau perché : immobile, regarde autour, lisse ses plumes, se gratte, se secoue -----
+static void prochainActe(Corbeau& c) {
+  uint8_t prec = c.act; c.tAct = 0; int r = random(100); bool lib = gCalme <= 0;
+  if ((prec == A_LISSE_DOS || prec == A_LISSE_POIT) && random(100) < 45) { c.act = A_SECOUE; c.dAct = 0.9f; return; }
+  if (r < 30) { c.act = A_IMMO; c.dAct = rnd(3, 8); }
+  else if (r < 55) { c.act = A_REGARDE; c.dAct = rnd(3, 6); c.sub = -1; }
+  else if (r < 73 && lib) { c.act = random(2) ? A_LISSE_DOS : A_LISSE_POIT; c.dAct = rnd(3.0f, 4.5f); gCalme = c.dAct + rnd(2, 5); }
+  else if (r < 84 && lib) { c.act = A_GRATTE; c.dAct = rnd(1.9f, 2.6f); gCalme = c.dAct + rnd(2, 5); }
+  else if (r < 90 && lib) { c.act = A_SECOUE; c.dAct = 0.9f; gCalme = c.dAct + rnd(1, 3); }
+  else { c.act = A_IMMO; c.dAct = rnd(2, 5); }
+}
+static void acteur(Corbeau& c, float dt) {
+  c.tAct += dt; if (c.tAct >= c.dAct) prochainActe(c);
+  float a = c.tAct, dA = c.dAct;
+  float e = pas(a / 0.6f) * (1.0f - pas((a - (dA - 0.6f)) / 0.6f));
+  switch (c.act) {
+    case A_IMMO: c.haC = -0.42f + 0.015f * sinf(c.resp * 0.5f); c.hbC = c.haC + 0.49f; break;
+    case A_REGARDE: {
+      static const float AN[4] = {-0.9f, -0.1f, -0.62f, 0.12f};
+      int k = ((int)(a / 1.3f) + (int)(c.s * 10)) & 3;
+      if (k != c.sub) { c.sub = k; if (k == 2 && random(100) < 45) { c.d = -c.d; c.surs = 0.22f; } }      // il se retourne d'un petit saut
+      c.haC = AN[k]; c.hbC = c.haC + 0.49f; c.pitchC = c.pr + 0.05f * sinf(a * 3.0f);
+    } break;
+    case A_LISSE_DOS: c.haC = lerpf(-0.42f, -2.55f, e); c.hbC = lerpf(0.07f, 3.15f, e) + 0.28f * e * sinf(a * 17.0f); c.pitchC = c.pr + 0.05f * e * sinf(a * 8.5f); c.bob += 0.4f * c.s * e * sinf(a * 17.0f); break;
+    case A_LISSE_POIT: c.haC = lerpf(-0.42f, 1.95f, e); c.hbC = lerpf(0.07f, 2.2f, e) + 0.25f * e * sinf(a * 15.0f); c.pitchC = c.pr - 0.10f * e; break;
+    case A_GRATTE: { float g = pas(a / 0.35f) * (1.0f - pas((a - (dA - 0.35f)) / 0.35f)); c.gratC = g; c.haC = lerpf(-0.42f, -0.15f, g); c.hbC = lerpf(0.07f, 0.4f, g); c.pitchC = c.pr - 0.07f * g; } break;
+    case A_SECOUE: c.ruf = sinf(3.1416f * a / dA); c.pitchC = c.pr + 0.06f * c.ruf * sinf(a * 38.0f); c.haC = -0.42f; c.hbC = 0.07f; break;
+    default: c.haC = -0.42f + 0.07f * sinf(c.resp * 0.8f + c.s * 7.0f); c.hbC = c.haC + 0.49f; break;
+  }
 }
 
 static void majCorbeau(Corbeau& c, int idx, float dt) {
-  c.t += dt;
-  // clignement et tête
-  c.tClin -= dt; if (c.tClin <= 0) { c.clin = 1; c.tClin = rnd(1.8f, 5.0f); }
+  c.t += dt; c.resp += dt;
+  c.tClin -= dt; if (c.tClin <= 0) { c.clin = 1; c.tClin = rnd(2.2f, 5.5f); }
   if (c.clin > 0) { c.clin -= dt * 4.5f; if (c.clin < 0) c.clin = 0; }
-  c.tTete -= dt; if (c.tTete <= 0) nouvTete(c);
-  c.tx_ += (c.tCx - c.tx_) * mnf(1.0f, dt * 9.0f); c.ty_ += (c.tCy - c.ty_) * mnf(1.0f, dt * 9.0f);
   if (c.bec > 0) { c.bec -= dt * 3.0f; if (c.bec < 0) c.bec = 0; }
   if (c.flash > 0) { c.flash -= dt * 4.0f; if (c.flash < 0) c.flash = 0; }
-  c.pitch += (c.pitchC - c.pitch) * mnf(1.0f, dt * 8.0f);
-  c.bob = 0; c.hop = 0;
+  if (c.tLook > 0) c.tLook -= dt;
+  c.bob = 0; c.hop = 0; c.ruf = 0;
+  c.haC = -0.42f; c.hbC = 0.07f; c.gratC = 0; c.wlC = 0; c.fanC = 0; c.poseC = A_PLANE; c.pitchC = c.pr;
   if (c.surs > 0) { c.surs -= dt; if (c.surs < 0) c.surs = 0; if (c.etat == E_PERCHE || c.etat == E_SOL) c.bob = -3.2f * c.s * sinf(c.surs / 0.30f * 3.1416f); }
 
   switch (c.etat) {
     case E_PERCHE: {
-      c.wl = 0; c.fan = 0; c.pitchC = 0.22f; c.vx = c.vy = 0;
-      if (c.perch >= 0) { c.x = PERCH[c.perch][0]; c.y = PERCH[c.perch][1] - pieds(c); }
-      if (c.objet && c.t > 9.0f) { c.objet = 0; eclat(c.x + c.d * 18 * c.s, c.y - 2, 0.3f, 0.7f); }
-      if (c.t >= c.tfin && gAction <= 0) {
+      c.pied = true; c.vx = c.vy = 0;
+      c.bob += 0.30f * c.s * sinf(c.resp * 2.7f);                   // respiration
+      c.pitchC = c.pr + 0.015f * sinf(c.resp * 0.9f);               // léger balancement
+      acteur(c, dt);
+      if (c.objet && c.t > 9.0f) { c.objet = 0; eclat(c.x + c.dv * 18 * c.s, c.y - 2, 0.3f, 0.7f); }
+      if (c.t >= c.tfin && gAction <= 0 && c.act <= A_REGARDE) {
         int r = random(100);
         if (r < 40) { versPerchoir(c); gAction = rnd(1.5f, 3.0f); }
         else if (r < 62 && nbDehors() < 2) { sortir(c); gAction = rnd(1.5f, 3.0f); }
-        else if (r < 80) { c.d = -c.d; c.t = 0; c.tfin = rnd(3, 9); }
+        else if (r < 80) { c.d = -c.d; c.surs = 0.22f; c.t = 0; c.tfin = rnd(3, 9); }
         else { c.bec = 1; sonCri(); c.t = 0; c.tfin = rnd(4, 11); }
       }
     } break;
     case E_DECOLLE: {
-      float u = c.t / 0.11f; c.pose = A_HAUT; c.wl = pas(c.t / 0.05f); c.pitchC = 0.5f; c.fan = 0;
+      float u = c.t / 0.11f; c.poseC = A_HAUT; c.wlC = 1; c.pitchC = 0.55f; c.haC = -0.55f; c.hbC = -0.06f;
       c.bob = 2.6f * c.s * pas(u > 1 ? 1 : u);                // il s'accroupit avant de sauter
       if (c.t < 0.02f) son(SN_AILES, 200);
       if (c.t >= 0.11f) {
-        c.etat = E_VOL; c.t = 0; c.vx = c.d * 46.0f; c.vy = -105.0f; c.bob = 0; c.perch = (c.but == B_PERCHOIR) ? c.perch : -1;
+        c.etat = E_VOL; c.t = 0; c.vx = c.d * 46.0f; c.vy = -105.0f; c.bob = 0; c.pied = false; c.perch = (c.but == B_PERCHOIR) ? c.perch : -1;
         float dist = hypotf(c.tx - c.x, c.ty - c.y);
         if (c.but == B_SORTIR) { c.wx = c.x + c.d * 70.0f; c.wy = mnf(c.y - 50.0f, 60.0f) - rnd(0, 20); c.aWp = true; }
         else if (dist > 110) { c.wx = (c.x + c.tx) * 0.5f + rnd(-20, 20); c.wy = mnf(c.y, c.ty) - rnd(14, 50); c.aWp = true; }
       }
     } break;
     case E_VOL: {
-      c.wl = 1; c.fan = lerpf(c.fan, 0.0f, mnf(1.0f, dt * 5.0f));
-      float gx = c.aWp ? c.wx : c.tx, gy = c.aWp ? c.wy : c.ty;
+      c.wlC = 1; c.pied = false;
+      float gx, gy;
+      if (c.aWp) { gx = c.wx; gy = c.wy; } else if (c.but == B_SORTIR) { gx = c.tx; gy = c.ty; } else cible(c, c.tx, c.ty, (float)c.d, gx, gy);
       float dx = gx - c.x, dy = gy - c.y, dist = sqrtf(dx * dx + dy * dy); if (dist < 0.001f) dist = 0.001f;
       if (c.aWp && dist < 18) { c.aWp = false; break; }
       bool fin = !c.aWp, proche = fin && dist < 38.0f && c.but != B_SORTIR;
@@ -599,14 +711,14 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       c.vx += (dx / dist * sp - c.vx) * k; c.vy += (dy / dist * sp - c.vy) * k;
       c.x += c.vx * dt; c.y += c.vy * dt;
       if (fabsf(c.vx) > 12 && !proche) c.d = (c.vx > 0) ? 1 : -1; else if (proche) c.d = (dx >= 0) ? 1 : -1;
-      c.pitchC = proche ? 0.62f : lim(-c.vy * 0.006f + 0.1f, -0.4f, 0.5f);
+      c.pitchC = proche ? 0.62f : lim(-c.vy * 0.006f + 0.1f, -0.4f, 0.5f); c.haC = -0.30f; c.hbC = 0.19f;
       // battements ou plané
       if (proche) {
         c.phase += 3.5f * dt; if (c.phase >= 1) c.phase -= 1;
-        c.pose = mixA(A_FLARE, A_BAS, 0.30f * lim(coup(c.phase), 0, 1)); c.fan = lerpf(c.fan, 1.0f, mnf(1.0f, dt * 6.0f));
+        c.poseC = mixA(A_FLARE, A_BAS, 0.30f * lim(coup(c.phase), 0, 1)); c.fanC = 1;
         c.bob = -1.0f * c.s * coup(c.phase);
       } else if (c.planeT > 0) {
-        c.planeT -= dt; c.pose = A_PLANE; c.pose.ea += 2.0f * sinf(c.t * 9.0f); c.vy += 6.0f * dt;
+        c.planeT -= dt; c.poseC = A_PLANE; c.poseC.ea += 2.0f * sinf(c.t * 9.0f); c.vy += 6.0f * dt;
       } else {
         float h = c.hz * (c.t < 1.0f ? 1.25f : 1.0f);
         float p0 = c.phase; c.phase += h * dt;
@@ -615,36 +727,36 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
           if (c.restBat <= 0) { c.restBat = 3 + random(4); if (c.t > 1.2f && c.but != B_SORTIR && rnd01() < 0.55f && dist > 60) c.planeT = rnd(0.5f, 1.3f); }
         }
         if (p0 > 0.9f && c.phase < 0.1f) son(SN_AILES, 120);
-        float cp = coup(c.phase); c.pose = mixA(A_HAUT, A_BAS, cp); c.bob = -2.4f * c.s * (cp - 0.4f);
+        float cp = coup(c.phase); c.poseC = mixA(A_HAUT, A_BAS, cp); c.bob = -2.4f * c.s * (cp - 0.4f);
       }
-      if (c.but == B_SORTIR) { if (c.x < -32 || c.x > 352) { c.etat = E_DEHORS; c.t = 0; c.visible = false; c.tfin = c.fuite ? rnd(2.0f, 4.5f) : (c.rapporte ? rnd(3.5f, 6.0f) : rnd(6, 16)); c.fuite = false; c.wl = 0; } }
+      if (c.but == B_SORTIR) { if (c.x < -32 || c.x > 352) { c.etat = E_DEHORS; c.t = 0; c.visible = false; c.tfin = c.fuite ? rnd(2.0f, 4.5f) : (c.rapporte ? rnd(3.5f, 6.0f) : rnd(6, 16)); c.fuite = false; c.wl = c.wlC = 0; } }
       else if (fin && (dist < 2.5f || (dist < 7.0f && sqrtf(c.vx * c.vx + c.vy * c.vy) < 20.0f))) atterrir(c);
     } break;
     case E_ATTERRIT: {
-      float u = c.t / 0.34f;
-      c.wl = 1.0f - pas((c.t - 0.06f) / 0.28f); c.pose = mixA(A_FLARE, A_PLANE, 0.0f); c.fan = 1.0f - pas(u);
-      c.bob = 1.5f * c.s * sinf(lim(u, 0, 1) * 3.1416f); c.pitchC = 0.3f;
+      float u = c.t / 0.34f; c.pied = true;
+      c.wlC = (c.t > 0.06f) ? 0.0f : 1.0f; c.poseC = A_FLARE; c.fanC = (u < 0.55f) ? 1.0f : 0.0f;
+      c.bob = 1.5f * c.s * sinf(lim(u, 0, 1) * 3.1416f);
       if (c.t >= 0.34f) {
-        c.wl = 0; c.fan = 0; c.t = 0;
-        if (c.but == B_PERCHOIR) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(5, 13); }
+        c.t = 0; c.wlC = 0; c.act = A_IMMO; c.tAct = 0; c.dAct = rnd(1.5f, 4.0f);
+        if (c.but == B_PERCHOIR) { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = rnd(5, 13); c.ox = c.oy = 0; }
         else if (c.but == B_NOUR || c.but == B_OBJET) { c.etat = E_SOL; c.sub = 0; }
         else { c.etat = E_PERCHE; c.but = B_RIEN; c.tfin = 4; }
       }
     } break;
     case E_SOL: {
-      c.wl = 0; c.fan = 0; c.pitchC = 0.05f;
+      c.pied = true; c.pitchC = c.pr * 0.45f;
       if (c.but == B_NOUR && c.sub <= 1) {
         Obj* o = (c.item >= 0 && c.item < NOB && ob[c.item].actif && ob[c.item].reserve == idx) ? &ob[c.item] : nullptr;
         if (!o) { c.but = B_RIEN; c.item = -1; apresSol(c); break; }
-        if (!o->repos) { c.d = (o->x >= c.x) ? 1 : -1; c.tCx = 1.2f; c.tCy = 1.0f; c.tTete = 0.5f; break; }
+        if (!o->repos) { c.d = (o->x >= c.x) ? 1 : -1; c.haC = -0.15f; c.hbC = 0.34f; break; }      // la nourriture tombe encore : il attend
         float gx = o->x - c.d * 19.0f * c.s;
         if (c.sub == 0) {
           float dxm = gx - c.x; c.d = (o->x >= c.x) ? 1 : -1;
           if (fabsf(dxm) < 1.8f) { c.sub = 1; c.peck = 0; }
-          else { c.x += (dxm > 0 ? 1 : -1) * mnf(fabsf(dxm), 34.0f * dt); c.hop = -fabsf(sinf(c.t * 11.0f)) * 2.6f * c.s; c.bob = c.hop; c.pitchC = 0.12f; }
+          else { c.x += (dxm > 0 ? 1 : -1) * mnf(fabsf(dxm), 34.0f * dt); c.hop = -fabsf(sinf(c.t * 11.0f)) * 2.6f * c.s; c.bob = c.hop; c.pitchC = c.pr * 0.6f; c.haC = -0.2f; c.hbC = 0.3f; }
         } else if (c.sub == 1) {
-          c.peck += dt; float ph = c.peck / 0.42f; float dip = fabsf(sinf(ph * 3.1416f));
-          c.pitchC = -0.55f * dip; c.ty_ = 5.5f * dip; c.tCy = c.ty_; c.tTete = 1.0f;
+          c.peck += dt; float dip = fabsf(sinf(c.peck / 0.42f * 3.1416f));
+          c.haC = lerpf(-0.3f, 0.55f, dip); c.hbC = lerpf(0.2f, 0.8f, dip); c.pitchC = c.pr * 0.45f - 0.30f * dip;
           if (c.peck > 0.24f && o->actif && o->reserve == idx) {      // il prend la nourriture
             son(SN_CROC, 200);
             if (o->type >= T_BRILLANT) { c.objet = o->type + 1; o->actif = false; c.item = -1; c.sub = 2; c.peck = 0; c.t = 0; c.flash = 0.5f; }
@@ -653,18 +765,18 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         }
       }
       if (c.but == B_NOUR && c.sub == 3) {       // il picore ce qu'il a pris
-        c.peck += dt; float dip = fabsf(sinf(c.peck / 0.40f * 3.1416f)); c.pitchC = -0.5f * dip; c.ty_ = 5.0f * dip; c.tCy = c.ty_; c.tTete = 1.0f;
+        c.peck += dt; float dip = fabsf(sinf(c.peck / 0.40f * 3.1416f)); c.haC = lerpf(-0.3f, 0.55f, dip); c.hbC = lerpf(0.2f, 0.8f, dip); c.pitchC = c.pr * 0.45f - 0.30f * dip;
         if (c.peck > 0.9f && c.peck - dt <= 0.9f) { son(SN_GAZ, 150); }
         if (c.peck > 1.8f) { c.but = B_RIEN; apresSol(c); }
       } else if (c.but == B_NOUR && c.sub == 2) { c.peck += dt; if (c.peck > 0.7f) { c.but = B_RIEN; apresSol(c); } }
       else if (c.but == B_OBJET) {
         if (c.sub == 0) { c.sub = 1; c.peck = 0; c.d = (c.x < 160) ? 1 : -1; }
         else if (c.sub == 1) {
-          c.peck += dt; c.bec = lim((c.peck - 0.35f) * 4.0f, 0, 1);
+          c.peck += dt; c.bec = lim((c.peck - 0.35f) * 4.0f, 0, 1); c.haC = 0.2f; c.hbC = 0.7f;
           if (c.peck > 0.55f && c.objet) {       // il dépose l'objet devant lui
             int idxO = -1; for (int i = 0; i < NOB; i++) if (!ob[i].actif) { idxO = i; break; }
             if (idxO < 0) idxO = 0;
-            Obj& o = ob[idxO]; o.actif = true; o.type = c.objet - 1; o.x = c.x + c.d * 20.0f * c.s; o.y = SOL_Y - 8.0f; o.vy = -40; o.t = 0; o.repos = false; o.reserve = -2;
+            Obj& o = ob[idxO]; o.actif = true; o.type = c.objet - 1; o.x = c.x + c.d * 20.0f * c.s; o.y = solHaut(o.x) - 8.0f; o.vy = -40; o.t = 0; o.repos = false; o.reserve = -2;
             c.objet = 0; son(SN_CROC, 170); c.sub = 2; c.peck = 0;
           }
         } else if (c.sub == 2) { c.peck += dt; if (c.peck > 0.9f) { c.but = B_RIEN; apresSol(c); } }
@@ -672,14 +784,14 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       if (c.but == B_RIEN && c.sub == 2 && c.etat == E_SOL && c.t > 0.5f) { c.t = 0; apresSol(c); }
     } break;
     case E_DEHORS: {
-      c.visible = false; c.wl = 0;
+      c.visible = false; c.wl = c.wlC = 0;
       if (c.t >= c.tfin) {
         if (c.rapporte) {           // il revient avec un objet qu'il dépose par terre
           c.rapporte = false; c.objet = 7 + random(4);
-          float gx = rnd(110, 300); c.perch = -1; entrer(c, gx, SOL_Y - pieds(c), B_OBJET);
+          float gx = rnd(110, 300); c.perch = -1; entrer(c, gx, solHaut(gx), B_OBJET);
         } else {
           int i = perchLibre();
-          if (i >= 0) { c.perch = i; entrer(c, PERCH[i][0], PERCH[i][1] - pieds(c), B_PERCHOIR); }
+          if (i >= 0) { c.perch = i; entrer(c, PERCH[i][0], perchY(i), B_PERCHOIR); }
           else c.tfin = c.t + 1.0f;
         }
       }
@@ -688,17 +800,36 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       if (c.t > 0.07f) c.visible = false;
       if (c.t >= c.tfin) {          // il réapparaît ailleurs, en un clin d'œil
         int i = perchLibre(); if (i < 0) i = 0;
-        placer(c, i); c.d = (rnd01() < 0.5f) ? 1 : -1; c.flash = 1.0f;
+        c.d = (rnd01() < 0.5f) ? 1 : -1; placer(c, i); c.flash = 1.0f;
         float X, Y; posOeil(c, X, Y); eclat(X, Y, 0.25f, 1.0f); plumes(c.x, c.y, 10); son(SN_POP_APP, 220); son(SN_PLUMES, 120);
       }
     } break;
   }
+
+  // la tête suit un regard imposé (toucher, nourriture) ; tous les mouvements sont lissés
+  if (c.tLook > 0 && (c.etat == E_PERCHE || (c.etat == E_SOL && c.but != B_NOUR))) { c.haC = c.look; c.hbC = c.look + 0.49f; }
+  ressort(c.ha, c.hav, c.haC, 11.0f, dt); ressort(c.hb, c.hbv, c.hbC, 12.0f, dt); ressort(c.pitch, c.pv, c.pitchC, 9.0f, dt);
+  c.dv += ((float)c.d - c.dv) * mnf(1.0f, dt * 8.0f);
+  c.wl += (c.wlC - c.wl) * mnf(1.0f, dt * ((c.etat == E_VOL || c.etat == E_DECOLLE) ? 18.0f : 10.0f));
+  c.fan += (c.fanC - c.fan) * mnf(1.0f, dt * 8.0f);
+  c.grat += (c.gratC - c.grat) * mnf(1.0f, dt * 12.0f);
+  { float kp = mnf(1.0f, dt * (c.etat == E_VOL ? 30.0f : 14.0f));
+    c.pose.ea += (c.poseC.ea - c.pose.ea) * kp; c.pose.eh += (c.poseC.eh - c.pose.eh) * kp; c.pose.sa += (c.poseC.sa - c.pose.sa) * kp; c.pose.sh += (c.poseC.sh - c.pose.sh) * kp; }
+  // position : les pattes restent posées sur le support, le corps s'en déduit
+  { float hx, hy; hancheC(c.s, c.pitch, c.dv, hx, hy);
+    switch (c.etat) {
+      case E_PERCHE: { float k = expf(-dt * 9.0f); c.ox *= k; c.oy *= k; c.x = c.fx - hx + c.ox; c.y = c.fy - JAMBE * c.s - hy + c.oy; } break;
+      case E_DECOLLE: c.x = c.fx - hx; c.y = c.fy - JAMBE * c.s - hy; break;
+      case E_ATTERRIT: { float e = pas(c.t / 0.34f); c.x = c.fx - hx + c.ox * (1 - e); c.y = c.fy - JAMBE * c.s - hy + c.oy * (1 - e); } break;
+      case E_SOL: c.fx = c.x + hx; c.fy = solHaut(c.fx); c.fp = 0; c.y = c.fy - JAMBE * c.s - hy; break;
+      default: break;
+    } }
 }
 
 static void declencherPoof(Corbeau& c) {
   float X, Y; c.flash = 1.0f; posOeil(c, X, Y); eclat(X, Y, 0.22f, 1.0f);
   plumes(c.x, c.y, 14); son(SN_POP_DISP, 220); son(SN_PLUMES, 120);
-  c.etat = E_POOF; c.t = 0; c.tfin = rnd(0.6f, 1.5f); c.perch = -1; c.wl = 0;
+  c.etat = E_POOF; c.t = 0; c.tfin = rnd(0.6f, 1.5f); c.perch = -1; c.wl = c.wlC = 0;
 }
 
 static void secousse() {
@@ -715,7 +846,9 @@ static void secousse() {
 }
 static void reagirToucher(Corbeau& c, float tx, float ty) {
   gAction = 1.5f; c.flash = 1.0f; c.bec = 1; c.clin = 0;
-  float dx = (tx - c.x) * c.d; c.tCx = lim(dx / 12.0f, -1.6f, 1.6f); c.tCy = lim((ty - c.y) / 12.0f, -1.2f, 1.2f); c.tTete = 1.2f;
+  if (c.etat == E_PERCHE || c.etat == E_SOL) {
+    c.d = (tx >= c.x) ? 1 : -1; c.look = lim(atan2f(ty - (c.y - 6.0f * c.s), fabsf(tx - c.x) + 6.0f), -0.9f, 0.8f); c.tLook = 1.3f;      // il tourne la tête vers le doigt
+  }
   sonCri();
   if (c.etat == E_PERCHE) {
     c.surs = 0.30f;
@@ -728,7 +861,7 @@ static void reagirToucher(Corbeau& c, float tx, float ty) {
 }
 
 static void majGlobal(float dt) {
-  gAction -= dt; gPoof -= dt; gObjet -= dt; gAttrib -= dt;
+  gAction -= dt; gPoof -= dt; gObjet -= dt; gAttrib -= dt; gCalme -= dt;
   if (gPoof <= 0) {
     gPoof = rnd(20, 42);
     int k = random(NCB); for (int j = 0; j < NCB; j++) { Corbeau& c = cr[(k + j) % NCB]; if (c.etat == E_PERCHE && c.objet == 0) { declencherPoof(c); break; } }
@@ -751,7 +884,7 @@ static void majGlobal(float dt) {
     Obj& o = ob[i]; if (!o.actif) continue;
     if (!o.repos) {
       o.vy += 330.0f * dt; o.y += o.vy * dt; o.t = 0;
-      float sol = SOL_Y - 3.0f;
+      float sol = solHaut(o.x) - 3.2f;
       if (o.y >= sol) { o.y = sol; if (o.vy > 60) { o.vy = -o.vy * 0.3f; } else { o.vy = 0; o.repos = true; o.t = 0; } }
     } else { o.t += dt; if (o.t > (o.reserve >= 0 ? 40.0f : 14.0f)) { o.actif = false; for (int k = 0; k < NCB; k++) if (cr[k].item == i) { cr[k].item = -1; } } }
   }
@@ -845,10 +978,11 @@ static void ouvrir() {
   fondOk = true;
   construireFond();
   memset(cr, 0, sizeof(cr)); memset(ob, 0, sizeof(ob)); memset(pl, 0, sizeof(pl)); memset(fx, 0, sizeof(fx)); memset(anc, 0, sizeof(anc)); memset(dernierSon, 0, sizeof(dernierSon));
-  static const float tailles[NCB] = {1.12f, 0.96f, 0.88f, 1.02f, 0.92f};
+  static const float tailles[NCB] = {0.95f, 0.84f, 0.78f, 0.90f, 0.82f};
   for (int k = 0; k < NCB; k++) initCorbeau(cr[k], tailles[k]);
-  placer(cr[0], 3); placer(cr[1], 1); placer(cr[2], 4); cr[0].d = -1; cr[1].d = 1; cr[2].d = 1;
-  for (int k = 0; k < 3; k++) { cr[k].tfin = rnd(3, 8); nouvTete(cr[k]); }
+  cr[0].d = -1; cr[1].d = 1; cr[2].d = 1; placer(cr[0], 3); placer(cr[1], 1); placer(cr[2], 4);
+  for (int k = 0; k < 3; k++) cr[k].tfin = rnd(3, 8);
+  gCalme = 0;
   cr[3].etat = E_DEHORS; cr[3].visible = false; cr[3].t = 0; cr[3].tfin = 1.2f;
   cr[4].etat = E_DEHORS; cr[4].visible = false; cr[4].t = 0; cr[4].tfin = 6.0f;
   gAction = 3.0f; gPoof = rnd(14, 24); gObjet = rnd(24, 40); gAttrib = 0; choix = 0; presse = -1; tDernier = millis(); tSec = millis(); nImg = 0; fps = 0; msDessin = 0; volVu = false;

@@ -1,5 +1,5 @@
 {
-    "version": "2.4.2",
+    "version": "2.4.3",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -8,6 +8,8 @@
         "Les cris et les battements d'ailes des corbeaux se mélangent au son déjà en cours (la Matinale n'est jamais coupée). Touche le coin en haut à droite pour afficher les images par seconde.",
         "Dans le mode Corbeaux, un bouton en haut permet de choisir les sons : vrais cris de corbeau (par défaut) ou sons synthétiques ; le choix est gardé en mémoire.",
         "Mode Corbeaux très réactif : la nourriture est vue et prise tout de suite, toucher un corbeau le fait réagir (cri, sursaut, il change de branche, s'envole ou disparaît), secouer le Core2 les fait s'envoler et revenir. Rien ne bloque l'écran pendant les sons.",
+        "Corbeaux plus naturels : mouvements lissés (la tête tourne en douceur, ils respirent, se balancent), pattes bien posées sur la branche, corps incliné comme un vrai corbeau perché. Ils restent parfois immobiles, regardent autour d'eux, lissent leurs plumes, se grattent ou se secouent.",
+        "La lune est plus petite, dans le coin, avec un halo doux, des cratères, des étoiles et une légère brume : elle ne cache plus les corbeaux.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
