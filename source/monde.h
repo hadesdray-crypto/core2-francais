@@ -572,7 +572,7 @@ static bool camPilote(float dt) {
   const bool bloque = GP.ph || V.ph != V_RIEN || H.actif || appelOn;
   if (cm == CM_NON) {
     gLarge -= dt * actFreq;
-    if (gLarge <= 0.0f) { gLarge = rnd(50.0f, 90.0f); if (!bloque && !panneau && millis() - tToucher > 5000UL) demarrer(CM_LARGE, true); }
+    if (gLarge <= 0.0f) { gLarge = rnd(50.0f, 90.0f); if (!bloque && !panneau && !cbAbsent && millis() - tToucher > 5000UL) demarrer(CM_LARGE, true); }
     if (cm == CM_NON) return false;
   }
   cmT += dt;

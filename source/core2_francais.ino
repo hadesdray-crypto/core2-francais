@@ -207,6 +207,7 @@ int essaiReseau = 0;
 void activite() { derniereActivite = millis(); }
 uint32_t derniereVraie = 0;      // dernier vrai geste de l'utilisateur (toucher, secousse, bouton, branchement) ; activite() est aussi forcée par des pages qui restent éveillées
 void activiteReelle() { derniereVraie = millis(); activite(); }
+bool presenceOn = true;      // présence : animations réduites quand personne n'interagit depuis 25 s (clé mémoire pres) ; réglable dans Réglages des corbeaux > Image
 bool ecoForte = true;            // réglage « Économie de batterie : normale / forte » (clé econiv), forte par défaut ; sans effet quand le Core2 est branché
 int palierEco = 0;               // 0 plein régime, 1 puis 2 = inactivité de plus en plus longue (écran qui baisse, moins d'images)
 bool matVisible = false;         // réglage « Afficher la Matinale » (clé matvis), masquée par défaut
@@ -3089,7 +3090,7 @@ void demarrerServeur() {
     d["version"] = VERSION_PROGRAMME; d["wifiMaison"] = (WiFi.status() == WL_CONNECTED); d["reseau"] = WiFi.SSID(); d["reseau1"] = R.ssid; d["reseau2"] = R.ssid2;
     d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["ip"] = WiFi.localIP().toString();
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
-    d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
+    d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
     d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
     d["uptimeMs"] = millis(); d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
     d["pileMv"] = M5.Power.getBatteryVoltage(); d["usbMv"] = M5.Power.getVBUSVoltage(); d["courantMa"] = M5.Power.getBatteryCurrent(); d["niveau"] = M5.Power.getBatteryLevel(); d["etatCharge"] = (int)M5.Power.isCharging(); d["puce"] = (int)M5.Power.getType();
@@ -3104,7 +3105,7 @@ void demarrerServeur() {
 }
 
 void demarrerReseau() {
-  direct = prefs.getBool("direct", false); wifiToujours = prefs.getBool("wifitj", false); eco = !wifiToujours;      // Wi-Fi à la demande (économie) par défaut
+  direct = prefs.getBool("direct", false); presenceOn = prefs.getBool("pres", true); wifiToujours = prefs.getBool("wifitj", false); eco = !wifiToujours;      // Wi-Fi à la demande (économie) par défaut
   vueDessusOn = prefs.getBool("vdessus", false);
   ecoForte = prefs.getUChar("econiv", 1) != 0; matVisible = prefs.getBool("matvis", false);
   WiFi.setHostname("core2-francais");
@@ -3205,7 +3206,8 @@ void loop() {
     }
     { int p = ecoPalier(); if (p != palierEco) { palierEco = p; appliquerPalier(); } }
     uint32_t periode = (page == 32 ? cb::periodeMs() : (page == 33 ? 18u : (brancheUsb ? 33u : 50u)));
-    if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;      // personne ne touche : 15 images/s, puis 8
+    if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;
+    if (presenceOn && page == 0 && (uint32_t)(millis() - derniereVraie) > 25000UL && periode < 200) periode = 200;      // absence : l'accueil n'est redessiné que 5 fois par seconde      // personne ne touche : 15 images/s, puis 8
     if (!veille && m - tDessin > periode) { tDessin = m; dessinerPage(); afficherVolume(); }
     if (sniffActif || detection || page == 11 || page == 13 || (page == 34 && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (ecoForte ? 150000 : 300000)) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)

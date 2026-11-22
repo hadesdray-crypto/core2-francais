@@ -111,7 +111,8 @@ static float delaiVisite(bool premiere) {
 static inline void vib(int ms) { if (OP.vib) vibrer(ms); }
 // fréquence des événements : l'activité (1 calme à 5 agité) accélère ou ralentit les minuteurs ; gros plan et œufs ont leur propre réglage
 static float actFreq = 1.0f;
-static void appliquerAct() { static const float F[5] = {0.45f, 0.7f, 1.0f, 1.5f, 2.2f}; actFreq = F[(OP.act < 1 ? 1 : (OP.act > 5 ? 5 : OP.act)) - 1]; }
+static bool cbAbsent = false; static uint32_t cbDepuis = 0;      // absence : personne n'a rien touché depuis 25 s (animations minimales)
+static void appliquerAct() { static const float F[5] = {0.45f, 0.7f, 1.0f, 1.5f, 2.2f}; actFreq = F[(OP.act < 1 ? 1 : (OP.act > 5 ? 5 : OP.act)) - 1] * (cbAbsent ? 0.2f : 1.0f); }      // en absence : cinq fois moins d'événements
 static float multFreq(uint8_t n) { static const float M[4] = {1e6f, 2.4f, 1.0f, 0.45f}; return M[n > 3 ? 2 : n]; }      // jamais, rare, normale, souvent : multiplicateur du délai
 static void chargerOptions() {
   OP.nb = prefs.getUChar("cbnb", 5); if (OP.nb < 3) OP.nb = 3; if (OP.nb > 6) OP.nb = 6;
@@ -143,7 +144,7 @@ struct Ap2 { int8_t a, b, n; float t; }; static Ap2 AP;      // s'appeler entre 
 static int memTas = 0, memPsram = 0;
 static float emaMaj = 0, emaCmp = 0, emaEnt = 0, emaPush = 0, emaCorb = 0, emaTot = 0;      // mesures lissées (ms) : logique, fond, dessin, envoi à l'écran, dont corbeaux
 static uint32_t uCorb = 0;      // temps passé à dessiner les corbeaux pendant l'image (µs)
-static inline uint32_t periodeMs() { return (OP.q == 0) ? 50u : ((OP.q == 1) ? 40u : 33u); }      // 20 images/s fixes en Fluide
+static inline uint32_t periodeMs() { if (cbAbsent) return 200u; return (OP.q == 0) ? 50u : ((OP.q == 1) ? 40u : 33u); }      // en absence : 5 images/s      // 20 images/s fixes en Fluide
 static uint32_t secVu = 0;
 
 struct Rect { int16_t x0, y0, x1, y1; };   // x1, y1 exclus
@@ -2080,7 +2081,7 @@ static void departGP() {
   float dir = random(2) ? 1.0f : -1.0f; GP.ex = 160.0f + dir * rnd(120.0f, 170.0f); GP.ey = rnd(70.0f, 105.0f); son(SN_AILES, 230);
 }
 static void lancerVisite() {
-  if (GP.ph || V.ph != V_RIEN || panneau || appelOn || H.actif) return;
+  if (GP.ph || V.ph != V_RIEN || panneau || appelOn || H.actif || cbAbsent) return;
   int n = 0, l[NAD];
   for (int k = 0; k < NAD; k++) { Corbeau& c = cr[k]; if (c.etat == E_PERCHE && c.perch < 10 && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f) l[n++] = k; }
   if (!n) return;
@@ -2325,7 +2326,7 @@ static void majGlobal(float dt) {
     } else if (p.x < bordG() - 6.0f || p.x > bordD() + 6.0f || p.y > 260 || p.t > 6.0f) p.actif = false;
   }
   if (appelOn) { static float tRec = 0; tRec -= dt; if (tRec <= 0) { tRec = 0.8f; for (int k = 0; k < NCB; k++) { Corbeau& c = cr[k]; if ((c.etat == E_PERCHE && c.perch < 10 && c.objet == 0) || c.etat == E_DEHORS) { mettreEnOrbite(c); c.ray = rnd(24, 46); } } } }
-  gVisite -= dt; if (gVisite <= 0 && V.ph == V_RIEN) { if (nbDehors() < 3) invoquer(); else gVisite = 10.0f; }
+  gVisite -= dt; if (gVisite <= 0 && V.ph == V_RIEN && !cbAbsent) { if (nbDehors() < 3) invoquer(); else gVisite = 10.0f; }
   if (gPoof <= 0) {
     gPoof = rnd(20, 42);
     int k = random(NCB); for (int j = 0; j < NCB; j++) { Corbeau& c = cr[(k + j) % NCB]; if (c.etat == E_PERCHE && c.objet == 0 && c.perch < 10) { declencherPoof(c); break; } }
@@ -2513,6 +2514,7 @@ static void dessinerPanneau() {
     g.drawString("Lumière de la scène (Sombre par défaut)", 6, 31); segBarre(g, 4, 45, 312, 24, 3, OP.hor, LL);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Qualité (Fluide = 20 images/s, effets réduits)", 6, 73); segBarre(g, 4, 87, 312, 24, 3, OP.q, LQ);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Mesures à l'écran (images/s, temps de dessin)", 6, 115); segBarre(g, 4, 129, 312, 24, 2, OP.fps, LM);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Présence : animations réduites quand personne n'est là", 6, 157); segBarre(g, 4, 171, 312, 24, 2, presenceOn ? 1 : 0, LM);
   } else {
     static const char* const L5[5] = {"1", "2", "3", "4", "5"}; static const char* const L4[4] = {"Jamais", "Rare", "Normale", "Souvent"}; static const char* const L3[3] = {"Jamais", "Rare", "Souvent"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2542,6 +2544,7 @@ static void touchPanneau(int x, int y) {
     if (y >= 42 && y < 72) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.hor = (uint8_t)i; prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; }
     else if (y >= 84 && y < 114) { int i = constrain((x - 4) * 3 / 312, 0, 2); OP.q = (uint8_t)i; prefs.putUChar("cbqual", OP.q); qDeg = false; }
     else if (y >= 126 && y < 156) { int i = constrain((x - 4) * 2 / 312, 0, 1); OP.fps = (uint8_t)i; prefs.putUChar("cbfps", OP.fps); debug = (OP.fps != 0); }
+    else if (y >= 168 && y < 198) { presenceOn = ((x - 4) * 2 / 312) >= 1; prefs.putBool("pres", presenceOn); }
     else return;
     if (OP.vib) vibrer(40);
     panSale = true; return;
@@ -2724,6 +2727,27 @@ static void quitter() {
   Serial.printf("[corbeau] fermé : heap=%u psram=%u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
 }
 
+// ---------- présence : absence = vie minimale et peu coûteuse ; retour de l'utilisateur = la scène s'éveille, et ce qui s'est passé « hors écran » est rattrapé ----------
+static void eveiller(uint32_t secs) {
+  int n = 0, k0 = -1;
+  for (int k = 0; k < NAD; k++) {
+    Corbeau& c = cr[k]; if (c.etat != E_PERCHE || c.perch < 0 || c.perch >= 10 || c.objet) continue;
+    if (c.act == A_DORT) { c.act = A_IMMO; c.dAct = 1.2f; c.tAct = 0; }
+    c.hum = 1.0f; c.flash = 0.45f; c.look = c.ha0 - 0.3f; c.tLook = 0.9f + 0.15f * n; if (k0 < 0) k0 = k; n++;      // la tête se lève, les yeux s'allument l'un après l'autre
+  }
+  if (k0 >= 0) { Corbeau& c = cr[k0]; c.bec = 1; sonCri(); plumes(c.x, c.y - 3.0f * c.s, 4); eclat(c.x + c.dv * 8.0f * c.s, c.y - 4.0f * c.s, 0.3f, 0.8f); }
+  gAction = 2.5f;
+  float s = (float)(secs > 600 ? 600 : secs);      // rattrapage : un œuf a pu être pondu, le petit a grandi, des feuilles sont tombées
+  gOeuf -= s * 0.15f; agePous += s * 0.4f;
+  if (secs > 60) for (int i = 0; i < 3; i++) feuille();
+  ralenti(0.25f);
+}
+static void presenceMaj() {
+  const bool a = presenceOn && ((uint32_t)(millis() - derniereVraie) > 25000UL) && !GP.ph && V.ph == V_RIEN && !H.actif && !appelOn;
+  if (a == cbAbsent) return;
+  if (a) { cbAbsent = true; cbDepuis = millis(); appliquerAct(); }
+  else { cbAbsent = false; appliquerAct(); eveiller((millis() - cbDepuis) / 1000UL); }
+}
 // ---------- une image ----------
 static void dessiner() {
   if (!ouvert) ouvrir();
@@ -2750,6 +2774,7 @@ static void dessiner() {
   if (millis() < finAffVolume) volVu = true; else if (volVu) { volVu = false; plein = true; }
   if (dernierSecouement != secVu) { if (secVu != 0 || dernierSecouement != 0) { if (millis() - dernierSecouement < 600) secousse(); } secVu = dernierSecouement; }
   tAnim = millis() * 0.001f;
+  presenceMaj();
   for (int k = 0; k < NCB; k++) majCorbeau(cr[k], k, dt);
   majGlobal(dt);
   uint32_t u1 = micros();
