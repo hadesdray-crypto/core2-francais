@@ -104,8 +104,8 @@ static float delaiVisite(bool premiere) {
 }
 static inline void vib(int ms) { if (OP.vib) vibrer(ms); }
 // fréquence des événements : l'activité (1 calme à 5 agité) accélère ou ralentit les minuteurs ; gros plan et œufs ont leur propre réglage
-static float FA = 1.0f;
-static void appliquerAct() { static const float F[5] = {0.45f, 0.7f, 1.0f, 1.5f, 2.2f}; FA = F[(OP.act < 1 ? 1 : (OP.act > 5 ? 5 : OP.act)) - 1]; }
+static float actFreq = 1.0f;
+static void appliquerAct() { static const float F[5] = {0.45f, 0.7f, 1.0f, 1.5f, 2.2f}; actFreq = F[(OP.act < 1 ? 1 : (OP.act > 5 ? 5 : OP.act)) - 1]; }
 static float multFreq(uint8_t n) { static const float M[4] = {1e6f, 2.4f, 1.0f, 0.45f}; return M[n > 3 ? 2 : n]; }      // jamais, rare, normale, souvent : multiplicateur du délai
 static void chargerOptions() {
   OP.nb = prefs.getUChar("cbnb", 5); if (OP.nb < 3) OP.nb = 3; if (OP.nb > 6) OP.nb = 6;
@@ -950,7 +950,8 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     for (int i = 0; i < 4; i++) { PH(hd[i][0], hd[i][1], x1, y1); PH(hd[i][2], hd[i][3], x2, y2); ligne(g, x1, y1, x2, y2, RIMC); }
     if (sn > 0.25f) {
       float kk = lim((sn - 0.25f) / 0.5f, 0.0f, 1.0f);
-      for (int e = 0; e < 2; e++) { float es = e ? -1.0f : 1.0f, X1, Y1, rr = (2.6f + 3.2f * sn) * s; R_.q(2.2f, -1.4f, es * 5.8f, X1, Y1); ligne(g, X1 - es * rr * 0.9f, Y1 - rr * 0.35f, X1 - es * rr * 0.25f, Y1 - rr * 0.95f, RIMC); ligne(g, X1 - es * rr * 0.25f, Y1 - rr * 0.95f, X1 + es * rr * 0.5f, Y1 - rr * 0.9f, RIMC); }      // liseré sur le dessus des épaules uint16_t BC = CF(104.0f * (0.5f + 0.5f * kk), 20.0f * kk + 8.0f, 26.0f * kk + 6.0f);
+      for (int e = 0; e < 2; e++) { float es = e ? -1.0f : 1.0f, X1, Y1, rr = (2.6f + 3.2f * sn) * s; R_.q(2.2f, -1.4f, es * 5.8f, X1, Y1); ligne(g, X1 - es * rr * 0.9f, Y1 - rr * 0.35f, X1 - es * rr * 0.25f, Y1 - rr * 0.95f, RIMC); ligne(g, X1 - es * rr * 0.25f, Y1 - rr * 0.95f, X1 + es * rr * 0.5f, Y1 - rr * 0.9f, RIMC); }      // liseré sur le dessus des épaules
+      uint16_t BC = CF(104.0f * (0.5f + 0.5f * kk), 20.0f * kk + 8.0f, 26.0f * kk + 6.0f);
       for (int i = 0; i < 9; i++) if (ch[i * 2] >= R_.cx - 0.5f && ch[i * 2 + 2] >= R_.cx - 0.5f) ligne(g, ch[i * 2], ch[i * 2 + 1], ch[i * 2 + 2], ch[i * 2 + 3], BC);
       float b0x, b0y, b1x, b1y, b2x, b2y; R_.pw(-7.0f, 5.7f, wfb, b0x, b0y); R_.pw(0.0f, 6.1f * br, wfb, b1x, b1y); R_.pw(7.0f, 5.0f, wfb, b2x, b2y);
       ligne(g, b0x, b0y, b1x, b1y, BC); ligne(g, b1x, b1y, b2x, b2y, BC);
@@ -1405,7 +1406,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       c.pitchC = c.pr + 0.015f * sinf(c.resp * 0.9f);               // léger balancement
       acteur(c, dt);
       if (c.objet && c.t > 9.0f) { c.objet = 0; eclat(c.x + c.dv * 18 * c.s, c.y - 2, 0.3f, 0.7f); }
-      if (c.perch < 10 && c.t * FA >= c.tfin && gAction <= 0 && c.act <= A_REGARDE) {
+      if (c.perch < 10 && c.t * actFreq >= c.tfin && gAction <= 0 && c.act <= A_REGARDE) {
         int r = random(100);
         if (r < 40) { versPerchoir(c); gAction = rnd(1.5f, 3.0f); }
         else if (r < 62 && nbDehors() < 2) { sortir(c); gAction = rnd(1.5f, 3.0f); }
@@ -1989,7 +1990,7 @@ static void majSocial(float dt) {
       AP.n--; AP.t = rnd(0.7f, 1.2f);
     }
   }
-  gSocial -= dt * FA;      // activité : calme = rares événements surtout paisibles ; agité = alertes, poursuites et vols en groupe fréquents
+  gSocial -= dt * actFreq;      // activité : calme = rares événements surtout paisibles ; agité = alertes, poursuites et vols en groupe fréquents
   if (gSocial <= 0) {
     gSocial = rnd(12.0f, 26.0f);
     if (V.ph == V_RIEN && !appelOn && !panneau) {
@@ -2206,7 +2207,7 @@ static void contacts(float dt) {
 }
 static void majGlobal(float dt) {
   contacts(dt);
-  gAction -= dt * FA; gPoof -= dt * FA; gObjet -= dt * FA; gAttrib -= dt; gCalme -= dt;
+  gAction -= dt * actFreq; gPoof -= dt * actFreq; gObjet -= dt * actFreq; gAttrib -= dt; gCalme -= dt;
   if (OP.hor) {      // horreur : lueur des yeux instable (très discret), de rares battements de lumière et éclairs rouges lointains
     float n = sinf(tAnim * 9.0f) * sinf(tAnim * 2.3f + 1.0f) + 0.5f * sinf(tAnim * 23.0f); lueurOeil = 1.0f + 0.07f * n;
     if (battT > 0.0f) { battT -= dt; float u = 1.0f - lim(battT / 0.95f, 0.0f, 1.0f); lueurOeil += 0.9f * (powf(sinf(3.1416f * lim(u * 2.0f, 0.0f, 1.0f)), 2.0f) + 0.7f * powf(sinf(3.1416f * lim(u * 2.0f - 1.0f, 0.0f, 1.0f)), 2.0f)); }
