@@ -169,23 +169,23 @@ static void cielRGB(float y, float& r, float& g, float& b) {
   float u = (y - STC[k].y) / (STC[k + 1].y - STC[k].y);
   r = lerpf(STC[k].r, STC[k + 1].r, u); g = lerpf(STC[k].g, STC[k + 1].g, u); b = lerpf(STC[k].b, STC[k + 1].b, u);
 }
-static const float MX = 274.0f, MY = 40.0f, MR = 20.0f;      // lune petite, dans le coin en haut a droite
+static const float LUNE_X = 274.0f, LUNE_Y = 40.0f, LUNE_R = 20.0f;      // lune petite, dans le coin en haut a droite
 struct Crat { float ox, oy, r, dk; };
 static const Crat CRAT[6] = {{-6.5f, -4.5f, 4.2f, 0.20f}, {5.5f, 3.0f, 5.0f, 0.16f}, {-2.5f, 8.5f, 3.0f, 0.16f}, {8.0f, -8.0f, 2.6f, 0.14f}, {-10.5f, 4.0f, 2.4f, 0.12f}, {1.5f, -9.5f, 2.2f, 0.10f}};
 static void fondRGB(float x, float y, float& r, float& g, float& b) {      // couleur exacte du ciel (halo + lune) en un point
   cielRGB(y, r, g, b);
-  float dx = x - MX, dy = y - MY, d = sqrtf(dx * dx + dy * dy);
-  float w = expf(-mxf(d - MR, 0.0f) / 17.0f) * 0.50f * lim(1.0f - (d - MR) / 58.0f, 0.0f, 1.0f);
+  float dx = x - LUNE_X, dy = y - LUNE_Y, d = sqrtf(dx * dx + dy * dy);
+  float w = expf(-mxf(d - LUNE_R, 0.0f) / 17.0f) * 0.50f * lim(1.0f - (d - LUNE_R) / 58.0f, 0.0f, 1.0f);
   r += 105 * w; g += 13 * w; b += 11 * w;
-  if (d < MR) {
-    float ed = d / MR, sh = 1.0f - 0.20f * lim((dx * 0.45f + dy * 0.75f) / MR, -1, 1);
+  if (d < LUNE_R) {
+    float ed = d / LUNE_R, sh = 1.0f - 0.20f * lim((dx * 0.45f + dy * 0.75f) / LUNE_R, -1, 1);
     float e3 = ed * ed * ed, f0 = lerpf(1.0f, 0.8f, e3);
     float cr_ = 206 * sh * f0, cg_ = 38 * sh * f0, cb_ = 30 * sh * f0;
     for (int i = 0; i < 6; i++) {
-      float ddx = x - (MX + CRAT[i].ox), ddy = y - (MY + CRAT[i].oy), dd = sqrtf(ddx * ddx + ddy * ddy);
+      float ddx = x - (LUNE_X + CRAT[i].ox), ddy = y - (LUNE_Y + CRAT[i].oy), dd = sqrtf(ddx * ddx + ddy * ddy);
       if (dd < CRAT[i].r) { float f = 1.0f - CRAT[i].dk * (1.0f - 0.5f * dd / CRAT[i].r); cr_ *= f; cg_ *= f; cb_ *= f; }
     }
-    float a = lim((MR - d) / 1.3f, 0, 1);
+    float a = lim((LUNE_R - d) / 1.3f, 0, 1);
     r = lerpf(r, cr_, a); g = lerpf(g, cg_, a); b = lerpf(b, cb_, a);
   }
 }
@@ -204,12 +204,12 @@ static void brume(M5Canvas& g, float cx, float cy, float w, float h, float a) {
 static float solHaut(float x) { return 202.0f + 1.2f * sinf(x / 37.0f) + 0.8f * sinf(x / 13.0f + 1.0f); }
 static void ciel(M5Canvas& g) {
   for (int y = 0; y < 240; y++) { float r, gg, b; cielRGB((float)y, r, gg, b); g.drawFastHLine(0, y, 320, CF(r, gg, b)); }
-  const int R = (int)(MR + 58);
-  for (int y = (int)MY - R; y <= (int)MY + R; y++) {
+  const int R = (int)(LUNE_R + 58);
+  for (int y = (int)LUNE_Y - R; y <= (int)LUNE_Y + R; y++) {
     if (y < 0 || y >= H_SCENE) continue;
-    for (int x = (int)MX - R; x <= (int)MX + R;) {
-      float dx = x - MX, dy = y - MY, dd = sqrtf(dx * dx + dy * dy);
-      int step = dd < MR + 3 ? 1 : 3;
+    for (int x = (int)LUNE_X - R; x <= (int)LUNE_X + R;) {
+      float dx = x - LUNE_X, dy = y - LUNE_Y, dd = sqrtf(dx * dx + dy * dy);
+      int step = dd < LUNE_R + 3 ? 1 : 3;
       if (x >= 0 && x < 320 - step && dd < R) {
         float r, gg, b; fondRGB(x + (step - 1) * 0.5f, (float)y, r, gg, b);
         if (step == 1) g.drawPixel(x, y, CF(r, gg, b)); else g.drawFastHLine(x, y, step, CF(r, gg, b));
@@ -221,7 +221,7 @@ static void ciel(M5Canvas& g) {
   for (int i = 0; i < 34; i++) {
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sx = 3 + (int)((seed >> 8) % 314);
     seed = (seed * 1103515245UL + 12345UL) & 0x7fffffffUL; int sy = 3 + (int)((seed >> 8) % 100);
-    if (hypotf(sx - MX, sy - MY) < MR + 30) continue;
+    if (hypotf(sx - LUNE_X, sy - LUNE_Y) < LUNE_R + 30) continue;
     int v = (int)((seed >> 4) % 100);
     if (v < 70) g.drawPixel(sx, sy, C(150, 62, 74));
     else if (v < 93) g.drawPixel(sx, sy, C(205, 112, 120));
