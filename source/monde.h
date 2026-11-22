@@ -344,12 +344,12 @@ static int8_t suivi = -1;
 static bool reculLent = false; static float tReculRe = 0.0f; static int8_t suiviRet = -1;      // suiviRet : le corbeau suivi avant un événement (main, appel) : la vue suivie revient dessus      // recul de la vue : coupé si l'image devient trop lente ; délai avant de reculer de nouveau
 static int8_t lpBird = -1; static uint32_t lpT = 0; static float lpX = 0, lpY = 0;
 // vues choisies (OP.recul) : 0 normale, 1 arbre et rivière, 2 mare, 3 vieux bâtiments, 4 large ; le suivi d'un corbeau est un mode à part
-static const float VUE_Z[5] = {1.0f, 0.80f, 1.10f, 0.90f, 0.50f};      // échelle de la caméra
-static const float VUE_X[5] = {160.0f, 100.0f, -90.0f, 382.0f, 190.0f};      // centre (monde) : arbre + bord de la mare ; mare + champ + épouvantail + stèle ; portique, stèles, tour
-static const float VUE_Y[5] = {128.0f, 128.0f, 135.0f, 125.0f, 118.0f};
-static const char* const VUE_NOM[5] = {"Vue", "Arbre", "Mare", "Ruine", "Large"};      // étiquette du bouton (32 px de large)
+static const float VUE_Z[6] = {1.0f, 0.80f, 1.10f, 0.90f, 0.50f, 0.95f};      // échelle de la caméra
+static const float VUE_X[6] = {160.0f, 100.0f, -90.0f, 382.0f, 190.0f, 104.0f};      // centre (monde) : arbre + bord de la mare ; mare + champ + épouvantail + stèle ; portique, stèles, tour
+static const float VUE_Y[6] = {128.0f, 128.0f, 135.0f, 125.0f, 118.0f, 102.0f};      // 5 : le nid (branche secondaire, à gauche du tronc) et les branches de nuit
+static const char* const VUE_NOM[6] = {"Vue", "Arbre", "Mare", "Ruine", "Large", "Nid"};      // étiquette du bouton (32 px de large)
 static bool vueFixe() { return OP.recul > 0 || suiviRet >= 0 || (cm == CM_SUIVI && !cmFin); }      // une vue a été choisie : aucun événement spontané ne la quitte
-static const char* etiquette() { return cm == CM_SUIVI ? "Suivi" : ((OP.recul > 0 && OP.recul <= 4) ? VUE_NOM[OP.recul] : (cm == CM_LARGE ? "Large" : "Vue")); }
+static const char* etiquette() { return cm == CM_SUIVI ? "Suivi" : ((OP.recul > 0 && OP.recul <= 5) ? VUE_NOM[OP.recul] : (cm == CM_LARGE ? "Large" : "Vue")); }
 static void majBouton() { boutonVue(fond); syncUI(); plein = true; }
 static bool camOn() { return pret && cm != CM_NON; }
 static void demarrer(uint8_t mode, bool autom) {
@@ -363,13 +363,13 @@ static void reglerRecul(uint8_t n);
 static void basculer() {
   if (!pret) return;
   if (cm == CM_SUIVI) { reglerRecul(0); return; }      // le suivi se termine : retour à la vue normale
-  if (OP.recul < 4) { reglerRecul((uint8_t)(OP.recul + 1)); return; }      // Normal > Arbre > Mare > Vieux bâtiments > Large
+  if (OP.recul < 5) { reglerRecul((uint8_t)(OP.recul + 1)); return; }      // Normal > Arbre > Mare > Vieux bâtiments > Large
   int k = choisirSuivi(); if (k >= 0) { suivi = (int8_t)k; demarrer(CM_SUIVI, false); majBouton(); } else reglerRecul(0);      // puis le suivi d'un corbeau, puis la vue normale
 }
 static void demandeLarge(bool on) { if (!pret) return; if (on && cm == CM_NON) demarrer(CM_LARGE, false); else if (!on && cm != CM_NON) fermer(); }
 static void finSuivi(bool bloque) { if (OP.recul > 0 && !reculLent && !bloque) { suivi = -1; demarrer(CM_LARGE, false); } else fermer(); }      // le suivi se termine : la vue reculée reste (si elle est réglée)
 static void reglerRecul(uint8_t n) {      // recul de la vue : 0 normale, 1 reculée, 2 très reculée (clé cbrecul) ; la vue large et le suivi existants font le travail
-  if (n > 4) n = 4; OP.recul = n; prefs.putUChar("cbvue2", n); reculLent = false; tReculRe = 0.0f; suiviRet = -1;
+  if (n > 5) n = 5; OP.recul = n; prefs.putUChar("cbvue2", n); reculLent = false; tReculRe = 0.0f; suiviRet = -1;
   if (!pret) return;
   if (n == 0) { if (cm != CM_NON) fermer(); }
   else if (cm == CM_NON || cmFin) demarrer(CM_LARGE, false);
