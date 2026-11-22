@@ -21,6 +21,7 @@
 #include <AudioOutput.h>
 #include "page_web.h"
 #include "types.h"
+#include "presence.h"      // presence / absence des personnages et des univers (3.1.6)
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
 #define VERSION_PROGRAMME "3.1.7"
@@ -206,8 +207,8 @@ bool demandeMaj = false; volatile bool majVoulue = false; volatile uint32_t proc
 int essaiReseau = 0;
 void activite() { derniereActivite = millis(); }
 uint32_t derniereVraie = 0;      // dernier vrai geste de l'utilisateur (toucher, secousse, bouton, branchement) ; activite() est aussi forcée par des pages qui restent éveillées
-void activiteReelle() { derniereVraie = millis(); activite(); }
-bool presenceOn = true;      // présence : animations réduites quand personne n'interagit depuis 25 s (clé mémoire pres) ; réglable dans Réglages des corbeaux > Image
+void activiteReelle() { derniereVraie = millis(); activite(); pr::interaction(); }      // presence : un vrai geste (toucher, secousse, bouton, branchement) = quelqu'un est la
+bool presenceOn = true;      // presence : animations reduites quand personne n'interagit depuis 25 s (cle memoire pres) ; reglable dans Reglages des corbeaux > Image
 bool ecoForte = true;            // réglage « Économie de batterie : normale / forte » (clé econiv), forte par défaut ; sans effet quand le Core2 est branché
 int palierEco = 0;               // 0 plein régime, 1 puis 2 = inactivité de plus en plus longue (écran qui baisse, moins d'images)
 bool matVisible = false;         // réglage « Afficher la Matinale » (clé matvis), masquée par défaut
@@ -406,6 +407,7 @@ void moduleSon() {
   if (M5.Mic.record(tampon, 256, 16000)) {
     long somme = 0; for (int i = 0; i < 256; i++) somme += abs(tampon[i]);
     float niveau = somme / 256.0f;
+    if (niveau > 5000) pr::interaction();      // un bruit fort : quelqu'un est la
     W.niveauSon = W.niveauSon * 0.7f + niveau * 0.3f;
     if (niveau > 6000 && millis() - W.picSon > 2000) { W.picSon = millis(); attitude(PEUR, 2500); reagir(EV_BRUIT); P.joie = max(0.0f, P.joie - 3); W.message = String("@#$%!"); W.finMessage = millis() + 2500; finGriffe = millis() + 1500; }
     else if (niveau > 1500 && millis() - W.picSon > 1500) { W.picSon = millis(); attitude(ECOUTE, 2500); }
@@ -525,7 +527,7 @@ void vieDuPerso() {
   {   // petits gestes tout seuls, selon son caractère
     if (geste != G_AUCUN && m > finGeste) geste = G_AUCUN;
     if (geste == G_AUCUN && m > prochainGeste && phase() != OEUF && !veille && !P.porte && m > finVol && m > finDanse
-        && (P.attitude == NORMALE || P.attitude == CONTENT) && page == 0) {
+        && (P.attitude == NORMALE || P.attitude == CONTENT) && page == 0 && !pr::calme()) {
       if (FA.forme == 1) {        // Enclume a ses propres gestes : il cogne ses poings, roule des épaules, croise les bras, s'assoit, se gratte la tête
         static const uint16_t D1[5] = {1600, 2000, 3500, 6000, 2200};
         int w1[5] = {FA.carac[3] + 10, FA.carac[0] / 2 + 10, FA.carac[3] / 2 + FA.carac[4] / 2 + 5, (P.energie < 50 ? 40 : 5) + FA.carac[1] / 3, FA.carac[0] + 5};
@@ -689,6 +691,7 @@ void physique(float dt) {
     }
     if (changeVue) { changeVue = false; axPrec = ax; ayPrec = ay; azPrec = az; }
     float sec = fabs(ax - axPrec) + fabs(ay - ayPrec) + fabs(az - azPrec);
+    pr::imu(ax, ay, az, sec);      // presence : secousse, main qui le prend, changement d'orientation
     { static uint32_t debutRenverse = 0; static bool renverseDit = false;      // retourné la tête en bas
       if (ay < -0.7f && fabsf(az) < 0.6f) {
         if (!debutRenverse) debutRenverse = m;
@@ -1458,10 +1461,23 @@ void pousserAccueil() {          // en hauteur, l'image tourne avec l'écran
   M5.Display.fillRect(0, 0, 70, 240, TFT_BLACK); M5.Display.fillRect(250, 0, 70, 240, TFT_BLACK);
   cv.pushRotateZoom(&M5.Display, 160, 120, (float)rotEcran, 0.75f, 0.75f);
 }
+static void sonInterrupteur() { uint8_t ck = pr::consommerClic(); if (ck && !veille && R.actif[M_SON]) bip(ck == 1 ? 1500 : 900, 16); }      // le clic de l'interrupteur
+static void dessinerPieceVide() {      // ABSENCE : personne dans la piece, lumiere eteinte, 4 images/s (traces de ce qui s'est passe + vie minimale)
+  sonInterrupteur();
+  pr::dessinerInterrupteur(cv, false, false);
+  pr::dessinerTraces(cv, pr::absent() ? pr::tracesPendantAbsence() : pr::nbTraces, pr::absent() ? pr::graineAbsence() : pr::graine, 0.0f, GAM_X, (int)parX, (int)parY);
+  pr::assombrir(cv, 0, 200, pr::niveauPiece());
+  pr::dessinerNuit(cv);
+  dessinerInfos(); dessinerBarre();
+  pousserAccueil();
+}
 void dessinerAccueil() {
   bool sol = (FA.forme >= 1 && phase() != OEUF), dessus = (vue == 1 && rotEcran == 0);
   if (dessus) dessinerBoiteDessus(); else dessinerBoite();
   int px, py; float e; positionEcran(px, py, e);
+  if (!pr::persoVisible()) { dessinerPieceVide(); return; }      // presence : personne, piece vide
+  if (pr::enChemin() || pr::alInterrupteur()) { px = (int)pr::xScene((float)px); enMarche = pr::enChemin(); if (enMarche) pasPhase += 0.4f; }      // il entre (ou sort) en marchant jusqu'a l'interrupteur
+  sonInterrupteur();
   uint32_t m = millis();
   bool miroir = m < miroirFin && phase() != OEUF;
   float rgx = miroir ? constrain((miroirX - px) / 90.0f, -1.0f, 1.0f) : 0, rgy = miroir ? constrain((miroirY - py) / 70.0f, -1.0f, 1.0f) : 0;
@@ -1500,6 +1516,14 @@ void dessinerAccueil() {
   }
   if (m < finRepas && !dessus) for (int i = 0; i < 3; i++) cv.fillCircle(GAM_X + GAM_W / 2 + (i - 1) * 8, 146 - (int)((m / 90 + i * 5) % 14), 2, C(80, 255, 140));
   if (P.attitude == ENERVE) { uint16_t cr = ((m / 120) % 2) ? C(255, 40, 30) : C(140, 20, 20); cv.drawRect(0, 0, 320, 200, cr); cv.drawRect(1, 1, 318, 198, cr); }   // il voit rouge
+  if (!dessus) {      // presence : interrupteur au mur, traces de l'absence, lumiere qui s'allume ou s'eteint
+    const bool scene = (pr::etat != pr::PRESENT);
+    pr::dessinerInterrupteur(cv, pr::lumOn, false);
+    if (pr::nbTraces && pr::depuisArrivee() < 40.0f) pr::dessinerTraces(cv, pr::nbTraces, pr::graine, pr::depuisArrivee(), GAM_X, (int)parX, (int)parY);
+    if (pr::alInterrupteur()) { cv.drawLine(px + (int)(14 * e), py - (int)(6 * e), 298, 92, C(235, 240, 250)); cv.drawLine(px + (int)(14 * e), py - (int)(5 * e), 298, 93, C(170, 180, 200)); }
+    if (scene) { int nv = pr::niveauPiece(); if (nv < 2) nv = 2; pr::assombrir(cv, 0, 200, nv); }
+    if (pr::alInterrupteur()) pr::dessinerInterrupteur(cv, pr::lumOn, true);
+  }
   dessinerInfos(); dessinerBarre();
   pousserAccueil();
 }
@@ -2955,7 +2979,7 @@ String jsonEtat() {
   d["batterie"] = W.batterie; d["charge"] = W.charge; d["wifi"] = W.wifiOk; d["rssi"] = W.rssi;
   d["temperature"] = W.temperature; d["meteo"] = W.codeMeteo; d["gravite"] = W.gravite;
   d["message"] = W.message; d["lat"] = R.lat; d["lon"] = R.lon; d["luminosite"] = R.luminosite; d["volume"] = R.volume;
-  d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = !wifiToujours; d["wifiToujours"] = wifiToujours; d["dessus"] = vueDessusOn; d["econf"] = ecoForte; d["matvis"] = matVisible;
+  d["ssid"] = R.ssid; d["ssid2"] = R.ssid2; d["reseauActif"] = W.wifiOk ? WiFi.SSID() : String(""); d["direct"] = (direct || modeAcces); d["eco"] = !wifiToujours; d["wifiToujours"] = wifiToujours; d["dessus"] = vueDessusOn; d["presence"] = presenceOn; d["econf"] = ecoForte; d["matvis"] = matVisible;
   d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo;
   JsonObject m = d["modules"].to<JsonObject>();
   for (int i = 0; i < M_NB; i++) m[CLES_MODULES[i]] = R.actif[i];
@@ -2996,6 +3020,7 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("econf")) { ecoForte = serveur.arg("econf") == "1"; prefs.putUChar("econiv", ecoForte ? 1 : 0); appliquerPalier(); }
   if (serveur.hasArg("matinale")) reglerMatinale(serveur.arg("matinale") == "1");
   if (serveur.hasArg("dessus")) { vueDessusOn = serveur.arg("dessus") == "1"; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } }
+  if (serveur.hasArg("presence")) { presenceOn = serveur.arg("presence") == "1"; prefs.putBool("pres", presenceOn); }      // presence / absence automatique
   if (serveur.hasArg("perso")) R.perso = constrain(serveur.arg("perso").toInt(), 0, NB_PERSOS - 1);
   { Fiche& f = FA; bool mf = false;
     if (serveur.hasArg("couleur")) { String c = serveur.arg("couleur"); c.replace("#", ""); if (c == "auto") f.couleurAuto = true; else if (c.length() == 6) { long v = strtol(c.c_str(), nullptr, 16); f.r = (v >> 16) & 255; f.g = (v >> 8) & 255; f.b = v & 255; f.couleurAuto = false; } mf = true; }
@@ -3092,7 +3117,7 @@ void demarrerServeur() {
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
     d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
     d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
-    d["uptimeMs"] = millis(); d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
+    d["uptimeMs"] = millis(); d["prEtat"] = pr::etat; d["prAbsMs"] = pr::absent() ? (uint32_t)(millis() - pr::debAbsence) : 0; d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
     d["pileMv"] = M5.Power.getBatteryVoltage(); d["usbMv"] = M5.Power.getVBUSVoltage(); d["courantMa"] = M5.Power.getBatteryCurrent(); d["niveau"] = M5.Power.getBatteryLevel(); d["etatCharge"] = (int)M5.Power.isCharging(); d["puce"] = (int)M5.Power.getType();
     { JsonObject a = d["axp"].to<JsonObject>(); static const uint8_t regs[] = {0x00, 0x01, 0x12, 0x18, 0x22, 0x27, 0x30, 0x61, 0x62, 0x63, 0x64, 0x69};
       for (uint8_t r : regs) { char k[8]; snprintf(k, sizeof(k), "r%02X", r); a[k] = (int)M5.In_I2C.readRegister8(0x34, r, 400000); } }
@@ -3169,6 +3194,9 @@ void loop() {
     moduleWifi();
     if (R.actif[M_HEURE]) moduleHeure();
   }
+  pr::actif = presenceOn;
+  pr::tick(page == 0 || page == 32, page == 32 && corbeauOccupe());      // presence : la scene avance (entree, sortie, absence)
+  if (page != 0) pr::consommerClic();
   bool clicMarche = M5.BtnPWR.wasClicked();
   if (clicMarche) { nbClicPwr++; activiteReelle(); }
   gererBoutons();
@@ -3206,8 +3234,8 @@ void loop() {
     }
     { int p = ecoPalier(); if (p != palierEco) { palierEco = p; appliquerPalier(); } }
     uint32_t periode = (page == 32 ? cb::periodeMs() : (page == 33 ? 18u : (brancheUsb ? 33u : 50u)));
-    if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;
-    if (presenceOn && page == 0 && (uint32_t)(millis() - derniereVraie) > 25000UL && periode < 200) periode = 200;      // absence : l'accueil n'est redessiné que 5 fois par seconde      // personne ne touche : 15 images/s, puis 8
+    if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;      // personne ne touche : 15 images/s, puis 8
+    if (page == 0 || page == 32) periode = pr::periode(periode);      // presence : en absence 4 images/s (la scene d'entree ou de sortie garde la cadence normale)
     if (!veille && m - tDessin > periode) { tDessin = m; dessinerPage(); afficherVolume(); }
     if (sniffActif || detection || page == 11 || page == 13 || (page == 34 && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (ecoForte ? 150000 : 300000)) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)

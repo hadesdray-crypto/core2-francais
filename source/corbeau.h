@@ -1383,6 +1383,7 @@ static void prochainActe(Corbeau& c) {
   float w[11];      // poids de chaque activité, selon la personnalité (calme, bavard, joueur, craintif) et l'humeur
   w[0] = 0; w[1] = 18 + 30 * c.pCal; w[2] = 14 + 14 * c.pJou + 10 * c.pCra + 20 * c.hum; w[3] = lib ? 14 + 18 * c.pCal : 0; w[4] = lib ? 8 : 0; w[5] = lib ? 5 : 0;
   w[6] = lib ? 6 + 6 * c.pJou : 0; w[7] = (OP.amb == 2) ? 30 + 30 * c.pCal : 0; w[8] = 4 + 14 * c.pBav + 10 * c.hum; w[9] = sol ? 6 + 14 * c.pJou : 0; w[10] = sol ? 3 + 6 * c.pJou : 0;
+  if (cbAbsent || pr::calme()) { w[1] *= 2.5f; w[2] *= 0.15f; w[3] = w[4] = w[5] = w[6] = w[8] = w[9] = w[10] = 0; if (w[7] < 35) w[7] = 35; }      // presence : absence = presque immobile, parfois endormi
   float tot = 0; for (int i = 1; i <= 10; i++) tot += w[i];
   float r = rnd01() * tot; int k = 1; for (; k < 10; k++) { if (r < w[k]) break; r -= w[k]; }
   switch (k) {
@@ -2748,6 +2749,20 @@ static void presenceMaj() {
   if (a) { cbAbsent = true; cbDepuis = millis(); appliquerAct(); }
   else { cbAbsent = false; appliquerAct(); eveiller((millis() - cbDepuis) / 1000UL); }
 }
+// ---------- presence (presence.h) : objets laisses par l'absence ; la scene (yeux, cri, rattrapage) est dans eveiller() ci-dessus ----------
+static void arriveeCb() {      // rattrapage : des objets ont ete laisses au sol pendant l'absence
+  static const uint8_t TR[5] = {T_BAGUE, T_BRILLANT, T_PARCHEMIN, T_GRAINE, T_KUNAI};
+  for (int i = 0; i < pr::nbTraces; i++) {
+    int j = -1; for (int q = 0; q < NOB; q++) if (!ob[q].actif) { j = q; break; }
+    if (j >= 0) { Obj& o = ob[j]; o.actif = true; o.type = TR[random(5)]; o.x = rnd(40.0f, 280.0f); o.y = solHaut(o.x) - 3.2f; o.vy = 0; o.t = 0; o.repos = true; o.reserve = -1; }
+  }
+}
+static bool occupe() { return GP.ph || V.ph != V_RIEN || H.actif || appelOn; }      // un evenement est en cours : l'utilisateur est la
+static void presenceCb() {
+  static uint8_t etPrec = pr::PRESENT;
+  if (pr::etat == pr::ENTREE && etPrec != pr::ENTREE && pr::vraieArrivee) arriveeCb();
+  etPrec = pr::etat;
+}
 // ---------- une image ----------
 static void dessiner() {
   if (!ouvert) ouvrir();
@@ -2776,11 +2791,14 @@ static void dessiner() {
   tAnim = millis() * 0.001f;
   presenceMaj();
   for (int k = 0; k < NCB; k++) majCorbeau(cr[k], k, dt);
-  majGlobal(dt);
+  majGlobal(dt * pr::facteurMonde());      // presence : en absence les evenements du monde sont rares
+  presenceCb();
   uint32_t u1 = micros();
   if (presse >= 0 && millis() - tPressee > 180) { presse = -1; barreCb(fond, choix, -1); syncUI(); barreSale = true; }
   nListe = 0;
   dessinerEntites(cv, true);        // 1) boîtes englobantes (rien n'est dessiné)
+  const int lvPr = pr::niveauCb();      // presence : lumiere du ciel (basse en absence, elle revient a l'arrivee)
+  { static int lvPrec = 8; if (lvPr < 8 || lvPr != lvPrec) plein = true; lvPrec = lvPr; }
   if (plein) {
     if (mo::camOn()) mo::composer(); else if (anim) composerTransition(); else memcpy(cv.getBuffer(), fondAct->getBuffer(), (size_t)320 * 240 * bpp);
   } else {
@@ -2794,6 +2812,7 @@ static void dessiner() {
   Rect barre; barre.x0 = 0; barre.y0 = H_SCENE; barre.x1 = 320; barre.y1 = 240;
   if (plein || barreSale) restaurer(barre);       // ce qui a pu déborder sur la barre est effacé
   uint32_t u3 = micros();
+  if (lvPr < 8) pr::assombrir(cv, 0, H_SCENE, lvPr);      // presence : scene assombrie (jamais en pleine presence)
   M5.Display.startWrite();
   if (plein) { cv.pushSprite(0, 0); plein = false; }
   else { for (int i = 0; i < nListe; i++) pousser(liste[i]); if (barreSale) pousser(barre); }
@@ -2940,4 +2959,5 @@ static void toucher(const m5::touch_detail_t& t) {
 static inline void corbeauDessiner() { cb::dessiner(); }
 static inline void corbeauToucher(const m5::touch_detail_t& t) { cb::toucher(t); }
 static inline void corbeauQuitter() { cb::quitter(); }
+static inline bool corbeauOccupe() { return cb::occupe(); }
 static inline void corbeauSonVolume() { cb::son(cb::SN_CROC, 255); }
