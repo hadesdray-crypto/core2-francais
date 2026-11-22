@@ -2785,11 +2785,12 @@ static void dessinerPanneau() {
   } else if (panPage == 3) {      // monde : décor (tour en ruine / simple) et échanges à longue distance (monde.h)
     static const char* const LD[2] = {"Simple", "Tour en ruine"}; static const char* const LO[2] = {"Non", "Oui"}; static const char* const LDC[3] = {"Complet", "Allégé", "Minimal"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
-    g.drawString("Décor du monde (tour, portique, stèles, brume)", 6, 28); segBarre(g, 4, 41, 312, 21, 2, mo::RGM.tour ? 1 : 0, LD);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Échanges à longue distance (appels, poursuites, vols)", 6, 62); segBarre(g, 4, 75, 312, 21, 2, mo::RGM.lng ? 1 : 0, LO);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Décor : arrière-plan complet, allégé ou minimal", 6, 96); segBarre(g, 4, 109, 312, 21, 3, OP.dec, LDC);
-    { static const char* const LB[3] = {"Non", "Peu", "Beaucoup"}; g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Petites bêtes à attraper (escargots, lézards, insectes)", 6, 130); segBarre(g, 4, 143, 312, 21, 3, mo::RGM.bet, LB); }
-    { static const char* const LT[3] = {"Non", "Rares", "Fréquents"}; char tb[72]; snprintf(tb, sizeof(tb), "Trésors cachés (tour, mare) : cache %u tour, %u mare", (unsigned)mo::cTour, (unsigned)mo::cMare); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString(tb, 6, 164); segBarre(g, 4, 177, 312, 21, 3, mo::RGM.tres, LT); }
+    g.drawString("Décor du monde (tour, portique, stèles, brume)", 6, 28); segBarre(g, 4, 40, 312, 16, 2, mo::RGM.tour ? 1 : 0, LD);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Échanges à longue distance (appels, poursuites, vols)", 6, 56); segBarre(g, 4, 68, 312, 16, 2, mo::RGM.lng ? 1 : 0, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Décor : arrière-plan complet, allégé ou minimal", 6, 84); segBarre(g, 4, 96, 312, 16, 3, OP.dec, LDC);
+    { static const char* const LB[3] = {"Non", "Peu", "Beaucoup"}; g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Petites bêtes à attraper (escargots, lézards, insectes)", 6, 112); segBarre(g, 4, 124, 312, 16, 3, mo::RGM.bet, LB); }
+    { static const char* const LT[3] = {"Non", "Rares", "Fréquents"}; char tb[72]; snprintf(tb, sizeof(tb), "Trésors cachés (tour, mare) : cache %u tour, %u mare", (unsigned)mo::cTour, (unsigned)mo::cMare); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString(tb, 6, 140); segBarre(g, 4, 152, 312, 16, 3, mo::RGM.tres, LT); }
+    { static const char* const LX[3] = {"Rares", "Normales", "Fréquentes"}; g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Excursions lointaines (tour, stèles, portique)", 6, 168); segBarre(g, 4, 180, 312, 16, 3, mo::RGM.exc, LX); }
   } else if (panPage == 2) {
     static const char* const LL[3] = {"Clair", "Sombre", "Horreur"}; static const char* const LQ[3] = {"Fluide", "Normal", "Riche"}; static const char* const LM[2] = {"Non", "Oui"}; static const char* const LM3p[3] = {"Non", "Images/s", "Détails"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2880,11 +2881,12 @@ static void touchPanneau(int x, int y) {
     panSale = true; return;
   }
   if (panPage == 3) {      // monde : décor et échanges lointains (clés cbmtour, cblng)
-    if (y >= 39 && y < 64) { mo::RGM.tour = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbmtour", mo::RGM.tour); mo::decorChange(); ambChange = true; }
-    else if (y >= 73 && y < 98) { mo::RGM.lng = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblng", mo::RGM.lng); }
-    else if (y >= 107 && y < 132) { OP.dec = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbdec", OP.dec); ambChange = true; }      // le decor est refait a la fermeture du panneau
-    else if (y >= 141 && y < 166) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.bet = (uint8_t)v; prefs.putUChar("cbbet", mo::RGM.bet); mo::majNbBetes(); }
-    else if (y >= 175 && y < 200) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.tres = (uint8_t)v; prefs.putUChar("cbtres", mo::RGM.tres); }      // tresors : non / rares / frequents
+    if (y >= 38 && y < 58) { mo::RGM.tour = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbmtour", mo::RGM.tour); mo::decorChange(); ambChange = true; }
+    else if (y >= 66 && y < 86) { mo::RGM.lng = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblng", mo::RGM.lng); }
+    else if (y >= 94 && y < 114) { OP.dec = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbdec", OP.dec); ambChange = true; }      // le decor est refait a la fermeture du panneau
+    else if (y >= 122 && y < 142) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.bet = (uint8_t)v; prefs.putUChar("cbbet", mo::RGM.bet); mo::majNbBetes(); }
+    else if (y >= 150 && y < 170) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.tres = (uint8_t)v; prefs.putUChar("cbtres", mo::RGM.tres); }
+    else if (y >= 178 && y < 198) { int v = (x - 4) * 3 / 312; if (v < 0) v = 0; if (v > 2) v = 2; mo::RGM.exc = (uint8_t)v; prefs.putUChar("cbexc", mo::RGM.exc); }      // excursions lointaines : rares / normales / frequentes      // tresors : non / rares / frequents
     else return;
     if (OP.vib) vibrer(40);
     panSale = true; return;

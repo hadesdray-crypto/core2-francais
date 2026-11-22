@@ -6,7 +6,7 @@
 // Les corbeaux partent en excursion (tour, portique, stèles, mare, champ, épouvantail) puis reviennent : ils utilisent le même code de vol que sur l'arbre.
 // Échanges à longue distance (appels et réponses, poursuites, vols de parade, tournées de groupe, regroupement sur alerte) : section « longue distance ».
 static void alerte();
-namespace fam { static bool libre(int k); static bool detourner(Corbeau& c, int idx); }
+namespace fam { static bool libre(int k); static bool detourner(Corbeau& c, int idx); static float persMul(int k, int type); }
 static void chasser(Corbeau& c);
 static void choc(float x, float y, Corbeau* a, Corbeau* b, float force);
 static void chamaille();
@@ -23,8 +23,8 @@ static const float TRX = 430.0f, PQX = 322.0f;             // vieille tour de gu
 static float TRB() { return 203.0f + 1.2f * sinf(TRX / 37.0f) + 0.8f * sinf(TRX / 13.0f + 1.0f); }      // pied de la tour (un peu enfoncé dans le sol)
 static float PQB() { return 203.0f + 1.2f * sinf(PQX / 37.0f) + 0.8f * sinf(PQX / 13.0f + 1.0f); }
 static const float STL[5][3] = {{346.0f, 28.0f, -0.12f}, {386.0f, 34.0f, 0.10f}, {470.0f, 30.0f, -0.09f}, {498.0f, 22.0f, 0.15f}, {-204.0f, 24.0f, 0.10f}};      // stèles : pied, hauteur, inclinaison
-struct Mon { uint8_t tour, lng, bet, tres; };      // réglages : décor « tour en ruine » (1) ou « simple » (0) ; échanges à longue distance (1) ou non (0)
-static Mon RGM = {1, 1, 1, 1};      // tres : tresors caches 0 non, 1 rares (defaut), 2 frequents (cle cbtres)      // bet : petites betes 0 non, 1 peu (2), 2 beaucoup (4)
+struct Mon { uint8_t tour, lng, bet, tres, exc; };      // exc : excursions lointaines (tour, steles, portique) 0 rares (defaut), 1 normales, 2 frequentes (cle cbexc)      // réglages : décor « tour en ruine » (1) ou « simple » (0) ; échanges à longue distance (1) ou non (0)
+static Mon RGM = {1, 1, 1, 1, 0};      // tres : tresors caches 0 non, 1 rares (defaut), 2 frequents (cle cbtres)      // bet : petites betes 0 non, 1 peu (2), 2 beaucoup (4)
 static const float PX = -4.0f, PY = 205.0f, PRX = 42.0f, PRY = 6.5f;      // mare
 static uint16_t cTour = 0, cMare = 0;      // tresors caches dans la tour et dans la mare (cle cbcach)
 static const float CH0 = -176.0f, CH1 = -112.0f;
@@ -525,10 +525,19 @@ static void spotPerch(int dest, int sp, float& x, float& y, float& pente, int& d
   if (dest == D_STELE) { int i = sp < 3 ? sp : 0; x = STL[i][0] + STL[i][2] * STL[i][1]; y = solHaut(STL[i][0]) + 1.0f - STL[i][1] - 3.0f; d = (i & 1) ? 1 : -1; return; }      // sur une stèle
   x = TRX; y = TRB(); d = 1;
 }
+static int farPct() { return RGM.exc == 0 ? 12 : (RGM.exc == 1 ? 40 : 100); }      // 3.1.28 : part des visites au fond (tour, steles, portique) gardee selon le reglage Excursions lointaines (rares / normales / frequentes)
+static float lngMul() { return RGM.exc == 0 ? 2.2f : (RGM.exc == 1 ? 1.4f : 1.0f); }      // delai multiplie entre deux echanges a longue distance
+static int pickPond(const int* l, int n, int type) {      // tire un corbeau parmi la liste selon son caractere (fam::persMul)
+  float w[NAD], tot = 0.0f; if (n > NAD) n = NAD;
+  for (int i = 0; i < n; i++) { w[i] = fam::persMul(l[i], type); tot += w[i]; }
+  float r = rnd01() * tot; for (int i = 0; i < n; i++) { if (r < w[i]) return l[i]; r -= w[i]; } return l[n - 1];
+}
 static int choisirDest(int idx) {
   float w[D_NB] = {0};
-  if (RGM.tour) { w[D_TOUR] = 30.0f; w[D_STELE] = 14.0f; w[D_PORT] = 12.0f; }
-  w[D_MARE] = 34.0f; w[D_CHAMP] = 24.0f; w[D_EPOUV] = 16.0f; if (beteDispo()) w[D_BETE] = 36.0f;
+  // 3.1.28 : la chasse (petites betes) et le champ (graines) sont les excursions les plus frequentes ; la visite au fond est rare (reglage) et depend du caractere du corbeau
+  const float mf = fam::persMul(idx, 0) * (float)farPct() * 0.01f, mc = fam::persMul(idx, 1);
+  if (RGM.tour) { w[D_TOUR] = 30.0f * mf; w[D_STELE] = 14.0f * mf; w[D_PORT] = 12.0f * mf; }
+  w[D_MARE] = 26.0f; w[D_CHAMP] = 40.0f * mc; w[D_EPOUV] = 12.0f; if (beteDispo()) w[D_BETE] = 90.0f * mc;
   if (rt[idx].away) w[rt[idx].dest] = 0.0f;
   float tot = 0.0f;
   for (int i = 0; i < D_NB; i++) { if (i == D_DISPUTE || !placeLibre(i)) w[i] = 0.0f; tot += w[i]; }
@@ -904,6 +913,7 @@ static void chargerMon() {
   RGM.tour = prefs.getUChar("cbmtour", 1) ? 1 : 0; RGM.lng = prefs.getUChar("cblng", 1) ? 1 : 0;
   RGM.bet = prefs.getUChar("cbbet", 1); if (RGM.bet > 2) RGM.bet = 1;
   RGM.tres = prefs.getUChar("cbtres", 1); if (RGM.tres > 2) RGM.tres = 1;
+  RGM.exc = prefs.getUChar("cbexc", 0); if (RGM.exc > 2) RGM.exc = 0;
   { const uint32_t v = prefs.getUInt("cbcach", 0); cTour = (uint16_t)(v & 0xFFFFu); cMare = (uint16_t)(v >> 16); }
 }
 static void spawnHalo(const Corbeau& c, float amp) {
@@ -948,12 +958,12 @@ static void chasseBetes(float dt) {      // un corbeau de l'arbre repere une pet
   }
   gBete -= dt;
   if (gBete > 0.0f) return;
-  gBete = rnd(14.0f, 28.0f) / actFreq;
+  gBete = rnd(11.0f, 22.0f) / actFreq;
   if (nbBetes() == 0 || !beteDispo() || V.ph != V_RIEN || GP.ph || appelOn || panneau || nbAilleurs() >= 2) return;
   int l[NAD], n = 0;
   for (int k = 0; k < NAD; k++) { Corbeau& c = cr[k]; if (!rt[k].away && c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f && fam::libre(k)) l[n++] = k; }
   if (!n) return;
-  repK = (int8_t)l[random(n)]; repT = rnd(0.9f, 1.5f); repB = (int8_t)beteChoix(); if (repB < 0) repK = -1;
+  repK = (int8_t)pickPond(l, n, 1); repT = rnd(0.9f, 1.5f); repB = (int8_t)beteChoix(); if (repB < 0) repK = -1;
 }
 static void regrouper() {      // alerte : tous les oiseaux du monde rentrent à l'arbre en se suivant, les mieux classés les premiers
   int n = 0;
@@ -969,7 +979,7 @@ static void decorChange() {      // le décor passe à « simple » : ceux qui s
   if (RGM.tour) return;
   for (int k = 0; k < NAD; k++) { Rt& r = rt[k]; if (r.away && (r.dest == D_TOUR || r.dest == D_STELE || r.dest == D_PORT)) rentrer(k, 0.1f * (float)k); }
 }
-static void finLng() { LG.on = false; gLng = rnd(18.0f, 34.0f); }
+static void finLng() { LG.on = false; gLng = rnd(18.0f, 34.0f) * lngMul(); }
 static void finDuo(Corbeau& c, int k) {      // le duo se sépare du site : prochaine étape ensemble ou retour côte à côte
   Rt& r = rt[k];
   if (r.seq) { int d = r.seq - 1; r.seq = 0; if ((d == D_MARE || d == D_TOUR || d == D_STELE || d == D_PORT) && !placeLibre(d)) d = D_CHAMP; if (excursion(c, k, d)) return; }
@@ -1009,7 +1019,7 @@ static void debutLng() {
     } break;
     case L_PARADE: {      // deux amis partent ensemble vers un site à deux places, côte à côte
       int a = tr[0], b = -1, best = -99; for (int i = 1; i < nt; i++) { int li = lien[a][tr[i]]; if (li > best) { best = li; b = tr[i]; } }
-      int cand[4], nc = 0; if (RGM.tour) { if (nLibres(D_TOUR) >= 2) cand[nc++] = D_TOUR; if (nLibres(D_STELE) >= 2) cand[nc++] = D_STELE; if (nLibres(D_PORT) >= 2) cand[nc++] = D_PORT; } if (nLibres(D_MARE) >= 2) cand[nc++] = D_MARE;
+      int cand[4], nc = 0; if (RGM.tour && random(100) < farPct()) { if (nLibres(D_TOUR) >= 2) cand[nc++] = D_TOUR; if (nLibres(D_STELE) >= 2) cand[nc++] = D_STELE; if (nLibres(D_PORT) >= 2) cand[nc++] = D_PORT; } if (nLibres(D_MARE) >= 2) cand[nc++] = D_MARE;
       if (b < 0 || nc == 0) return;
       int d1 = cand[random(nc)], d2 = (d1 == D_MARE) ? D_CHAMP : D_MARE, sq = (random(100) < 55) ? d2 + 1 : 0;
       rt[a].cop = (uint8_t)(b + 1); rt[b].cop = (uint8_t)(a + 1); rt[a].seq = rt[b].seq = (uint8_t)sq; rt[a].grp = rt[b].grp = 1;
@@ -1018,7 +1028,7 @@ static void debutLng() {
       n.a = (int8_t)a; n.b = (int8_t)b; son(SN_AILES, 200); camPour(16.0f);
     } break;
     default: {      // tournée de groupe : arbre, tour (ou épouvantail), puis mare
-      int d1 = RGM.tour ? D_TOUR : D_EPOUV; int m = nLibres(d1); if (m > nt) m = nt; if (m > 3) m = 3; if (m < 2) return;
+      int d1 = (RGM.tour && random(100) < farPct()) ? D_TOUR : D_EPOUV; int m = nLibres(d1); if (m > nt) m = nt; if (m > 3) m = 3; if (m < 2) return;
       int d2 = placeLibre(D_MARE) ? D_MARE : D_CHAMP, lead = tr[0], ok = 0;
       for (int i = 1; i < m; i++) if (rang[tr[i]] < rang[lead]) lead = tr[i];
       int idx[3], ni = 0;
@@ -1037,7 +1047,7 @@ static void majLng(float dt) {
   const bool calme = V.ph == V_RIEN && !GP.ph && !appelOn && !panneau && !H.actif;
   if (!LG.on) {
     gLng -= dt * actFreq;
-    if (gLng <= 0.0f) { gLng = rnd(18.0f, 34.0f); if (RGM.lng && pret && calme && tAlerte <= 0.0f && AP.n == 0 && !S.on) debutLng(); }
+    if (gLng <= 0.0f) { gLng = rnd(18.0f, 34.0f) * lngMul(); if (RGM.lng && pret && calme && tAlerte <= 0.0f && AP.n == 0 && !S.on) debutLng(); }
     return;
   }
   if (!calme || !RGM.lng || (tAlerte > 0.0f && LG.type != L_ALERTE)) { finLng(); return; }
@@ -1199,7 +1209,7 @@ static void tresorDebut() {      // un corbeau perche trouve un objet brillant a
   if (!n) return;
   int j = -1; for (int i = 0; i < NOB; i++) if (!ob[i].actif) { j = i; break; }
   if (j < 0) return;
-  const int k = l[random(n)]; static const uint8_t TT[4] = {T_BRILLANT, T_BAGUE, T_BRILLANT, T_BAGUE};
+  const int k = pickPond(l, n, 2); static const uint8_t TT[4] = {T_BRILLANT, T_BAGUE, T_BRILLANT, T_BAGUE};
   Obj& o = ob[j]; o.actif = true; o.type = TT[random(4)]; o.x = rnd(100.0f, 240.0f); o.y = solHaut(o.x) - 3.2f; o.vy = 0; o.t = 0; o.repos = true; o.reserve = -1;
   Corbeau& c = cr[k]; c.d = (o.x >= c.x) ? 1 : -1; c.look = lim(atan2f(solHaut(o.x) - c.y, fabsf(o.x - c.x) + 8.0f) * 0.7f, -0.3f, 0.8f); c.tLook = 1.0f;
   tK = (int8_t)k; tObj = (int8_t)j; tPh = 0; tT = 0.0f; tOu = (RGM.tour && random(100) < 72) ? 0 : 1;
@@ -1256,7 +1266,18 @@ static void maj(float dt) {
     if (V.ph == V_RIEN && !GP.ph && !appelOn && !panneau && nbAilleurs() < 2) {
       int l[NAD], n = 0;
       for (int k = 0; k < NAD; k++) { Corbeau& c = cr[k]; if (!rt[k].away && c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f) l[n++] = k; }
-      if (n) { int k = l[random(n)], d = choisirDest(k); if (d >= 0) excursion(cr[k], k, d); }
+      if (n) {
+        const int k = pickPond(l, n, 3), d = choisirDest(k);
+        if (d >= 0) {
+          int a = -1;      // un sociable part au champ avec son meilleur ami (graines a deux)
+          if (d == D_CHAMP && n >= 2 && nbAilleurs() == 0 && fam::persMul(k, 4) > 0.55f && random(100) < 45) { int bl = 0; for (int i = 0; i < n; i++) { const int q = l[i]; if (q != k && lien[k][q] > bl) { bl = lien[k][q]; a = q; } } }
+          if (a >= 0) {
+            rt[k].cop = (uint8_t)(a + 1); rt[a].cop = (uint8_t)(k + 1); rt[k].grp = rt[a].grp = 1; rt[k].seq = rt[a].seq = 0;
+            const bool o1 = excursion(cr[k], k, d), o2 = o1 && excursion(cr[a], a, d);
+            if (!o2) { rt[k].cop = rt[a].cop = 0; rt[k].grp = rt[a].grp = 0; }
+          } else excursion(cr[k], k, d);
+        }
+      }
     }
   }
 }

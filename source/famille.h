@@ -147,6 +147,20 @@ static bool libre(int k) {      // perché sur l'arbre, sans rien à faire de pa
   if (k == PE.par && soinOn()) return false;      // le parent attitré veille sur son petit
   return c.etat == E_PERCHE && c.visible && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && c.objet == 0 && c.act <= A_REGARDE && c.duvet < 0.5f && !mo::rt[k].away;
 }
+static float persMul(int k, int type) {      // 3.1.28 : comportement propre a chaque corbeau (traits memorises de la colonie : audace, calme, curiosite, sociabilite, force ; role ; rang). type 0 visite au fond, 1 chasse / nourriture, 2 recherche de tresor, 3 gout de la sortie, 4 sociabilite (0 a 1)
+  if (k < 0 || k >= NM) return (type == 4) ? 0.5f : 1.0f;
+  const float a = S.aud[k] / 255.0f, ca = S.cal[k] / 255.0f, cu = S.cur[k] / 255.0f, so = S.soc[k] / 255.0f, fo = S.frc[k] / 255.0f;
+  if (type == 4) return so;
+  float m = 1.0f;
+  switch (type) {
+    case 0: m = 0.30f + 1.5f * (0.45f * a + 0.40f * cu + 0.15f * (1.0f - ca)); if (S.role[k] == R_ALPHA) m *= 0.8f; break;      // les audacieux et les curieux vont plus loin, les craintifs restent pres de l'arbre
+    case 1: m = 0.50f + 1.1f * (0.50f * fo + 0.30f * a + 0.20f * cu); if (S.role[k] == R_ALPHA) m *= 1.2f; m *= 1.15f - 0.05f * (float)S.rang[k]; if (k == PE.par && PE.par < NAD) m *= 1.4f; break;      // les forts, les bien classes et le parent du petit chassent plus
+    case 2: m = 0.30f + 1.5f * (0.60f * cu + 0.40f * a); break;
+    default: m = 0.55f + 0.9f * (0.40f * a + 0.30f * cu + 0.30f * so); break;
+  }
+  if (S.role[k] == R_JEUNE && type != 1) m *= 0.6f;      // le jeune reste plus pres de l'arbre
+  return m < 0.15f ? 0.15f : m;
+}
 static bool calme() {
   if (V.ph != V_RIEN || GP.ph || appelOn || H.actif || panneau || tAlerte > 0.0f) return false;
   for (int i = 0; i < NOB; i++) if (ob[i].actif) return false;
