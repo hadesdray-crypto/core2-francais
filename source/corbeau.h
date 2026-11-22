@@ -903,11 +903,20 @@ struct Rep { float cx, cy, d, s, ct, st, sx = 1.0f, sy = 1.0f, sn = 0.0f, ro = 0
     X = cx + x; Y = cy + y;
   }
   void p(float u, float v, float& X, float& Y) const { q(u, v, 0.0f, X, Y); }
+  void q0(float u, float v, float w, float& X, float& Y) const {      // 3.1.32 : idem q sans roulis = position de reference du corps (le corps lui-meme ne roule pas)
+    float uu = u * ct + v * st, vv = -u * st + v * ct, x = s * sx * (uu * d - w * sn), y = s * sy * vv;
+    if (sn > 0.001f) { float k = 1.0f + 0.012f * (uu * sn + w * d) * sn; x *= k; y *= k; }
+    X = cx + x; Y = cy + y;
+  }
+  void soude(float u, float v, float w, float& dx, float& dy) const {      // decalage a ajouter aux points roules d'une aile pour que sa racine (u, v, w) reste collee a l'epaule du corps non roule
+    dx = 0.0f; dy = 0.0f; if (ro == 0.0f) return; float ax, ay, bx, by; q(u, v, w, ax, ay); q0(u, v, w, bx, by); dx = bx - ax; dy = by - ay;
+  }
   void pw(float u, float v, float wf, float& X, float& Y) const { float uu = u * ct + v * st, vv = -u * st + v * ct; X = cx + s * sx * uu * wf; Y = cy + s * sy * vv; }      // largeur propre (corps, poitrine)
 };
 static void polyS(M5Canvas& g, const float* p, int n, uint16_t c) {      // éventail depuis le premier point (pour les formes en étoile)
   for (int i = 1; i < n - 1; i++) tri(g, p[0], p[1], p[i * 2], p[i * 2 + 1], p[i * 2 + 2], p[i * 2 + 3], c);
 }
+static const float EPAULE = 4.2f;      // 3.1.32 : ecart lateral de l'epaule (aile ouverte et aile repliee partent du meme point : pas de saut au decollage)
 static void dirAile(float e, float sw, float& du, float& dv) {
   float er = e * 0.0174533f; float a = -sw * cosf(er), b = -sinf(er); float l = sqrtf(a * a + b * b); if (l < 0.001f) l = 1; du = a / l; dv = b / l;
 }
@@ -915,9 +924,10 @@ static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, 
   // panneau de l'avant-bras + 6 grandes plumes qui s'écartent en éventail ; wsgn = +1 aile du côté P, -1 aile du côté Q (le côté s'écarte quand le corps pivote)
   if (wl < 0.04f) return;
   const bool plat = (R_.sn < 0.001f && R_.ro == 0.0f);
+  float sdx = 0.0f, sdy = 0.0f; if (!plat) R_.soude(su, sv, wsgn * EPAULE, sdx, sdy);      // 3.1.32 : racine soudee a l'epaule meme quand le corps roule (virage, retournement)
   auto PW = [&](float u, float v, float& X, float& Y) {
     if (plat) { R_.p(u, v, X, Y); return; }
-    float du_ = u - su, dv_ = v - sv; R_.q(u, v, wsgn * (2.4f + 0.30f * sqrtf(du_ * du_ + dv_ * dv_) + 0.55f * fabsf(du_)), X, Y);
+    float du_ = u - su, dv_ = v - sv; R_.q(u, v, wsgn * (EPAULE + 0.30f * sqrtf(du_ * du_ + dv_ * dv_) + 0.55f * fabsf(du_)), X, Y); X += sdx; Y += sdy;
   };
   float dau, dav, dhu, dhv; dirAile(a.ea, a.sa, dau, dav); dirAile(a.eh, a.sh, dhu, dhv);
   float la = 17.0f * wl, lh = 23.0f * wl;
@@ -1034,17 +1044,19 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       tri(g, x1, y1, x2, y2, x3, y3, NOIR);
     }
   }
+  const float apf = 1.0f - lim(c.wl / 0.6f, 0.0f, 1.0f), alev = lim(0.9f / (s * zs), 1.0f, 2.2f), ayp = -5.7f - 1.6f * alev;      // 3.1.32 : aile repliee plaquee au dos, bord superieur releve au-dessus de la ligne du dos (au moins ~1 px a l'ecran, meme tres petit)
   if (c.wl < 0.6f) {      // aile repliée sur le flanc : couvertures + primaires pointues qui pendent vers le bas (les deux côtés quand il pivote)
-    const float wp[10] = {5.5f, -5.6f, -5.0f, -6.6f, -14.0f, -3.0f, -15.5f, 2.0f, -2.0f, 3.8f};
+    const float wp[10] = {6.0f, -4.6f, -1.5f, ayp, -14.5f, -3.4f, -15.5f, 2.0f, -2.0f, 3.8f};
     const float lointain = (dv >= 0) ? -1.0f : 1.0f;
     for (int cote = 0; cote < 2; cote++) {
       float ws = cote ? lointain : -lointain; if (cote && sn < 0.05f) continue;
-      float wz = ws * 4.2f; if (sn < 0.001f && c.ro == 0.0f) wz = 0.0f;
-      for (int i = 0; i < 5; i++) R_.q(wp[i * 2], wp[i * 2 + 1], wz, q[i * 2], q[i * 2 + 1]);
+      float wz = ws * EPAULE; if (sn < 0.001f && c.ro == 0.0f) wz = 0.0f;
+      float fdx, fdy; R_.soude(wp[0], wp[1], wz, fdx, fdy);
+      for (int i = 0; i < 5; i++) { R_.q(wp[i * 2], wp[i * 2 + 1], wz, q[i * 2], q[i * 2 + 1]); q[i * 2] += fdx; q[i * 2 + 1] += fdy; }
       poly(g, q, 5, NOIR);
       for (int k = 0; k < (mnE() ? 1 : (dgE() ? 2 : 4)); k++) {
         float u0 = 2.0f - 3.8f * k, v0 = 3.0f, lg = (9.0f + ((k % 2 == 0) ? 4.0f : 0.0f)) * c.wd, x1, y1, x2, y2, x3, y3;
-        R_.q(u0 + 2.0f, v0 - 1.4f, wz, x1, y1); R_.q(u0 - 2.0f, v0 + 0.8f, wz, x2, y2); R_.q(u0 - lg, v0 + 1.0f + ((k % 2) ? 2.0f : -1.0f), wz, x3, y3);
+        R_.q(u0 + 2.0f, v0 - 1.4f, wz, x1, y1); R_.q(u0 - 2.0f, v0 + 0.8f, wz, x2, y2); R_.q(u0 - lg, v0 + 1.0f + ((k % 2) ? 2.0f : -1.0f), wz, x3, y3); x1 += fdx; y1 += fdy; x2 += fdx; y2 += fdy; x3 += fdx; y3 += fdy;
         tri(g, x1, y1, x2, y2, x3, y3, NOIR);
       }
     }
@@ -1070,7 +1082,8 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   }
   // liseré rouge sombre côté lune : du volume ; le ventre s'éclaire quand le corbeau se montre de face
   { const uint16_t RIMC = (OP.hor == 2) ? C(70, 12, 18) : ((OP.hor == 1) ? C(88, 16, 22) : C(104, 20, 26)); float x1, y1, x2, y2;
-    const float bd[3][4] = {{8, -5.4f, 0, -6.2f}, {0, -6.2f, -9, -5}, {-9, -5, -14, -3}};
+    const float rB = lerpf(-6.2f, -4.6f + 0.667f * (ayp + 4.6f), apf), rC = lerpf(-5.0f, ayp + 0.577f * (-3.4f - ayp), apf), rBu = lerpf(0.0f, 1.0f, apf), rDu = lerpf(-14.0f, -14.5f, apf), rD = lerpf(-3.0f, -3.4f, apf);      // le liseré suit le bord releve de l'aile repliee
+    const float bd[3][4] = {{8, -5.4f, rBu, rB}, {rBu, rB, -9, rC}, {-9, rC, rDu, rD}};
     if (!qMin) for (int i = 0; i < 3; i++) { P(bd[i][0], bd[i][1], x1, y1); P(bd[i][2], bd[i][3], x2, y2); ligne(g, x1, y1, x2, y2, RIMC); }
     const float hd[4][4] = {{-3.2f, -4.6f, 0, -5.2f}, {0, -5.2f, 3.4f, -4.4f}, {4.2f, -3.4f, 7.6f, -3.1f}, {7.6f, -3.1f, 13, 0.6f}};
     if (!qMin) for (int i = 0; i < 4; i++) { PH(hd[i][0], hd[i][1], x1, y1); PH(hd[i][2], hd[i][3], x2, y2); ligne(g, x1, y1, x2, y2, RIMC); }

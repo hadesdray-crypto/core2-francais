@@ -607,8 +607,9 @@ static void poussin(M5Canvas& g, int i, int n, float gr, float lev) {      // un
   const uint16_t col = plu ? C(14, 8, 12) : C(46, 39, 43), clair = plu ? C(70, 30, 34) : C(92, 82, 86);
   if (plu) {      // jeune : petites ailes qui battent de temps en temps
     float bat = (fmodf(tAnim * 0.37f + h01(i, 9), 1.0f) < 0.18f) ? sinf(tAnim * 26.0f) : 0.0f;
-    tri(g, x - w * 0.6f, by - hh * 0.7f, x - w - 4.5f * sz, by - hh * 0.9f - 3.0f * sz * (0.4f + 0.6f * bat), x - w * 0.2f, by - hh * 0.2f, col);
-    tri(g, x + w * 0.6f, by - hh * 0.7f, x + w + 4.5f * sz, by - hh * 0.9f - 3.0f * sz * (0.4f + 0.6f * bat), x + w * 0.2f, by - hh * 0.2f, col);
+    const float ext = 1.1f + 3.4f * fabsf(bat);      // 3.1.32 : au repos les petites ailes restent plaquees au corps (bout a peine sorti), elles s'ecartent seulement quand elles battent
+    tri(g, x - w * 0.6f, by - hh * 0.7f, x - w - ext * sz, by - hh * 0.9f - 3.0f * sz * (0.4f + 0.6f * bat), x - w * 0.2f, by - hh * 0.2f, col);
+    tri(g, x + w * 0.6f, by - hh * 0.7f, x + w + ext * sz, by - hh * 0.9f - 3.0f * sz * (0.4f + 0.6f * bat), x + w * 0.2f, by - hh * 0.2f, col);
   }
   ell(g, x, by - hh * 0.4f, w, hh, col);
   if (!plu) for (int j = 0; j < 6; j++) { float a = -2.7f + j * 0.45f; ligne(g, x + cosf(a) * w * 0.8f, by - hh * 0.4f + sinf(a) * hh * 0.8f, x + cosf(a) * (w + 1.8f * sz), by - hh * 0.4f + sinf(a) * (hh + 1.8f * sz), clair); }      // duvet hérissé
