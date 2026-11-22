@@ -49,7 +49,7 @@ static void epais(M5Canvas& g, float x0, float y0, float x1, float y1, float w, 
 static void ellO(M5Canvas& g, float x, float y, float rx, float ry, uint16_t c) {      // contour d'ellipse
   int a = ar(rx * zs), b = ar(ry * zs); if (a < 1) a = 1; if (b < 1) b = 1; const float X = TX(x), Y = TY(y); if (!coordOk(X, Y)) return;
   bbPt(X - a, Y - b); bbPt(X + a, Y + b);
-  if (sec) { hmix(0x500000u | (uint16_t)ar(X)); hmix(((uint32_t)(uint16_t)ar(Y) << 16) | (uint16_t)a); hmix(((uint32_t)(uint16_t)b << 16) | c); return; }
+  if (sec) { hmix(0x500000u | (uint16_t)ar(X)); hmix(((uint32_t)(uint16_t)ar(Y) << 16) | (uint16_t)a); hmix(((uint32_t)(uint16_t)b << 16) | c); cmdPush(5, c, ar(X), ar(Y), a, b); return; }
   g.drawEllipse(ar(X), ar(Y), a, b, c);
 }
 static float echelleX(float x) {      // perspective par lieu : la mare est tout près (grand), l'arbre et le champ à distance normale, le portique plus loin, les stèles et la tour tout au fond (petit)
@@ -227,7 +227,7 @@ static void bakeProche() {
     cloture(g, 520.0f, 548.0f, 13.0f, noir);
   } else cloture(g, 360.0f, 392.0f, 13.0f, noir);
   dessinerEpouvantail(g, (CH0 + CH1) * 0.5f, solHaut((CH0 + CH1) * 0.5f), 1.0f, noir);
-  brumeBasse(g, RGM.tour ? 520 : 260);
+  brumeBasse(g, (RGM.tour ? 520 : 260) >> OP.dec);      // décor allégé : moitié moins de traits de brume ; minimal : le quart
 }
 static void bakeArbre() {
   VueId v_; fixerVue(AX0, AY0);
@@ -293,7 +293,7 @@ static Goutte gout[14];
 static void spawnOnde(float x, float y) { for (int i = 0; i < 4; i++) if (!onde[i].on) { onde[i].on = true; onde[i].x = x; onde[i].y = y; onde[i].t = 0; return; } }
 static void spawnGoutte(float x, float y, float vx, float vy) { for (int i = 0; i < 14; i++) if (!gout[i].on) { gout[i].on = true; gout[i].x = x; gout[i].y = y; gout[i].vx = vx; gout[i].vy = vy; gout[i].t = 0; return; } }
 static bool vis(float x0, float x1) { return TX(x1) > -12.0f && TX(x0) < 332.0f; }
-static void dynPart(int kp) {      // morceau kp du décor animé (0 lanterne de la tour, 1 lanterne du portique, 2 brume, 3 halos sonores, 4 eau, 5 gouttes) : chacun a son propre rectangle, dessiné après les couches du paysage
+static void dynPart(int kp) {      // morceau kp du décor animé (0 lanterne de la tour, 1 lanterne du portique, 2 à 4 les trois bandes de brume, 5 halos sonores, 6 eau, 7 gouttes) : chacun a son propre rectangle, dessiné après les couches du paysage
   M5Canvas& g = cv; const float t = tAnim;
   if (kp == 0 && RGM.tour && vis(TRX - 26, TRX + 26)) {      // lanterne rouge dans la fenêtre de la tour : faible, qui vacille, parfois presque éteinte
     float f = 0.70f + 0.25f * sinf(t * 7.0f) * sinf(t * 2.1f + 1.0f); if (fmodf(t, 37.0f) < 0.30f) f = 0.10f;
@@ -306,35 +306,35 @@ static void dynPart(int kp) {      // morceau kp du décor animé (0 lanterne de
     float f = 0.55f + 0.30f * sinf(t * 5.3f + 2.0f) * sinf(t * 1.7f); const float b = PQB();
     disque(g, PQX - 7.0f, b - 40.5f, 5.5f, CF(24 * f, 3 * f, 4 * f)); disque(g, PQX - 7.0f, b - 40.5f, 1.9f, CF(210 * f, 36 * f, 26 * f));
   }
-  if (kp == 2 && RGM.tour && !qMin) {      // brume basse qui dérive lentement (allègement maximal : supprimée le temps que l'image rattrape son retard)
-    for (int i = 0; i < 3; i++) {
+  if (kp >= 2 && kp <= 4 && RGM.tour && decLvl() < 2 && (kp == 2 || decLvl() == 0)) {      // brume basse qui dérive lentement : une bande par rectangle (décor minimal ou allègement maximal : supprimée ; allégé : une seule bande)
+    for (int i = kp - 2; i <= kp - 2; i++) {
       float x = fmodf(t * (5.0f + 2.0f * i) + i * 230.0f, 800.0f) + MX0, y = solHaut(x) - 2.5f - 2.0f * i;
       if (vis(x, x + 44.0f)) { float k = ambCol; ligne(g, x, y, x + 44.0f, y, CF(34 * k, 10 * k, 18 * k)); ligne(g, x + 8.0f, y - 1.2f, x + 36.0f, y - 1.2f, CF(24 * k, 7 * k, 13 * k)); }
     }
   }
-  if (kp == 3) for (int i = 0; i < NHALO; i++) if (halo[i].on) {      // halo sonore : trois petits arcs qui s'éloignent de la tête, dans le sens du regard
+  if (kp == 5) for (int i = 0; i < NHALO; i++) if (halo[i].on) {      // halo sonore : trois petits arcs qui s'éloignent de la tête, dans le sens du regard
     Halo& q = halo[i]; if (!vis(q.x - 30.0f, q.x + 30.0f)) continue;
     for (int j = 0; j < 3; j++) {
       float u = (q.t - 0.16f * j) / 0.9f; if (u <= 0.0f || u >= 1.0f) continue;
       float r = 4.0f + 20.0f * u * q.amp, fa = (1.0f - u) * q.amp, px = 0, py = 0;
-      const int SG = qDeg ? 2 : 4;      // allègement : trois segments au lieu de cinq pour l'arc
+      const int SG = decLvl() ? 2 : 4;      // allègement : trois segments au lieu de cinq pour l'arc
       for (int sgm = 0; sgm <= SG; sgm++) {
         float a = -0.75f + (1.5f / (float)SG) * sgm, X = q.x + q.d * r * cosf(a), Y = q.y + r * 0.85f * sinf(a);
         if (sgm) ligne(g, px, py, X, Y, CF(230 * fa, 70 * fa, 60 * fa)); px = X; py = Y;
       }
     }
   }
-  if (kp == 4 && vis(PX - PRX - 4, PX + PRX + 4)) {
-    if (!qDeg) for (int i = 0; i < 4; i++) {      // reflets sur l'eau (supprimés pendant un allègement)
+  if (kp == 6 && vis(PX - PRX - 4, PX + PRX + 4)) {
+    if (decLvl() == 0) for (int i = 0; i < 4; i++) {      // reflets sur l'eau (supprimés avec un décor allégé ou pendant un allègement)
       float a = 0.5f + 0.5f * sinf(t * 1.7f + i * 2.1f), x = PX + 12.0f * sinf(t * 0.6f + i * 1.9f) - 6.0f, y = PY + (i - 1.5f) * 2.0f, l = 5.0f + 5.0f * a;
       if (fabsf(x - PX) + l > PRX * (1.0f - fabsf(y - PY) / PRY * 0.5f)) continue;
       ligne(g, x - l, y, x + l, y, CF(40 + 40 * a, 8 + 6 * a, 20 + 12 * a));
     }
     for (int i = 0; i < 4; i++) if (onde[i].on) { float u = onde[i].t / 1.3f, r = 2.0f + 9.0f * u; ellO(g, onde[i].x, onde[i].y, r, r * 0.32f, CF(120 * (1 - u), 40 * (1 - u), 60 * (1 - u))); }
   }
-  if (kp == 5) for (int i = 0; i < 14; i++) if (gout[i].on) disque(g, gout[i].x, gout[i].y, 0.9f, C(150, 70, 90));
+  if (kp == 7) for (int i = 0; i < 14; i++) if (gout[i].on) disque(g, gout[i].x, gout[i].y, 0.9f, C(150, 70, 90));
 }
-static void dyn() { for (int k = 0; k < 6; k++) dynPart(k); }
+static void dyn() { for (int k = 0; k < 8; k++) dynPart(k); }
 
 // ---------- caméra ----------
 static uint8_t cm = CM_NON; static bool cmAuto = false, cmFin = false;

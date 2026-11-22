@@ -25,7 +25,7 @@
 #include "presence.h"      // presence / absence des personnages et des univers (3.1.6)
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.19"
+#define VERSION_PROGRAMME "3.1.20"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 #define SOURCE_MAJ_TEST "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/version.json"      // canal « test » (par défaut) : publié automatiquement après chaque compilation réussie de la branche corbeau

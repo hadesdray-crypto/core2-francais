@@ -45,7 +45,7 @@ static const int NOB = 4;        // objets au sol / qui tombent
 static const int NPE = 6;        // perchoirs
 static const int NPART = 44;    // plumes
 static const int NFX = 6;       // éclats lumineux
-static const int NEXT = 12;                // rectangles en plus pour les groupes d'éléments dispersés (plumes, petits corbeaux de la nuée, éclats) : plusieurs petits rectangles au lieu d'un seul très grand
+static const int NEXT = 14;                // rectangles en plus pour les groupes d'éléments dispersés (plumes, petits corbeaux de la nuée, éclats) : plusieurs petits rectangles au lieu d'un seul très grand
 static const int NENT = NCB + NOB + 13 + NEXT;
 static const int H_SCENE = 206; // la barre de nourriture occupe le bas
 static const float SOL_Y = 201.0f;
@@ -103,7 +103,7 @@ static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 
 // ---------- réglages du mode (nouvelles clés mémoire : cbnb, cbvis, cbsec, cbvib, cbamb, cbfps, cboeufs) ----------
 // nouvelles clés (2.9.0) : cbact (activité 1 à 5), cbgp (visites au gros plan 0 à 3), cboefq (fréquence des œufs 0 à 3), cbhor (ambiance Horreur)
 // fps : 0 non, 1 images/s en petit coin, 2 mesures détaillées ; cad : cadence maximale 0 = 20, 1 = 25, 2 = 30 images/s (défaut) ; deg : allègement automatique des détails si l'image est trop lente ; ecr : écran rapide (80 MHz) gardé
-struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto; };      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
+struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto, dec; };      // dec : decor 0 complet (defaut, s'allege seul si l'image ralentit), 1 allege, 2 minimal ;      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
 static Opt OP = {4, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0, 1, 1, 1, 1, 1, 2, 0, 2, 1, 0, 0};      // paume : main ouverte paume vers le haut (1 oui) ; pvis : visites dans la paume (0 jamais, 1 rare, 2 normales, 3 souvent) ; recul : vue reculée (0 normale, 1 reculée, 2 très reculée)
 static inline float tailleF() { static const float F[3] = {1.0f, 1.10f, 1.25f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux : petit (comme avant), normal (+10 %), grand (+25 %)
 static uint32_t tQ = 0, tBon = 0;
@@ -151,6 +151,7 @@ static void chargerOptions() {
   OP.fps = prefs.getUChar("cbfps", 0); if (OP.fps > 2) OP.fps = 0;      // 0 non (défaut), 1 images/s en petit coin, 2 mesures détaillées
   OP.cad = prefs.getUChar("cbcad", 2); if (OP.cad > 2) OP.cad = 2;      // cadence maximale : 20, 25 ou 30 images/s (défaut 30)
   OP.deg = prefs.getUChar("cbdeg", 1) ? 1 : 0;      // allègement automatique : oui par défaut
+  OP.dec = prefs.getUChar("cbdec", 0); if (OP.dec > 2) OP.dec = 0;      // decor : complet par defaut
   OP.ecr = prefs.getUChar("cbecr", 0) ? 1 : 0;      // écran rapide 80 MHz : non par défaut (à essayer dans Réglages > Fluidité)
   OP.act = prefs.getUChar("cbact", 3); if (OP.act < 1 || OP.act > 5) OP.act = 3;
   OP.gp = prefs.getUChar("cbgp", 2); if (OP.gp > 3) OP.gp = 2;
@@ -191,6 +192,34 @@ struct Rect { int16_t x0, y0, x1, y1; };   // x1, y1 exclus
 static int bbx0, bby0, bbx1, bby1;
 static uint32_t hAcc = 2166136261u;      // empreinte de ce qui serait dessiné (coordonnées entières et couleurs) : deux images identiques ont la même empreinte, le dessin est alors sauté
 static inline void hmix(uint32_t v) { hAcc = (hAcc ^ v) * 16777619u; }
+// ENREGISTREMENT : la premiere passe (boites englobantes) calcule deja toutes les coordonnees ; elle les range ici (type, couleur, coordonnees entieres) et la seconde passe les REJOUE sans refaire les calculs de projection, de sinus et de cosinus
+struct Cmd { uint8_t t, r; uint16_t c; int16_t a[6]; };      // 16 octets : t 1 triangle, 2 disque, 3 ellipse pleine, 4 ligne, 5 contour d'ellipse
+static const int CMDMAX = 4096;
+static Cmd* cmdB = nullptr; static int cmdN = 0, cmdMax = 0; static bool cmdOvf = false, recOn = false;
+static int cmdD[NENT + 3], cmdF[NENT + 3];      // debut et fin de chaque element (et des trois groupes : nuee, plumes, eclats) dans cmdB
+static const int SL_MI = NENT, SL_PL = NENT + 1, SL_FX = NENT + 2;
+static inline void cmdPush(uint8_t t, uint16_t c, int a0, int a1, int a2, int a3, int a4 = 0, int a5 = 0) {
+  if (!recOn) return;
+  if (cmdN >= cmdMax) { cmdOvf = true; return; }
+  Cmd& m = cmdB[cmdN++]; m.t = t; m.c = c; m.a[0] = (int16_t)a0; m.a[1] = (int16_t)a1; m.a[2] = (int16_t)a2; m.a[3] = (int16_t)a3; m.a[4] = (int16_t)a4; m.a[5] = (int16_t)a5;
+}
+static void rejouer(M5Canvas& g, int d, int f) {
+  for (int i = d; i < f; i++) {
+    const Cmd& m = cmdB[i];
+    switch (m.t) {
+      case 1: g.fillTriangle(m.a[0], m.a[1], m.a[2], m.a[3], m.a[4], m.a[5], m.c); break;
+      case 2: g.fillCircle(m.a[0], m.a[1], m.a[2], m.c); break;
+      case 3: g.fillEllipse(m.a[0], m.a[1], m.a[2], m.a[3], m.c); break;
+      case 4: g.drawLine(m.a[0], m.a[1], m.a[2], m.a[3], m.c); break;
+      default: g.drawEllipse(m.a[0], m.a[1], m.a[2], m.a[3], m.c); break;
+    }
+  }
+}
+// NIVEAU DE DETAIL selon la taille a l'ecran : un corbeau de 15 pixels (vue tres reculee) n'a pas besoin de 14 sommets de corps ni de 7 plumes ; invisible a cette taille, jamais en qualite Riche, jamais pour le petit duveteux
+static int lodG = 0;
+static inline bool dgE() { return qDeg || lodG >= 1; }
+static inline bool mnE() { return qMin || lodG >= 2; }
+static inline int decLvl() { const int l = qMin ? 2 : (qDeg ? 1 : 0); return (int)OP.dec > l ? (int)OP.dec : l; }      // decor : 0 complet, 1 allege, 2 minimal (reglage Decor, ou allegement automatique)
 static inline void bbReset() { bbx0 = 9999; bby0 = 9999; bbx1 = -9999; bby1 = -9999; hAcc = 2166136261u; }
 static inline void bbPt(float x, float y) {
   int xi = (int)floorf(x), yi = (int)floorf(y);
@@ -214,25 +243,25 @@ static void tri(M5Canvas& g, float x0, float y0, float x1, float y1, float x2, f
   x0 = TX(x0); y0 = TY(y0); x1 = TX(x1); y1 = TY(y1); x2 = TX(x2); y2 = TY(y2);
   if (!coordOk(x0, y0) || !coordOk(x1, y1) || !coordOk(x2, y2)) return;
   bbPt(x0, y0); bbPt(x1, y1); bbPt(x2, y2);
-  if (sec) { hmix(0x100000u | (uint16_t)ar(x0)); hmix(((uint32_t)(uint16_t)ar(y0) << 16) | (uint16_t)ar(x1)); hmix(((uint32_t)(uint16_t)ar(y1) << 16) | (uint16_t)ar(x2)); hmix(((uint32_t)(uint16_t)ar(y2) << 16) | c); return; }
+  if (sec) { hmix(0x100000u | (uint16_t)ar(x0)); hmix(((uint32_t)(uint16_t)ar(y0) << 16) | (uint16_t)ar(x1)); hmix(((uint32_t)(uint16_t)ar(y1) << 16) | (uint16_t)ar(x2)); hmix(((uint32_t)(uint16_t)ar(y2) << 16) | c); cmdPush(1, c, ar(x0), ar(y0), ar(x1), ar(y1), ar(x2), ar(y2)); return; }
   g.fillTriangle(ar(x0), ar(y0), ar(x1), ar(y1), ar(x2), ar(y2), c);
 }
 static void disque(M5Canvas& g, float x, float y, float r, uint16_t c) {
   x = TX(x); y = TY(y); r *= zs; if (!coordOk(x, y) || !(r < 3000.0f)) return;
   bbPt(x - r, y - r); bbPt(x + r, y + r);
-  if (sec) { hmix(0x200000u | (uint16_t)ar(x)); hmix(((uint32_t)(uint16_t)ar(y) << 16) | (uint16_t)ar(r)); hmix(c); return; }
+  if (sec) { hmix(0x200000u | (uint16_t)ar(x)); hmix(((uint32_t)(uint16_t)ar(y) << 16) | (uint16_t)ar(r)); hmix(c); cmdPush(2, c, ar(x), ar(y), ar(r) < 1 ? 1 : ar(r), 0); return; }
   g.fillCircle(ar(x), ar(y), ar(r) < 1 ? 1 : ar(r), c);
 }
 static void ell(M5Canvas& g, float x, float y, float rx, float ry, uint16_t c) {
   x = TX(x); y = TY(y); rx *= zs; ry *= zs; if (!coordOk(x, y) || !(rx < 3000.0f) || !(ry < 3000.0f)) return;
   bbPt(x - rx, y - ry); bbPt(x + rx, y + ry);
-  if (sec) { hmix(0x300000u | (uint16_t)ar(x)); hmix(((uint32_t)(uint16_t)ar(y) << 16) | (uint16_t)ar(rx)); hmix(((uint32_t)(uint16_t)ar(ry) << 16) | c); return; }
+  if (sec) { hmix(0x300000u | (uint16_t)ar(x)); hmix(((uint32_t)(uint16_t)ar(y) << 16) | (uint16_t)ar(rx)); hmix(((uint32_t)(uint16_t)ar(ry) << 16) | c); { const int a_ = ar(rx), b_ = ar(ry); cmdPush(3, c, ar(x), ar(y), a_ < 1 ? 1 : a_, b_ < 1 ? 1 : b_); } return; }
   int a = ar(rx), b = ar(ry); g.fillEllipse(ar(x), ar(y), a < 1 ? 1 : a, b < 1 ? 1 : b, c);
 }
 static void ligne(M5Canvas& g, float x0, float y0, float x1, float y1, uint16_t c) {
   x0 = TX(x0); y0 = TY(y0); x1 = TX(x1); y1 = TY(y1); if (!coordOk(x0, y0) || !coordOk(x1, y1)) return;
   bbPt(x0, y0); bbPt(x1, y1);
-  if (sec) { hmix(0x400000u | (uint16_t)ar(x0)); hmix(((uint32_t)(uint16_t)ar(y0) << 16) | (uint16_t)ar(x1)); hmix(((uint32_t)(uint16_t)ar(y1) << 16) | c); return; }
+  if (sec) { hmix(0x400000u | (uint16_t)ar(x0)); hmix(((uint32_t)(uint16_t)ar(y0) << 16) | (uint16_t)ar(x1)); hmix(((uint32_t)(uint16_t)ar(y1) << 16) | c); cmdPush(4, c, ar(x0), ar(y0), ar(x1), ar(y1)); return; }
   g.drawLine(ar(x0), ar(y0), ar(x1), ar(y1), c);
 }
 static void poly(M5Canvas& g, const float* p, int n, uint16_t c) {      // polygone en éventail depuis son centre
@@ -896,7 +925,7 @@ static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, 
   { float tx_, ty_;      // pointes déchirées au bord de fuite
     PW(Wu + tau * 14.0f * wl - dhu * 2.0f, Wv + tav * 14.0f * wl - dhv * 2.0f, tx_, ty_); tri(g, q[4], q[5], q[6], q[7], tx_, ty_, col);
     PW(su + dau * la * 0.45f + tau * 15.0f * wl, sv + dav * la * 0.45f + tav * 15.0f * wl, tx_, ty_); tri(g, q[6], q[7], q[8], q[9], tx_, ty_, col); }
-  for (int k = 0; k < (OP.q == 0 ? (qMin ? 3 : (qDeg ? 4 : 5)) : (qMin ? 4 : (qDeg ? 5 : 7))); k++) {
+  for (int k = 0; k < (OP.q == 0 ? (mnE() ? 3 : (dgE() ? 4 : 5)) : (mnE() ? 4 : (dgE() ? 5 : 7))); k++) {
     float phi = k * 0.14f + ((k & 1) ? 0.05f : 0.0f), cph = cosf(phi), sph = sinf(phi);
     float du = dhu * cph + thu * sph, dv = dhv * cph + thv * sph, L = lh * (1.0f - 0.045f * k) * ((k & 1) ? 0.80f : 1.04f);
     float ru = Wu + dhu * 0.7f * k + tau * 0.6f * k, rv = Wv + dhv * 0.7f * k + tav * 0.6f * k, w = 2.4f * wl + 0.7f;
@@ -919,6 +948,7 @@ static float tCs[15][14], tSn[15][14]; static bool tTrigOk = false;      // cosi
 static void initTrig() { for (int n = 6; n <= 14; n++) for (int i = 0; i < n; i++) { const float a = i * (6.2832f / (float)n); tCs[n][i] = cosf(a); tSn[n][i] = sinf(a); } tTrigOk = true; }
 static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   if (!tTrigOk) initTrig();
+  { const float sc = c.s * zs; lodG = (OP.q == 2 || c.duvet > 0.02f || sc >= 1.05f) ? 0 : (sc < 0.80f ? 2 : 1); }      // taille a l'ecran : moins de details quand le corbeau est petit
   const uint16_t NOIR = C(4, 3, 6);
   Rep R_; R_.cx = c.x; R_.cy = c.y + c.bob; R_.d = c.dv; R_.s = c.s; R_.ct = cosf(c.pitch); R_.st = sinf(c.pitch); { float sqv = c.sq > 0.2f ? c.sq : 1.0f; R_.sy = sqv; R_.sx = 1.0f / sqrtf(sqv); }
   R_.sn = sqrtf(mxf(0.0f, 1.0f - c.dv * c.dv)); if (c.ro != 0.0f) { R_.ro = c.ro; R_.cro = cosf(c.ro); R_.sro = sinf(c.ro); }
@@ -958,7 +988,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     const float bu = -8.0f, bv = 0.8f; float q4[8];
     P(-9.0f, -2.6f, q4[0], q4[1]); P(-9.0f, 3.8f, q4[2], q4[3]); P(-12.0f, 5.0f + 5.0f * perch, q4[4], q4[5]); P(-12.0f, -1.0f, q4[6], q4[7]); poly(g, q4, 4, NOIR);
     for (int k = 0; k < 5; k++) {
-      if (qMin && (k == 1 || k == 3)) continue;      // allègement maximal : trois plumes de queue au lieu de cinq
+      if (mnE() && (k == 1 || k == 3)) continue;      // allègement maximal : trois plumes de queue au lieu de cinq
       float th = droop + (k - 2) * spread + wag, L = (23.0f - fabsf((float)(k - 2)) + ((k % 2 == 0) ? 4.0f : -3.0f)) * lerpf(1.0f, 1.05f, perch);
       float dx_ = -cosf(th), dy_ = sinf(th), px_ = sinf(th), py_ = cosf(th), w = 3.0f - 0.6f * (k % 2), x1, y1, x2, y2, x3, y3;
       P(bu + px_ * w, bv + py_ * w, x1, y1); P(bu - px_ * w, bv - py_ * w, x2, y2); R_.q(bu + dx_ * L, bv + dy_ * L, (k - 2) * (0.9f + 3.4f * c.fan), x3, y3);
@@ -975,7 +1005,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   // corps : la respiration gonfle la poitrine, le secouement hérisse les plumes ; il s'élargit quand il pivote (de face, on voit sa largeur)
   float br = 1.0f + 0.05f * sinf(c.resp * 2.7f) + 0.09f * c.ruf * sinf(c.tAct * 46.0f);
   const float wfb = sqrtf(dv * dv + 0.72f * sn * sn), wfc = sqrtf(dv * dv + sn * sn);      // retournement épais : de face le corps garde au moins 85 % de sa largeur de profil (jamais une lamelle)
-  const int NB = qMin ? 8 : (qDeg ? 10 : 14), NC = qMin ? 6 : (qDeg ? 8 : 10);      // allègement : moins de sommets pour le corps et la poitrine quand l'image est en retard (jamais en temps normal)
+  const int NB = mnE() ? 8 : (dgE() ? 10 : 14), NC = mnE() ? 6 : (dgE() ? 8 : 10);      // allègement : moins de sommets pour le corps et la poitrine quand l'image est en retard (jamais en temps normal)
   for (int i = 0; i < NB; i++) { R_.pw(tCs[NB][i] * 11.8f * (1.0f + 0.02f * (br - 1.0f) * 5.0f), tSn[NB][i] * 5.9f * br, wfb, q[i * 2], q[i * 2 + 1]); }
   poly(g, q, NB, NOIR);
   float ch[20];      // poitrine bombée : centre porté par la direction, rayon par la largeur
@@ -1006,7 +1036,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       float wz = ws * 4.2f; if (sn < 0.001f && c.ro == 0.0f) wz = 0.0f;
       for (int i = 0; i < 5; i++) R_.q(wp[i * 2], wp[i * 2 + 1], wz, q[i * 2], q[i * 2 + 1]);
       poly(g, q, 5, NOIR);
-      for (int k = 0; k < (qMin ? 1 : (qDeg ? 2 : 4)); k++) {
+      for (int k = 0; k < (mnE() ? 1 : (dgE() ? 2 : 4)); k++) {
         float u0 = 2.0f - 3.8f * k, v0 = 3.0f, lg = (9.0f + ((k % 2 == 0) ? 4.0f : 0.0f)) * c.wd, x1, y1, x2, y2, x3, y3;
         R_.q(u0 + 2.0f, v0 - 1.4f, wz, x1, y1); R_.q(u0 - 2.0f, v0 + 0.8f, wz, x2, y2); R_.q(u0 - lg, v0 + 1.0f + ((k % 2) ? 2.0f : -1.0f), wz, x3, y3);
         tri(g, x1, y1, x2, y2, x3, y3, NOIR);
@@ -2584,7 +2614,7 @@ static void dessinerFiche(M5Canvas& g);
 static const int E0 = NCB + NOB + 13;      // premiers rectangles supplémentaires : plumes (2), petits corbeaux (3), éclats (1), puis 6 morceaux du décor animé du monde
 static const int EG_PL = NCB + NOB, EG_FX = NCB + NOB + 1, EG_MI = NCB + NOB + 4, EG_DYN = E0 + 6;
 static bool chg[NENT], dr[NENT]; static uint32_t hsh[NENT], hshAnc[NENT];      // chg : l'élément a changé depuis l'image précédente ; dr : il faut le dessiner ; hsh : empreinte de son dessin
-static inline bool hachable(int e) { return e < NCB + NOB || e == NCB + NOB + 3 || e == NCB + NOB + 5 || e == NCB + NOB + 7 || e == NCB + NOB + 9 || e == NCB + NOB + 10; }      // éléments dont deux images identiques sont reconnues par l'empreinte (les autres sont toujours redessinés)
+static inline bool hachable(int e) { return e < NCB + NOB || e == NCB + NOB + 3 || e == NCB + NOB + 5 || e == NCB + NOB + 7 || e == NCB + NOB + 9 || e == NCB + NOB + 10 || e >= EG_DYN; }      // éléments dont deux images identiques sont reconnues par l'empreinte (les autres sont toujours redessinés)
 static inline Rect rVide() { Rect r; r.x0 = 9997; r.y0 = 9997; r.x1 = -9996; r.y1 = -9996; return r; }
 static inline int aireR(const Rect& r) { return (r.x1 - r.x0) * (r.y1 - r.y0); }
 static inline Rect unionR(const Rect& a, const Rect& b) { Rect r; r.x0 = a.x0 < b.x0 ? a.x0 : b.x0; r.y0 = a.y0 < b.y0 ? a.y0 : b.y0; r.x1 = a.x1 > b.x1 ? a.x1 : b.x1; r.y1 = a.y1 > b.y1 ? a.y1 : b.y1; return r; }
@@ -2598,6 +2628,7 @@ static void grouper(Rect* t, int n, int s0, int e0, int K) {      // regroupe n 
   nouv[s0] = n > 0 ? t[0] : rVide();
   for (int k = 1; k < K; k++) nouv[e0 + k - 1] = k < n ? t[k] : rVide();
 }
+static inline bool horsChamp(const Corbeau& c) { const float x = TX(c.x), y = TY(c.y + c.bob), m = 70.0f * c.s * zs + 12.0f; return x < -m || x > 320.0f + m || y < -m || y > 240.0f + m; }      // corbeau entierement hors de l'ecran (vues zoomees) : ni calcul ni dessin
 static void dessinerPlume(M5Canvas& g, const Plume& p) {
   float cs = cosf(p.rot), sn = sinf(p.rot), L = 3.6f * (0.5f + p.vie / p.dur * 0.5f), w = 1.3f;
   tri(g, p.x - cs * L, p.y - sn * L, p.x + cs * L, p.y + sn * L, p.x - sn * w, p.y + cs * w, C(5, 3, 6));
@@ -2611,53 +2642,59 @@ static void dessinerEclatFx(M5Canvas& g, const Eclat& f) {
 }
 static void dessinerEntites(M5Canvas& g, bool sech) {
   sec = sech;
-  // sech : première passe, rien n'est dessiné (boîtes englobantes et empreintes) ; seconde passe : seuls les éléments marqués dr sont dessinés
+  // sech : premiere passe, rien n'est dessine : boites englobantes, empreintes ET enregistrement des primitives ; seconde passe : seuls les elements marques dr sont dessines, en rejouant l'enregistrement (sans recalculer)
+  if (sech) { cmdN = 0; cmdOvf = false; recOn = false; }
   auto veut = [&](int e) { return sech || dr[e]; };
   auto fin = [&](int e) { if (sech) { nouv[e] = bbRect(); hsh[e] = hAcc; } };
-  if (mo::camOn()) {      // décor animé de la vue large / du suivi (lanterne, brume, halos, eau), en morceaux séparés
-    for (int k = 0; k < 6; k++) { const int e = EG_DYN + k; if (veut(e)) { bbReset(); mo::dynPart(k); fin(e); } }
-  } else if (sech) for (int k = 0; k < 6; k++) nouv[EG_DYN + k] = rVide();
+  auto rec = [&](int e, auto&& fn) {
+    if (sech) { cmdD[e] = cmdN; recOn = true; bbReset(); fn(); recOn = false; cmdF[e] = cmdN; nouv[e] = bbRect(); hsh[e] = hAcc; }
+    else if (dr[e]) { if (cmdOvf) fn(); else rejouer(g, cmdD[e], cmdF[e]); }
+  };
+  if (mo::camOn()) {      // decor anime de la vue large / du suivi (lanterne, brume, halos, eau), en morceaux separes
+    for (int k = 0; k < 8; k++) rec(EG_DYN + k, [&] { mo::dynPart(k); });
+  } else if (sech) for (int k = 0; k < 8; k++) nouv[EG_DYN + k] = rVide();
   // objets
   for (int i = 0; i < NOB; i++) {
-    const int e = NCB + i; if (!veut(e)) continue;
-    bbReset(); Obj& o = ob[i];
-    if (o.actif) {
-      float tw = (o.type >= T_BRILLANT && o.repos) ? ((sinf(millis() * 0.0075f + i) > 0.55f) ? 1.0f : 0.0f) : 0.0f;
-      dessinerObjet(g, o.type, o.x, o.y, o.type >= T_BAGUE ? 5.5f : 4.6f, o.repos ? 0.0f : o.y * 0.12f, tw);
-    }
-    fin(e);
+    rec(NCB + i, [&] {
+      Obj& o = ob[i];
+      if (o.actif) {
+        float tw = (o.type >= T_BRILLANT && o.repos) ? ((sinf(millis() * 0.0075f + i) > 0.55f) ? 1.0f : 0.0f) : 0.0f;
+        dessinerObjet(g, o.type, o.x, o.y, o.type >= T_BAGUE ? 5.5f : 4.6f, o.repos ? 0.0f : o.y * 0.12f, tw);
+      }
+    });
   }
-  if (veut(NCB + NOB + 3)) { bbReset(); if (V.ph == V_PRESENT) dessinerVisiteur(g); fin(NCB + NOB + 3); }
-  if (veut(NCB + NOB + 5)) { bbReset(); dessinerMain(g); fin(NCB + NOB + 5); }
-  if (veut(NCB + NOB + 7)) { bbReset(); if (OE.actif) dessinerOeuf(g); fin(NCB + NOB + 7); }      // le visiteur, avant les corbeaux : ils se posent devant lui
-  if (veut(NCB + NOB + 9)) { bbReset(); fam::nid(g); fin(NCB + NOB + 9); }      // le nid, derrière les corbeaux
-  { uint32_t u_ = micros(); for (int k = 0; k < NCB; k++) { if (!veut(k)) continue; bbReset(); if (cr[k].visible) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); } fin(k); } if (!sech) uCorb += micros() - u_; }
-  if (veut(NCB + NOB + 10)) { bbReset(); fam::devant(g); fin(NCB + NOB + 10); }      // les brindilles du bord, devant le parent assis
-  // petits corbeaux de la nuée : un rectangle par groupe proche (au plus quatre)
+  rec(NCB + NOB + 3, [&] { if (V.ph == V_PRESENT) dessinerVisiteur(g); });
+  rec(NCB + NOB + 5, [&] { dessinerMain(g); });
+  rec(NCB + NOB + 7, [&] { if (OE.actif) dessinerOeuf(g); });      // le visiteur, avant les corbeaux : ils se posent devant lui
+  rec(NCB + NOB + 9, [&] { fam::nid(g); });      // le nid, derriere les corbeaux
+  { const uint32_t u_ = micros(); for (int k = 0; k < NCB; k++) rec(k, [&] { if (cr[k].visible && !horsChamp(cr[k])) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); } }); uCorb += micros() - u_; }
+  rec(NCB + NOB + 10, [&] { fam::devant(g); });      // les brindilles du bord, devant le parent assis
+  // petits corbeaux de la nuee : un rectangle par groupe proche (au plus quatre)
   if (sech) {
-    Rect t[NMINI]; int n = 0;
+    Rect t[NMINI]; int n = 0; cmdD[SL_MI] = cmdN; recOn = true;
     for (int i = 0; i < NMINI; i++) if (mini[i].actif) { bbReset(); dessinerMini(g, mini[i]); t[n++] = bbRect(); }
-    grouper(t, n, EG_MI, E0 + 2, 4);
-  } else for (int i = 0; i < NMINI; i++) if (mini[i].actif) dessinerMini(g, mini[i]);
-  if (veut(NCB + NOB + 6)) {
-    bbReset();
+    recOn = false; cmdF[SL_MI] = cmdN; grouper(t, n, EG_MI, E0 + 2, 4);
+  } else if (cmdOvf) { for (int i = 0; i < NMINI; i++) if (mini[i].actif) dessinerMini(g, mini[i]); }
+  else rejouer(g, cmdD[SL_MI], cmdF[SL_MI]);
+  rec(NCB + NOB + 6, [&] {
     for (int i = 0; i < NPROJ; i++) { Proj& p = proj[i]; if (p.actif) dessinerObjet(g, p.type, p.x, p.y, p.type >= T_BAGUE ? 5.5f : 4.6f, p.rot, 0.0f); }
     if (VS.on) dessinerVisee(g);
     if (FR.on && cr[FR.c].etat == E_TENU) dessinerFronde(g);
-    fin(NCB + NOB + 6);
-  }
+  });
   // plumes : un rectangle par groupe proche (au plus trois)
   if (sech) {
-    Rect t[NPART]; int n = 0;
+    Rect t[NPART]; int n = 0; cmdD[SL_PL] = cmdN; recOn = true;
     for (int i = 0; i < NPART; i++) if (pl[i].actif) { bbReset(); dessinerPlume(g, pl[i]); t[n++] = bbRect(); }
-    grouper(t, n, EG_PL, E0, 3);
-  } else for (int i = 0; i < NPART; i++) if (pl[i].actif) dessinerPlume(g, pl[i]);
-  // éclats rouges de l'œil : au plus deux rectangles
+    recOn = false; cmdF[SL_PL] = cmdN; grouper(t, n, EG_PL, E0, 3);
+  } else if (cmdOvf) { for (int i = 0; i < NPART; i++) if (pl[i].actif) dessinerPlume(g, pl[i]); }
+  else rejouer(g, cmdD[SL_PL], cmdF[SL_PL]);
+  // eclats rouges de l'oeil : au plus deux rectangles
   if (sech) {
-    Rect t[NFX]; int n = 0;
+    Rect t[NFX]; int n = 0; cmdD[SL_FX] = cmdN; recOn = true;
     for (int i = 0; i < NFX; i++) if (fx[i].actif) { bbReset(); dessinerEclatFx(g, fx[i]); t[n++] = bbRect(); }
-    grouper(t, n, EG_FX, E0 + 5, 2);
-  } else for (int i = 0; i < NFX; i++) if (fx[i].actif) dessinerEclatFx(g, fx[i]);
+    recOn = false; cmdF[SL_FX] = cmdN; grouper(t, n, EG_FX, E0 + 5, 2);
+  } else if (cmdOvf) { for (int i = 0; i < NFX; i++) if (fx[i].actif) dessinerEclatFx(g, fx[i]); }
+  else rejouer(g, cmdD[SL_FX], cmdF[SL_FX]);
   // texte de mesure (mode debug)
   if (veut(NCB + NOB + 2)) {
     bbReset();
@@ -2670,7 +2707,7 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
         snprintf(b, sizeof(b), "m%d f%d d%d e%d", (int)(emaMaj + 0.5f), (int)(emaCmp + 0.5f), (int)(emaEnt + 0.5f), (int)(emaPush + 0.5f)); g.drawString(b, 242, 52);
         snprintf(b, sizeof(b), "corb %d  Q%d%s", (int)(emaCorb + 0.5f), (int)OP.q, qMin ? "--" : (qDeg ? "-" : "")); g.drawString(b, 242, 64);
       }
-    } else if (OP.fps == 1) {      // petit compteur d'images/s (moyenne sur 5 s et plus bas récent), tout en haut à gauche de la scène
+    } else if (OP.fps == 1) {      // petit compteur d'images/s (moyenne sur 5 s et plus bas recent), tout en haut a gauche de la scene
       bbPt(2, 26); bbPt(94, 39);
       if (!sech) {
         g.fillRect(2, 26, 93, 14, C(0, 0, 0)); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(120, 255, 150)); g.setTextDatum(top_left);
@@ -2679,8 +2716,8 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
     }
     fin(NCB + NOB + 2);
   }
-  if (veut(NCB + NOB + 8)) { bbReset(); if (OP.hor == 2 && eclT > 0.0f && !qMin) dessinerEclair(g); fin(NCB + NOB + 8); }
-  if (veut(NCB + NOB + 11)) { bbReset(); dessinerGP(g); fin(NCB + NOB + 11); }      // la visite d'un corbeau au gros plan : redessinée par zones, comme le reste
+  rec(NCB + NOB + 8, [&] { if (OP.hor == 2 && eclT > 0.0f && !qMin) dessinerEclair(g); });
+  rec(NCB + NOB + 11, [&] { dessinerGP(g); });      // la visite d'un corbeau au gros plan : redessinee par zones, comme le reste
   if (veut(NCB + NOB + 12)) { bbReset(); if (OP.fiche) dessinerFiche(g); fin(NCB + NOB + 12); }      // la fiche flottante d'un corbeau (double toucher)
   sec = false;
 }
@@ -2807,11 +2844,12 @@ static void dessinerPanneau() {
     static const char* const LT3[3] = {"Petit", "Normal", "Grand"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Taille des corbeaux (Normal : un peu plus gros qu'avant)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, OP.taille, LT3);
   } else if (panPage == 3) {      // monde : décor (tour en ruine / simple) et échanges à longue distance (monde.h)
-    static const char* const LD[2] = {"Simple", "Tour en ruine"}; static const char* const LO[2] = {"Non", "Oui"};
+    static const char* const LD[2] = {"Simple", "Tour en ruine"}; static const char* const LO[2] = {"Non", "Oui"}; static const char* const LDC[3] = {"Complet", "Allégé", "Minimal"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
     g.drawString("Décor du monde (tour, portique, stèles, brume)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, mo::RGM.tour ? 1 : 0, LD);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Échanges à longue distance (appels, poursuites, vols)", 6, 73); segBarre(g, 4, 87, 312, 24, 2, mo::RGM.lng ? 1 : 0, LO);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Leur fréquence suit l'Activité (page Fréquence).", 6, 119);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Décor : arrière-plan complet, allégé ou minimal", 6, 115); segBarre(g, 4, 129, 312, 24, 3, OP.dec, LDC);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Leur fréquence suit l'Activité (page Fréquence). Le décor s'allège aussi seul si l'image ralentit.", 6, 160);
   } else if (panPage == 2) {
     static const char* const LL[3] = {"Clair", "Sombre", "Horreur"}; static const char* const LQ[3] = {"Fluide", "Normal", "Riche"}; static const char* const LM[2] = {"Non", "Oui"}; static const char* const LM3p[3] = {"Non", "Images/s", "Détails"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2904,6 +2942,7 @@ static void touchPanneau(int x, int y) {
   if (panPage == 3) {      // monde : décor et échanges lointains (clés cbmtour, cblng)
     if (y >= 42 && y < 72) { mo::RGM.tour = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbmtour", mo::RGM.tour); mo::decorChange(); ambChange = true; }
     else if (y >= 84 && y < 114) { mo::RGM.lng = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblng", mo::RGM.lng); }
+    else if (y >= 126 && y < 156) { OP.dec = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbdec", OP.dec); ambChange = true; }      // le decor est refait a la fermeture du panneau
     else return;
     if (OP.vib) vibrer(40);
     panSale = true; return;
@@ -3118,6 +3157,7 @@ static void ouvrir() {
   if (ESP.getFreePsram() < 300000UL && ESP.getFreeHeap() < 260000UL) return;
   fond.setColorDepth(cv.getColorDepth()); fond.setPsram(true);
   if (!fond.createSprite(320, 240)) return;
+  if (!cmdB) { cmdB = (Cmd*)ps_malloc(sizeof(Cmd) * CMDMAX); cmdMax = cmdB ? CMDMAX : 0; }      // 64 Ko en PSRAM ; sans lui le dessin recalcule tout comme avant
   fondOk = true; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondLOk = false; fondAct = &fond;
   construireFond();
   memset(cr, 0, sizeof(cr)); memset(ob, 0, sizeof(ob)); memset(pl, 0, sizeof(pl)); memset(fx, 0, sizeof(fx)); memset(anc, 0, sizeof(anc)); memset(dernierSon, 0, sizeof(dernierSon));
@@ -3145,7 +3185,7 @@ static void ouvrir() {
 }
 static void quitter() {
   if (!ouvert) return;
-  libererCamCache(); fam::sauver(true); fam::pret = false; mo::fermerMonde(); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
+  libererCamCache(); if (cmdB) { free(cmdB); cmdB = nullptr; cmdMax = 0; } fam::sauver(true); fam::pret = false; mo::fermerMonde(); ouvert = false; seuilSecousse = 2.2f; zs = 1.0f; ztx = 0.0f; zty = 0.0f; fondAct = &fond;
   vitesseEcran(false); ecrEssaiFin = 0;      // les autres pages gardent la vitesse d'écran d'usine (40 MHz)
   if (fondLOk) { fondL.deleteSprite(); fondLOk = false; }
   if (fondOk) { fond.deleteSprite(); fondOk = false; }
@@ -3342,7 +3382,7 @@ static void appui(int x, int y) {
     ouvrirPanneau();
     return;
   }
-  if (sxp >= 270 && syp < 20) { D.bas = false; OP.fps = (uint8_t)((OP.fps + 1) % 3); debug = (OP.fps == 2); prefs.putUChar("cbfps", OP.fps); plein = true; return; }
+  if (sxp >= 270 && syp < 20) { D.bas = false; return; }      // (le compteur d'images/s ne se bascule plus par un toucher : il se règle seulement dans Réglages > Fluidité)
   if (sxp >= 140 && sxp < 176 && syp < 24) { D.bas = false; oeufMaintenant(); return; }      // bouton œuf
   if (sxp >= 176 && sxp < 236 && syp < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
   if (V.ph == V_PRESENT && x >= VX - 26 && x < VX + (V.arm > 0.3f ? 40 : 26) && y >= visPiedsY() - 76 && y < visPiedsY() + 2) { tpCible = 1; tpT0 = m; return; }
