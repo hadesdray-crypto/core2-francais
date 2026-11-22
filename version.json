@@ -1,5 +1,5 @@
 {
-    "version": "2.7.2",
+    "version": "2.7.3",
     "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/firmware/core2_francais.bin",
     "changes": [
         "Nouveau mode « Corbeaux » : une tuile dans le menu. Nuit rouge, vieil arbre mort, cinq corbeaux noirs aux yeux rouges qui se perchent, clignent, croassent, s'envolent et reviennent.",
@@ -22,6 +22,7 @@
         "Vie des corbeaux : chacun a sa personnalité (calme, bavard, joueur, craintif) et son humeur. Ils s'étirent les ailes, picorent et sautillent au sol, se poudrent, dorment la tête sous l'aile (ambiance nuit sombre), s'appellent entre eux, restent en alerte tous dans la même direction, se poursuivent en vol, et volent en groupe.",
         "Visite d'un corbeau : de temps en temps (plus souvent quand personne ne touche l'écran) un corbeau vole vers toi en grossissant, se pose devant l'écran, te regarde en penchant la tête, donne parfois un coup de bec dans la vitre (choc, son, légère vibration) puis repart. Tu peux aussi l'appeler par un toucher long au centre de l'écran ou par le bouton « Corbeau visiteur » des réglages. Tape l'écran pour qu'il s'envole.",
         "Plus de réalisme : vue normale un peu plus large avec un petit arbre lointain, ciel avec un léger grain, collines et brume en plusieurs plans, liseré rouge sombre sur les corbeaux, feuilles et plumes qui tombent avec le vent. Animations plus vivantes : corbeaux écrasés puis étirés aux décollages et atterrissages, images fantômes des ailes et lignes de vitesse sur les vols rapides, éclat de choc aux départs, deuxième œil visible quand un corbeau pivote, et petits ralentis sur les moments forts.",
+        "Mode Main refait : une main stylisée façon manga (contours nets, ombrage, manche sombre qui sort du bas de l'écran, annulaire et auriculaire légèrement relevés) sur laquelle on voit l'oiseau en entier. Quand la main est tendue, dessine une forme au doigt : un cercle ouvre la main, un triangle pince, une ligne pointe, deux lignes croisées croisent les doigts, un zigzag fait onduler les doigts, une spirale ferme le poing. Le même tracé donne toujours la même pose. Un toucher sur la main la retire, ailleurs il la déplace. Les objets lancés vers la main (mode Lancer) atterrissent dans la paume et y restent quelques secondes.",
         "Tout le reste est inchangé : tes réglages sont gardés tels quels et le mode Corbeaux ne démarre jamais tout seul.",
         "Le son se règle partout : garde le doigt sur le bouton rond de droite pour monter le son, sur celui de gauche pour le baisser (une barre s'affiche en haut).",
         "Dans la Matinale : une ligne « Son » avec - et + toujours visible, ou touche la barre directement.",
