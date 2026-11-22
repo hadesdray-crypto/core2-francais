@@ -3281,7 +3281,8 @@ void demarrerServeur() {
     d["pourcent"] = W.batterie; d["parTension"] = pourcentTension(pileLissee); d["veille"] = veille; d["branche"] = brancheUsb; d["majDispo"] = versionDispo; d["infoMaj"] = infoMaj; d["canalMaj"] = canalTest ? "test" : "stable"; d["ip"] = WiFi.localIP().toString();
     d["signal"] = WiFi.RSSI(); d["telephonesSurWifiDirect"] = WiFi.softAPgetStationNum(); d["memoireLibre"] = ESP.getFreeHeap();
     d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
-    d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
+    d["fps"] = cb::fpsMoy10 / 10.0f; d["fpsmin"] = cb::fpsMin; d["msimage"] = cb::emaTot; d["msmax"] = cb::msMax; d["cbCadenceMax"] = (cb::OP.cad == 0 ? 20 : (cb::OP.cad == 1 ? 25 : 30)); d["cbAllegement"] = cb::qMin ? 2 : (cb::qDeg ? 1 : 0); d["cbEcran80MHz"] = cb::ecr80;
+  d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
     d["uptimeMs"] = millis(); d["prEtat"] = pr::etat; d["prAbsMs"] = pr::absent() ? (uint32_t)(millis() - pr::debAbsence) : 0; d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
     d["pileMv"] = M5.Power.getBatteryVoltage(); d["usbMv"] = M5.Power.getVBUSVoltage(); d["courantMa"] = M5.Power.getBatteryCurrent(); d["niveau"] = M5.Power.getBatteryLevel(); d["etatCharge"] = (int)M5.Power.isCharging(); d["puce"] = (int)M5.Power.getType();
     { JsonObject a = d["axp"].to<JsonObject>(); static const uint8_t regs[] = {0x00, 0x01, 0x12, 0x18, 0x22, 0x27, 0x30, 0x61, 0x62, 0x63, 0x64, 0x69};
@@ -3401,7 +3402,12 @@ void loop() {
     uint32_t periode = (page == 32 ? cb::periodeMs() : (page == 33 ? 18u : (brancheUsb ? 33u : 50u)));
     if (palierEco == 1 && periode < 66) periode = 66; else if (palierEco >= 2 && periode < 125) periode = 125;      // personne ne touche : 15 images/s, puis 8
     if (page == 0 || page == 32) periode = pr::periode(periode);      // presence : en absence 4 images/s (la scene d'entree ou de sortie garde la cadence normale)
-    if (!veille && m - tDessin > periode) { tDessin = m; dessinerPage(); afficherVolume(); }
+    if (!veille) {
+      if (page == 32) {      // corbeaux : cadence fixe (pas de dérive : 30 images/s tiennent vraiment 30 images/s quand le dessin suit) ; s'il prend du retard on repart de maintenant
+        const uint32_t ecoule = m - tDessin;
+        if (ecoule >= periode) { tDessin = (ecoule < periode * 2u) ? tDessin + periode : m; dessinerPage(); afficherVolume(); }
+      } else if (m - tDessin > periode) { tDessin = m; dessinerPage(); afficherVolume(); }
+    }
     if (sniffActif || detection || page == 11 || page == 13 || ((page == 34 || page == 35) && (int32_t)(finMaj - m) > 0) || (page >= 21 && page <= 31) || lectureEnCours) activite();
     if (!veille && !brancheUsb && (int32_t)(millis() - ((page == 32 || page == 33) && !lectureEnCours ? derniereVraie : derniereActivite)) > (ecoForte ? 150000 : 300000)) { nbSommeilTimeout++; endormirEcran(); }   // 5 min sans aucun toucher : veille (calcul signe pour ne jamais confondre un toucher avec un depassement)
   }
@@ -3446,5 +3452,5 @@ void loop() {
   }
   serveur.handleClient();
   validerSiStable();
-  delay(veille ? 40 : (brancheUsb ? 1 : (palierEco >= 2 ? 25 : (palierEco == 1 ? 12 : 4))));
+  delay(veille ? 40 : ((brancheUsb || (page == 32 && palierEco == 0)) ? (page == 32 && !brancheUsb ? 2 : 1) : (palierEco >= 2 ? 25 : (palierEco == 1 ? 12 : 4))));      // corbeaux en plein régime : attente courte (2 ms sur pile) pour ne pas retarder l'image suivante
 }
