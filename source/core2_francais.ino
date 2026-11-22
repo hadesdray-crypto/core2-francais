@@ -24,7 +24,7 @@
 #include "presence.h"      // presence / absence des personnages et des univers (3.1.6)
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.7"
+#define VERSION_PROGRAMME "3.1.8"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 
@@ -1475,8 +1475,9 @@ void dessinerAccueil() {
   bool sol = (FA.forme >= 1 && phase() != OEUF), dessus = (vue == 1 && rotEcran == 0);
   if (dessus) dessinerBoiteDessus(); else dessinerBoite();
   int px, py; float e; positionEcran(px, py, e);
-  if (!pr::persoVisible()) { dessinerPieceVide(); return; }      // presence : personne, piece vide
-  if (pr::enChemin() || pr::alInterrupteur()) { px = (int)pr::xScene((float)px); enMarche = pr::enChemin(); if (enMarche) pasPhase += 0.4f; }      // il entre (ou sort) en marchant jusqu'a l'interrupteur
+  const bool oeufP = (phase() == OEUF);      // un oeuf ne marche pas : seule la lumiere change
+  if (!oeufP && !pr::persoVisible()) { dessinerPieceVide(); return; }      // presence : personne, piece vide
+  if (!oeufP && (pr::enChemin() || pr::alInterrupteur())) { px = (int)pr::xScene((float)px); enMarche = pr::enChemin(); if (enMarche) pasPhase += 0.4f; }      // il entre (ou sort) en marchant jusqu'a l'interrupteur
   sonInterrupteur();
   uint32_t m = millis();
   bool miroir = m < miroirFin && phase() != OEUF;
@@ -1520,9 +1521,9 @@ void dessinerAccueil() {
     const bool scene = (pr::etat != pr::PRESENT);
     pr::dessinerInterrupteur(cv, pr::lumOn, false);
     if (pr::nbTraces && pr::depuisArrivee() < 40.0f) pr::dessinerTraces(cv, pr::nbTraces, pr::graine, pr::depuisArrivee(), GAM_X, (int)parX, (int)parY);
-    if (pr::alInterrupteur()) { cv.drawLine(px + (int)(14 * e), py - (int)(6 * e), 298, 92, C(235, 240, 250)); cv.drawLine(px + (int)(14 * e), py - (int)(5 * e), 298, 93, C(170, 180, 200)); }
+    if (!oeufP && pr::alInterrupteur()) { cv.drawLine(px + (int)(14 * e), py - (int)(6 * e), 298, 92, C(235, 240, 250)); cv.drawLine(px + (int)(14 * e), py - (int)(5 * e), 298, 93, C(170, 180, 200)); }
     if (scene) { int nv = pr::niveauPiece(); if (nv < 2) nv = 2; pr::assombrir(cv, 0, 200, nv); }
-    if (pr::alInterrupteur()) pr::dessinerInterrupteur(cv, pr::lumOn, true);
+    if (!oeufP && pr::alInterrupteur()) pr::dessinerInterrupteur(cv, pr::lumOn, true);
   }
   dessinerInfos(); dessinerBarre();
   pousserAccueil();
