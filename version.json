@@ -1,6 +1,6 @@
 {
     "version": "3.1.38",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=1670ddd96679",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=ce70935cb462",
     "changes": [
         "3.1.38 : les petites marques blanches sur les corbeaux étaient les CICATRICES (plume cassée, gardée à vie) et les pansements de la vie sauvage (3.1.34) : 30 blessures s'étaient accumulées, surtout à cause des disputes pour un morceau de nourriture. La cicatrice devient un trait sombre très discret (plus du tout clair), le pansement (blessure en cours seulement) est plus petit, et une dispute pour de la nourriture ne blesse plus. Les yeux pâles sont l'œil rouge normal que l'appareil photo fait blanchir (si tu as choisi un œil du Dex, Dex > Retirer le remet rouge).",
         "3.1.38 : la MAIN a une grosse paume (environ 1,7 fois plus grande) et l'oiseau posé dessus est agrandi (environ 28 %) pour qu'on le voie en entier, bras et manche toujours fixes.",
@@ -142,17 +142,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "1670ddd966795355cd68c7ade83b1d4e0dd5aebee382aaf0a49576f776262b59",
-    "size": 5182032,
+    "sha256": "ce70935cb462199cdad261e281636f189150432bed6ce63827829a8580f100dc",
+    "size": 5184912,
     "canal": "test",
     "notes": [
-        "3.1.37 : bouton Visiteur masque (reglage Bouton Visiteur, page 1), visites inchangees",
+        "3.1.38 : correction d'une ligne de monde.h (commentaire qui avalait du code)",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.37",
-        "run": "45231128445",
-        "commit": "b68f20c07f15"
+        "version": "3.1.38",
+        "run": "45234576261",
+        "commit": "52194f302756"
     }
 }
