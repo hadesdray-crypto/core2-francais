@@ -102,6 +102,7 @@ static float msMax = 0.0f; static uint32_t maxIntervalle = 0, tPrecImg = 0;     
 static int choix = 0, presse = -1;
 static float gAction = 2.0f, gPoof = 18.0f, gObjet = 30.0f, gAttrib = 0.0f;
 static bool volVu = false, barreSale = false, sonsReels = false;
+static bool btnVis = false;      // 3.1.37 : bouton « Visiteur » en haut de l'écran (clé cbbvis) : masqué par défaut ; les visites (gros plan, visiteur mystérieux) restent comme avant
 static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 0 nourrir, 1 main, 2 lancer, 3 appel / effrayer, 4 fronde
 
 // ---------- réglages du mode (nouvelles clés mémoire : cbnb, cbvis, cbsec, cbvib, cbamb, cbfps, cboeufs) ----------
@@ -151,6 +152,7 @@ static void chargerOptions() {
   OP.vis = prefs.getUChar("cbvis", 1); if (OP.vis > 2) OP.vis = 1;
   OP.sec = prefs.getUChar("cbsec", 1); if (OP.sec > 2) OP.sec = 1;
   OP.vib = prefs.getUChar("cbvib", 1) ? 1 : 0;
+  btnVis = prefs.getUChar("cbbvis", 0) ? true : false;
   OP.amb = prefs.getUChar("cbamb", 0); if (OP.amb > 2) OP.amb = 0;
   OP.fps = 0;      // le compteur d'images/s n'est JAMAIS affiché à l'écran (il reste dans /api/etat : fps, fpsmin, msimage, msmax)
   OP.cad = prefs.getUChar("cbcad", 2); if (OP.cad > 2) OP.cad = 2;      // cadence maximale : 20, 25 ou 30 images/s (défaut 30)
@@ -576,6 +578,7 @@ static void boutonSons(M5Canvas& g) {
   g.drawString("Réglages", 95, 12); g.setTextDatum(top_left);
 }
 static void boutonVisiteur(M5Canvas& g) {
+  if (!btnVis) return;
   g.fillRoundRect(176, 2, 58, 20, 8, C(14, 4, 8)); g.drawRoundRect(176, 2, 58, 20, 8, C(110, 22, 30));
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Visiteur", 205, 12); g.setTextDatum(top_left);
 }
@@ -2763,7 +2766,7 @@ static void dessinerPanneau() {
     tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
     tuile(g, 4, 100, 153, 32, "Secousse", SEC[OP.sec]); tuile(g, 163, 100, 153, 32, "Vibration", OP.vib ? "Oui" : "Non");
     tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Lumière", OP.hor == 2 ? "Horreur" : (OP.hor == 1 ? "Sombre" : "Clair"));
-    tuile(g, 4, 170, 153, 32, "Images par seconde", "API seulement"); tuile(g, 163, 170, 153, 32, "Corbeau visiteur", "Appeler");
+    tuile(g, 4, 170, 153, 32, "Images par seconde", "API seulement"); tuile(g, 163, 170, 153, 32, "Bouton Visiteur", btnVis ? "Affiché" : "Masqué");
   } else if (panPage == 7) {      // fluidité : compteur d'images/s, cadence maximale, allègement automatique, écran rapide (clés cbfps, cbcad, cbdeg, cbecr)
     static const char* const LM3[3] = {"Non", "Images/s", "Détails"}; static const char* const LC3[3] = {"20", "25", "30"}; static const char* const LO2[2] = {"Non", "Oui"}; static const char* const LE3[3] = {"Standard", "Essai 80 MHz", "Garder"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -3000,7 +3003,7 @@ static void touchPanneau(int x, int y) {
     case 4: OP.amb = (uint8_t)((OP.amb + 1) % 3); prefs.putUChar("cbamb", OP.amb); appliquerAmb(); ambChange = true; break;
     case 5: OP.hor = (uint8_t)((OP.hor + 1) % 3); prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; break;
     case 6: return;      // (compteur d'images/s : jamais affiché)
-    default: fermerPanneau(); lancerVisite(); return;
+    default: btnVis = !btnVis; prefs.putUChar("cbbvis", btnVis ? 1 : 0); ambChange = true; break;      // 3.1.37 : affiche ou masque le bouton Visiteur du haut de l'écran (le fond est refait à la fermeture)
   }
   panSale = true;
 }
@@ -3179,7 +3182,7 @@ static const int LD_FIN0 = 14, LD_FIN1 = 11;      // nombre d'etapes : ouverture
 static inline uint32_t hmS(uint32_t h, uint32_t v) { return (h ^ v) * 16777619u; }
 static uint32_t sigFond() {      // tout ce dont depend le fond (ciel, arbre, decor, vignettage)
   uint32_t h = 2166136261u;
-  h = hmS(h, OP.hor); h = hmS(h, OP.amb); h = hmS(h, OP.dec); h = hmS(h, (uint32_t)mo::RGM.tour); h = hmS(h, (uint32_t)(int)(ambVig * 1000.0f)); h = hmS(h, (uint32_t)ambEt); h = hmS(h, (uint32_t)bpp);
+  h = hmS(h, OP.hor); h = hmS(h, OP.amb); h = hmS(h, OP.dec); h = hmS(h, (uint32_t)mo::RGM.tour); h = hmS(h, (uint32_t)(int)(ambVig * 1000.0f)); h = hmS(h, (uint32_t)ambEt); h = hmS(h, (uint32_t)bpp); h = hmS(h, btnVis ? 1u : 0u);
   return h;
 }
 static void chargerEcran(bool premier) {      // ecran de chargement : seule la barre est renvoyee a l'ecran apres la premiere image
@@ -3496,7 +3499,7 @@ static void appui(int x, int y) {
   }
   if (sxp >= 270 && syp < 20) { D.bas = false; return; }      // (le compteur d'images/s ne se bascule plus par un toucher : il se règle seulement dans Réglages > Fluidité)
   if (sxp >= 140 && sxp < 176 && syp < 24) { D.bas = false; oeufMaintenant(); return; }      // bouton œuf
-  if (sxp >= 176 && sxp < 236 && syp < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
+  if (btnVis && sxp >= 176 && sxp < 236 && syp < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
   if (V.ph == V_PRESENT && x >= VX - 26 && x < VX + (V.arm > 0.3f ? 40 : 26) && y >= visPiedsY() - 76 && y < visPiedsY() + 2) { tpCible = 1; tpT0 = m; return; }
   if (OE.actif && OE.etat == 0 && modeCb != 2 && modeCb != 4 && fabsf(x - OE.x) < 12 && fabsf(y - (OE.y - 5.0f)) < 13) { if (!fam::attraperOeuf()) craquer(); D.bas = false; return; }
   if (FI.k >= 0 && sxp >= fbx && sxp < fbx + FBW && syp >= fby && syp < fby + fbh) {      // toucher sur la fiche : les deux boutons, rien d'autre ne réagit
