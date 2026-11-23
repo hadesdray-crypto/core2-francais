@@ -641,11 +641,11 @@ static void bnNourr(M5Canvas& g, int typ, int cx, int cy, float k, bool gris) { 
     } break;
     case T_VIANDE: {      // cuisse : chair rouge, reflet, os creme a deux boules
       const uint16_t o = Kc(84, 12, 22), m = Kc(206, 54, 60), d = Kc(158, 32, 44), h = Kc(246, 134, 118), bo = Kc(112, 94, 80), bc = Kc(246, 236, 216);
-      for (int i = 0; i <= 5; i++) { const float u = i / 5.0f; Ro(1 + 5 * u, 2 + 5 * u, 2.4f, bo); }
-      Ro(6, 9.5f, 2.6f, bo); Ro(9.5f, 6, 2.6f, bo);
-      for (int i = 0; i <= 5; i++) { const float u = i / 5.0f; Ro(1 + 5 * u, 2 + 5 * u, 1.4f, bc); }
-      Ro(6, 9.5f, 1.6f, bc); Ro(9.5f, 6, 1.6f, bc);
-      El(-4, -3, 9.2f, 8.2f, o); El(-4, -3, 8, 7, m); El(-2.5f, -1, 4.6f, 3.4f, d); El(-7, -6, 3.4f, 2.2f, h);
+      for (int i = 0; i <= 5; i++) { const float u = i / 5.0f; Ro(1 + 4.5f * u, -2 - 4.5f * u, 2.4f, bo); }      // l'os sort en haut a droite (le stock est en bas a droite)
+      Ro(5.5f, -8.5f, 2.6f, bo); Ro(8.5f, -5.5f, 2.6f, bo);
+      for (int i = 0; i <= 5; i++) { const float u = i / 5.0f; Ro(1 + 4.5f * u, -2 - 4.5f * u, 1.4f, bc); }
+      Ro(5.5f, -8.5f, 1.6f, bc); Ro(8.5f, -5.5f, 1.6f, bc);
+      El(-3, 2.5f, 9.2f, 8.2f, o); El(-3, 2.5f, 8, 7, m); El(-1.5f, 4.5f, 4.6f, 3.4f, d); El(-6, -0.5f, 3.4f, 2.2f, h);
     } break;
     case T_NOIX: {      // noix : coque brune, sillon, reflet, queue
       const uint16_t o = Kc(62, 34, 14), b = Kc(158, 102, 50), s = Kc(110, 66, 28), h = Kc(228, 176, 108);
