@@ -1,6 +1,6 @@
 {
     "version": "3.1.45",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=5f19d98ed361",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=d4489b2d93e5",
     "changes": [
         "3.1.45 : LA MAIN EST RETIRÉE (plus de bouton Main, de bras, de paume, de visite dans la paume, de caresse, de câlin ni de nourriture posée sur la main ; le code est gardé en sommeil). LA FRONDE RESTE, en mode à part : barre du bas = NOURRIR | LANCER | FRONDE | VOIX (tire un corbeau en arrière, lâche : coup spécial sur un prédateur, le projeté qui chasse un autre corbeau, les sons, comme en 3.1.43). Réglage Main : Masquée (défaut) / Affichée, dans Réglages, page « Main, vue et interface » (Affichée remet le mode Main de la 3.1.44).",
         "3.1.45 : BARRE DE NOURRITURE REFAITE, plus visuelle : six grosses cases de 33 px avec des icônes illustrées (graines, viande, noix, pain, baies, objet brillant) ; la case choisie est agrandie avec un double liseré et un halo ; son nom et son effet s'affichent un instant quand on change de nourriture ; stock de viande et de noix dans un petit cercle (l'icône est grisée à 0). NOUVEAU : un bloc de petites pastilles de FAIM à droite de la barre, une par corbeau (rouge = a faim, ambre = un petit creux, sombre = rassasié ; le cadre s'allume s'il y en a un d'affamé ; toucher le bloc donne le détail). Les modes de la barre sont maintenant quatre icônes compactes ; leur nom s'affiche au changement de mode.",
@@ -161,17 +161,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "5f19d98ed361ca3c4e8b72f3d2a05c70e02902924fd1dafc7c195d0e05cc1da6",
-    "size": 5202944,
+    "sha256": "d4489b2d93e50d130edf92e6d97e57e6c7f2f3124e49300b3b02474d4be0146e",
+    "size": 5208624,
     "canal": "test",
     "notes": [
-        "3.1.44 : boutons refaits (BLOC AV) : pilules sombres, 3 boutons en haut, 4 modes en bas, fronde dans Main, Voix, reglage Interface",
+        "3.1.45 : main retiree (code dormant, reglage Main), fronde en mode a part, barre de nourriture illustree + pastilles de faim (BLOC AW)",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.44",
-        "run": "45260858261",
-        "commit": "30b62004d2d8"
+        "version": "3.1.45",
+        "run": "45264076325",
+        "commit": "117fc2f3117d"
     }
 }
