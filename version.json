@@ -1,6 +1,6 @@
 {
     "version": "3.1.37",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=505df960f417",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=1670ddd96679",
     "changes": [
         "3.1.37 : le bouton « Visiteur » en haut de l'écran (mode Corbeaux) est retiré, ainsi que la tuile « Corbeau visiteur : Appeler » des réglages. Les visites d'un corbeau (gros plan) et le visiteur mystérieux arrivent toujours d'eux-mêmes comme avant (leur fréquence se règle dans Réglages des corbeaux, page Fréquence). Pour remettre le bouton : Réglages des corbeaux, première page, tuile « Bouton Visiteur » (Masqué / Affiché).",
         "3.1.36 : bouton « Envoyer un prédateur » dans Réglages des corbeaux (page Nature, puis page Envoyer, la dernière) : trois grosses touches Rapace / Hibou / Renard ; le panneau se ferme et le prédateur arrive tout de suite pour que tu le voies et le testes, avec les mêmes règles que dans la nature (cible la plus faible, alarme, repoussable au toucher, à la main, à la fronde ou à la nourriture). Le hibou et le renard viennent même de jour. Garde-fous inchangés : la mort suit le réglage Mort, jamais le dernier corbeau ; si les Prédateurs sont sur Jamais, c'est une démo sans mort possible (blessé léger au plus). Un seul prédateur à la fois ; coupé par l'allègement automatique. Test par réseau : http://core2-francais.local/api/predateur?predateur=rapace (ou hibou, renard), résultat dans /api/etat (natEnvoi, natPredateur, natPhase).",
@@ -139,17 +139,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "505df960f417e5f5a17eab3080f433f32643c690fa5eee45ae558befaec8043a",
-    "size": 5181728,
+    "sha256": "1670ddd966795355cd68c7ade83b1d4e0dd5aebee382aaf0a49576f776262b59",
+    "size": 5182032,
     "canal": "test",
     "notes": [
-        "3.1.36 : bouton Envoyer un predateur (reglages des corbeaux, page Envoyer) et /api/predateur",
+        "3.1.37 : bouton Visiteur masque (reglage Bouton Visiteur, page 1), visites inchangees",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.36",
-        "run": "45229656850",
-        "commit": "1757537d3581"
+        "version": "3.1.37",
+        "run": "45231128445",
+        "commit": "b68f20c07f15"
     }
 }
