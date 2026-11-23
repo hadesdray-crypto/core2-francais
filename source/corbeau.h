@@ -704,7 +704,7 @@ static Trace TR; static uint32_t tLigne = 0; static float aLigne = 0;
 struct Proj { bool actif; uint8_t type; float x, y, vx, vy, rot, vr, t, ox; int8_t dern; };      // dern : dernier corbeau heurté (pour ne pas le frapper à chaque image)      // objet lancé (mode Lancer)
 static const int NPROJ = 3; static Proj proj[NPROJ];
 struct Viser { bool on; float x0, y0, x, y; }; static Viser VS; static int8_t visType = -1; static int8_t cibleK = -1; static uint32_t cibleT = 0;      // cibleK : corbeau désigné par son nom pour recevoir la prochaine nourriture ou le prochain objet lancé      // visType : nourriture visée (mode Nourrir), -1 = objet du mode Lancer
-struct Fronde { bool on; int8_t c; float ax, ay; }; static Fronde FR;
+struct Fronde { bool on; int8_t c; float ax, ay; }; static Fronde FR; static float tFrImm = 0.0f; static bool frTendu = false;      // 3.1.43 : tFrImm = apres un corbeau projete sur un autre corbeau, pas de blessure par collision pendant la poursuite ; frTendu = le bruit de tension de la fronde a deja ete joue
 struct Doigt { bool bas, grab; float x0, y0, x, y, vx, vy; uint32_t t0, tp; int8_t cible; uint8_t type; bool fait; };
 static Doigt D;
 static bool iconDrag = false; static float dragX = 0.0f, dragY = 0.0f;      // 3.1.42 : une icone de nourriture glissee depuis la barre vers la paume
@@ -2137,7 +2137,7 @@ static void saisir(int k, float x, float y, bool fronde) {      // on attrape un
   Corbeau& c = cr[k]; if (c.etat == E_DEHORS || c.etat == E_POOF || c.etat == E_TIR) return;
   c.perch = -1; c.item = -1; c.rapporte = false; c.but = B_RIEN; c.etat = E_TENU; c.pied = false; c.vx = c.vy = 0; c.tx = x; c.ty = y; c.wx = c.x; c.wy = c.y;
   c.sub = fronde ? 1 : 0; c.act = A_REPOS; c.flash = 1.0f; c.bec = 1; c.pj = -1; c.t = 0; sonCri();
-  if (fronde) { FR.on = true; FR.c = (int8_t)k; FR.ax = c.x; FR.ay = c.y; }
+  if (fronde) { FR.on = true; FR.c = (int8_t)k; FR.ax = c.x; FR.ay = c.y; frTendu = false; }
 }
 static void relacherMain(int k, float x, float y) {      // on lâche : il se pose sur la branche ou le sol le plus proche, sinon il repart en vol
   Corbeau& c = cr[k]; if (c.etat != E_TENU) return;
@@ -2619,8 +2619,26 @@ static void choc(float x, float y, Corbeau* a, Corbeau* b, float force) {      /
   if (a) { a->flash = 0.6f; a->bec = 1; } if (b) { b->flash = 0.6f; b->bec = 1; }
   if (random(100) < 65) sonCri(); vib(30);
 }
+static bool frondeChasse(Corbeau& t, Corbeau& p, float v) {      // 3.1.43 : le corbeau projete par la fronde touche un autre corbeau : il le CHASSE (poursuite en vol) ; l'autre fuit en cercles ou riposte selon son caractere ; ni mort ni blessure (tFrImm coupe les blessures de collision)
+  const int it = (int)(&t - cr), ip = (int)(&p - cr);
+  if (it < 0 || ip < 0 || it >= NCB || ip >= NCB || it == ip || it == PC || ip == PC || t.duvet > 0.5f || p.duvet > 0.5f) return false;
+  if (!(p.etat == E_PERCHE || p.etat == E_SOL || p.etat == E_VOL) || p.perch >= 10 || p.objet != 0 || p.but == B_POURSUITE || p.but == B_FAM || fam::enService(p) || natSante(ip) > 0) return false;      // jamais un parent de nid occupe, un blesse, le petit, un oiseau dans la paume
+  choc(p.x, p.y, &t, &p, v); p.surs = 0.35f; tFrImm = 14.0f;
+  t.etat = E_VOL; t.t = 0; t.perch = -1; t.item = -1; t.but = B_POURSUITE; t.pj = (int8_t)ip; t.tOrb = rnd(5.0f, 7.0f); t.aWp = false; t.vx *= 0.35f; t.vy = -45.0f; t.wlC = 1; t.pied = false; t.hum = 1.0f; t.bec = 1.0f; t.fuite = false;
+  const float aud = (ip < NAD && fam::pret) ? fam::S.aud[ip] / 255.0f : 0.4f, fo = (ip < NAD && fam::pret) ? fam::S.frc[ip] / 255.0f : 0.4f;
+  if (rnd01() < 0.10f + 0.45f * (0.6f * aud + 0.4f * fo)) {      // riposte : il se retourne et poursuit aussi
+    if (p.etat != E_VOL) { p.perch = -1; p.item = -1; decoller(p, t.x, t.y, B_POURSUITE); } else { p.but = B_POURSUITE; p.aWp = false; }
+    p.pj = (int8_t)it; p.tOrb = rnd(3.0f, 4.5f); p.hum = 1.0f; p.bec = 1.0f;
+  } else {      // il fuit en cercles, poursuivi
+    const float cx = lim(p.x + rnd(-40.0f, 40.0f), 70.0f, 250.0f), cy = rnd(55.0f, 95.0f), sens = random(2) ? 1.0f : -1.0f;
+    if (p.etat == E_VOL) { p.but = B_ORBITE; p.ocg = false; p.ocx = cx; p.ocy = cy; p.ray = rnd(40.0f, 70.0f); p.om = sens * rnd(1.4f, 1.9f); p.tOrb = rnd(5.0f, 7.0f); p.aWp = false; p.ang = atan2f((p.y - cy) / 0.5f, p.x - cx); }
+    else orbiteLocale(p, cx, cy, sens, rnd(5.0f, 7.0f));
+    p.hum = 1.0f;
+  }
+  son(SN_CROASSE2, 190); sonCri(); return true;
+}
 static void contacts(float dt) {
-  tChocCb -= dt;
+  tChocCb -= dt; if (tFrImm > 0.0f) tFrImm -= dt;
   for (int k = 0; k < NCB; k++) {      // inertie et amortissement de la vitesse de choc
     Corbeau& c = cr[k]; if (c.kx == 0.0f && c.ky == 0.0f) continue;
     if (c.etat == E_VOL || c.etat == E_DECOLLE) { float kxe = c.kx; if (kxe * c.dv < 0.0f) kxe *= 0.25f; c.x += kxe * dt; c.y += c.ky * dt; }
@@ -2636,6 +2654,7 @@ static void contacts(float dt) {
     if (aa && bb) {      // deux corbeaux en vol : ils se heurtent, rebondissent (masse ~ taille au carré), perdent quelques plumes
       if (a.but == B_ORBITE && b.but == B_ORBITE) continue;
       if (d >= r) continue;
+      if ((a.etat == E_TIR) != (b.etat == E_TIR)) { Corbeau& t = (a.etat == E_TIR) ? a : b; Corbeau& p = (a.etat == E_TIR) ? b : a; const float v = hypotf(t.vx, t.vy); if (v > 90.0f && frondeChasse(t, p, v)) continue; }      // 3.1.43 : projete sur un corbeau en vol
       float ov = r - d; a.x -= nx * ov * 0.5f; a.y -= ny * ov * 0.5f; b.x += nx * ov * 0.5f; b.y += ny * ov * 0.5f;
       float rv = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;      // > 0 : ils se rapprochent
       if (rv > 20.0f) {
@@ -2646,6 +2665,7 @@ static void contacts(float dt) {
     } else if ((a.etat == E_TIR && (b.etat == E_PERCHE || b.etat == E_SOL)) || (b.etat == E_TIR && (a.etat == E_PERCHE || a.etat == E_SOL))) {      // le corbeau tiré à la fronde percute un corbeau posé
       Corbeau& t = (a.etat == E_TIR) ? a : b; Corbeau& p = (a.etat == E_TIR) ? b : a;
       float v = hypotf(t.vx, t.vy); if (d >= r || v < 110.0f) continue;
+      if (frondeChasse(t, p, v)) continue;      // 3.1.43 : projete sur un corbeau pose : il le chasse (sinon, comportement d'avant)
       choc(p.x, p.y, &t, &p, v); p.surs = 0.35f;
       if (p.etat == E_PERCHE && p.perch < 10 && p.objet == 0 && random(100) < 70) chasser(p);
       t.vx *= -0.35f; t.vy = -fabsf(t.vy) * 0.4f - 40.0f;
@@ -3764,7 +3784,8 @@ static void glisse(int x, int y) {
     case 3: if (appelOn) { orbCx = D.x; orbCy = D.y; } break;
     case 4:
       if (D.cible >= 0 && cr[D.cible].etat == E_TENU) {
-        float dx = D.x - FR.ax, dy = D.y - FR.ay, l = hypotf(dx, dy); if (l > 70) { dx *= 70 / l; dy *= 70 / l; }
+        float dx = D.x - FR.ax, dy = D.y - FR.ay, l = hypotf(dx, dy); if (l > 38.0f && !frTendu) { frTendu = true; son(SN_CROC, 75); }      // 3.1.43 : bruit de la fronde qui se tend
+        if (l > 70) { dx *= 70 / l; dy *= 70 / l; }
         cr[D.cible].tx = FR.ax + dx; cr[D.cible].ty = FR.ay + dy;
       }
       break;
