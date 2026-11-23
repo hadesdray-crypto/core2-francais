@@ -1,6 +1,6 @@
 {
     "version": "3.1.41",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=2098506a1c25",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=4c5c1f1dc367",
     "changes": [
         "3.1.41 : BLESSURES LOCALISEES, SANG, MORT « comme dans la vraie vie ». Une blessure est maintenant à l'AILE ou à la PATTE : rapace et hibou blessent l'aile, le renard la patte, une bagarre au hasard, un faux pas la patte, une collision en vol l'aile. Aile blessée : il décolle plus lentement, vole bas et court, bat des ailes plus faiblement (son affaibli), ne s'envole plus du tout si c'est grave ; l'aile pend, visible de près. Patte blessée : il boite, évite les perchoirs hauts, ne descend plus chasser au sol (plus lentement s'il est léger), la patte est repliée, visible de près. La fiche (double toucher) dit « Aile blessée » ou « Patte blessée ». Rien de nouveau en mémoire : la localisation tient dans un bit libre de la cicatrice.",
         "3.1.41 : SANG et MORT (nouveau réglage Réalisme de la nature : Sobre / Réaliste, défaut Réaliste, Réglages des corbeaux, page Nature puis Suite). En Réaliste : 1 à 3 petites gouttes rouge sombre (couleur du liseré du style) tombent du blessé vu de près ou en vol puis disparaissent, une trace sombre sur le plumage s'estompe en quelques secondes, un petit cri de douleur discret ; pas de gore ; coupé par l'allègement automatique et en décor minimal. Sobre : pas de sang, blessures légères seulement. La mort (réglage Mort Jamais / Rare / Réaliste, défaut Réaliste pour une installation neuve, une valeur déjà mémorisée n'est pas touchée) : un blessé grave qui a faim et n'a AUCUNE nourriture posée à portée ne guérit plus et peut mourir après un long délai (7 minutes, 11 en Rare). Garde-fous inchangés ET maintenant dans la fonction de mort elle-même : jamais le dernier corbeau, jamais le couple d'un nid occupé, petit protégé par son parent, oeuf de secours, stèle.",
@@ -151,17 +151,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "2098506a1c255c016ee49dd087f3750dd145c6bc5ec41f269de5a6dafda2b2e5",
-    "size": 5190320,
+    "sha256": "4c5c1f1dc36703a7ef6d123a62de46de378d813b1e1dc3c966499e077c89e815",
+    "size": 5194672,
     "canal": "test",
     "notes": [
-        "3.1.40 : plus de point blanc (trait rouge sombre de pres), pastille oeufs retiree, fiche de la colonie",
+        "3.1.41 : blessures aile/patte, sang, mort lente, realisme, capacite du territoire (regulation)",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.40",
-        "run": "45251531220",
-        "commit": "130d1bd00cdc"
+        "version": "3.1.41",
+        "run": "45255515396",
+        "commit": "05ab84f64ca9"
     }
 }
