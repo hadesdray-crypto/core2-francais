@@ -1,6 +1,6 @@
 {
     "version": "3.1.36",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=f71bf46eea83",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=505df960f417",
     "changes": [
         "3.1.36 : bouton « Envoyer un prédateur » dans Réglages des corbeaux (page Nature, puis page Envoyer, la dernière) : trois grosses touches Rapace / Hibou / Renard ; le panneau se ferme et le prédateur arrive tout de suite pour que tu le voies et le testes, avec les mêmes règles que dans la nature (cible la plus faible, alarme, repoussable au toucher, à la main, à la fronde ou à la nourriture). Le hibou et le renard viennent même de jour. Garde-fous inchangés : la mort suit le réglage Mort, jamais le dernier corbeau ; si les Prédateurs sont sur Jamais, c'est une démo sans mort possible (blessé léger au plus). Un seul prédateur à la fois ; coupé par l'allègement automatique. Test par réseau : http://core2-francais.local/api/predateur?predateur=rapace (ou hibou, renard), résultat dans /api/etat (natEnvoi, natPredateur, natPhase).",
         "3.1.35 : ajustements de la vie sauvage (3.1.34). Le hibou ne rode que la nuit, pendant le sommeil du groupe ; le rapace et le renard seulement le jour ; silhouettes plus lisibles (rapace plus clair, renard plus grand avec oreilles et queue touffue) ; stèles plus petites et plus discrètes.",
@@ -138,17 +138,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "f71bf46eea83c15c83eb0482d7a6c8f60dccc82aca4effac83c82056b4f849c2",
-    "size": 5178976,
+    "sha256": "505df960f417e5f5a17eab3080f433f32643c690fa5eee45ae558befaec8043a",
+    "size": 5181728,
     "canal": "test",
     "notes": [
-        "3.1.35 : hibou la nuit, rapace/renard le jour, silhouettes plus lisibles, steles discretes",
+        "3.1.36 : bouton Envoyer un predateur (reglages des corbeaux, page Envoyer) et /api/predateur",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.35",
-        "run": "45081564593",
-        "commit": "e3595cc211e3"
+        "version": "3.1.36",
+        "run": "45229656850",
+        "commit": "1757537d3581"
     }
 }
