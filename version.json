@@ -1,6 +1,6 @@
 {
     "version": "3.1.46",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=d4489b2d93e5",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=3311726bf018",
     "changes": [
         "﻿3.1.46 : l'icône de la viande est redessinée (l'os sort en haut à droite : il n'est plus caché par le chiffre du stock). Le reste est celui de la 3.1.45 (main retirée, fronde en mode à part, barre de nourriture illustrée, pastilles de faim).",
         "3.1.45 : LA MAIN EST RETIRÉE (plus de bouton Main, de bras, de paume, de visite dans la paume, de caresse, de câlin ni de nourriture posée sur la main ; le code est gardé en sommeil). LA FRONDE RESTE, en mode à part : barre du bas = NOURRIR | LANCER | FRONDE | VOIX (tire un corbeau en arrière, lâche : coup spécial sur un prédateur, le projeté qui chasse un autre corbeau, les sons, comme en 3.1.43). Réglage Main : Masquée (défaut) / Affichée, dans Réglages, page « Main, vue et interface » (Affichée remet le mode Main de la 3.1.44).",
@@ -162,17 +162,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "d4489b2d93e50d130edf92e6d97e57e6c7f2f3124e49300b3b02474d4be0146e",
-    "size": 5208624,
+    "sha256": "3311726bf0186546db7fd9b360693c2cc9442734bad242f236dc3b2d6148897d",
+    "size": 5208656,
     "canal": "test",
     "notes": [
-        "3.1.45 : main retiree (code dormant, reglage Main), fronde en mode a part, barre de nourriture illustree + pastilles de faim (BLOC AW)",
+        "3.1.46 : icone de la viande redessinee (os visible)",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.45",
-        "run": "45264076325",
-        "commit": "117fc2f3117d"
+        "version": "3.1.46",
+        "run": "45264924619",
+        "commit": "a18a7547e690"
     }
 }
