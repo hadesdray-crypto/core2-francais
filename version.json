@@ -1,6 +1,6 @@
 {
     "version": "3.1.43",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=2c37bd77f373",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=1289ec129d45",
     "changes": [
         "3.1.43 : FRONDE : elle reste comme avant (tire un corbeau en arrière, lâche : il est projeté puis revient se percher, on peut le diriger partout). Ajouts : (1) si le corbeau projeté touche un PRÉDATEUR (rapace, hibou, renard, chat) : COUP SPÉCIAL : impact bref (éclat, plumes), le prédateur s'enfuit tout de suite, la colonie en profite (tous les corbeaux excités, les blessés soignés plus vite, prochain prédateur plus tard) ; le corbeau projeté n'est jamais blessé. (2) si tu tires un corbeau SUR UN AUTRE CORBEAU (posé, au sol ou en vol), le projeté le CHASSE ensuite : poursuite en vol de 5 à 7 s ; l'autre fuit en cercles, ou riposte (et le poursuit aussi) selon son caractère (audacieux et costaud ripostent plus souvent) ; ni mort ni blessure par la fronde (les blessures de collision sont coupées pendant la poursuite) ; un parent de nid occupé, un blessé, le petit et un oiseau dans la paume ne sont jamais poursuivis. Sons : bruit de la fronde qui se tend, impact, cris de poursuite.",
         "3.1.43 : PRÉDATEURS : un CHAT ERRANT apparaît parfois à la place du renard (environ une fois sur trois) : même façon de chasser au sol (même alarme, mêmes protections), mais plus petit, plus rapide et moins dangereux. Le serpent, la fouine et la martre (nids, oeufs, poussins) ne sont pas faits.",
@@ -157,17 +157,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "2c37bd77f3732064a2c3654735ef8cc99a2e01ddedd8c042490ff7811361fab6",
-    "size": 5196848,
+    "sha256": "1289ec129d45552c420b3d0a7c1d00f2b57854e07bbf2b3289c5683aaeb59209",
+    "size": 5199248,
     "canal": "test",
     "notes": [
-        "3.1.42 : main centree en perspective, nourriture sur la main, bruit de bec",
+        "3.1.43 : fronde (coup special sur un predateur, le projete chasse l'autre corbeau), chat errant, gouttes plus lisibles",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.42",
-        "run": "45256921304",
-        "commit": "f9bfac3f0d6f"
+        "version": "3.1.43",
+        "run": "45257700023",
+        "commit": "b445923f7899"
     }
 }
