@@ -38,6 +38,7 @@ static float presMul() {      // multiplicateur de la frequence des predateurs :
 static int effMax() { return (int)(OP.nb < nbMax ? OP.nb : nbMax); }      // le jeu ne remplace par un oeuf de secours que jusqu'au maximum CHOISI (jamais jusqu'a un effectif gonfle)
 static bool nourritureAccessible() {      // de la nourriture est posee au sol (ou sur la main) : un blesse affame peut la rejoindre
   for (int i = 0; i < NOB; i++) if (ob[i].actif && ob[i].type < T_BRILLANT) return true;
+  if (H.actif) for (int i = 0; i < 3; i++) if (H.om[i].actif && H.om[i].type < T_BRILLANT) return true;      // nourriture posee sur la main
   return false;
 }
 static uint16_t couleurLiseret() { return (OP.hor == 2) ? C(70, 12, 18) : ((OP.hor == 1) ? C(88, 16, 22) : C(104, 20, 26)); }

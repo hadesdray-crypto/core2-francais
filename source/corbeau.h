@@ -707,6 +707,8 @@ struct Viser { bool on; float x0, y0, x, y; }; static Viser VS; static int8_t vi
 struct Fronde { bool on; int8_t c; float ax, ay; }; static Fronde FR;
 struct Doigt { bool bas, grab; float x0, y0, x, y, vx, vy; uint32_t t0, tp; int8_t cible; uint8_t type; bool fait; };
 static Doigt D;
+static bool iconDrag = false; static float dragX = 0.0f, dragY = 0.0f;      // 3.1.42 : une icone de nourriture glissee depuis la barre vers la paume
+static int8_t mgK = -1; static float mgT = 0.0f;      // 3.1.42 : corbeau qui mange la nourriture posee dans la paume (index, temps)
 static uint8_t tpCible = 0; static bool tpFait = false; static uint32_t tpT0 = 0; static float tpX = 0;
 static bool appelOn = false;                  // un appel est en cours : les corbeaux tournent autour du doigt
 static float orbCx = 166.0f, orbCy = 90.0f;   // centre de la nuée (le visiteur ou le doigt)
@@ -719,7 +721,7 @@ static RepM repereMain() {      // repère de la main : le bras (manche et avant
   r.ex = H.exs; r.ey = 262.0f;
   const float hx0 = lerpf(r.ex, H.x, e), hy0 = lerpf(r.ey, H.y + 0.6f * H.resp, e);      // position de repos de la paume (la main sort du bas de l'écran)
   float a0 = lim(atan2f(r.ey - hy0, fabsf(hx0 - r.ex)), 0.15f, 1.3f);
-  const float angR = -(0.06f + 0.26f * a0), cr_ = cosf(angR), sr_ = sinf(angR), L0 = 8.5f * r.S;
+  const float angR = -(0.06f + 0.26f * a0) - 0.15f, cr_ = cosf(angR), sr_ = sinf(angR), L0 = 8.5f * r.S;      // 3.1.42 : la main est un peu plus relevee (doigts vers le haut)
   const float wxs = hx0 - L0 * cr_, wys = hy0 - L0 * sr_;      // le poignet ne bouge jamais
   float tl = lim(H.tilt, -0.7f, 0.7f); const float ang = angR * (1.0f - 0.45f * lim(H.pal, 0.0f, 1.0f)) + (r.g ? tl : -tl);      // inclinaison du poignet (positive = vers le bas de l'écran)
   r.ux = cosf(ang); r.uy = sinf(ang); r.hx = wxs + L0 * r.ux; r.hy = wys + L0 * r.uy; r.mx = hx0;
@@ -1251,7 +1253,7 @@ static void dessinerMain(M5Canvas& g) {
   float wx, wy; L(-8.5f, 0.0f, wx, wy);      // poignet
   float ddx = wx - R_.ex, ddy = wy - R_.ey, ll = sqrtf(ddx * ddx + ddy * ddy); if (ll < 1.0f) ll = 1.0f;
   const float ax = ddx / ll, ay = ddy / ll, nx = -ay, ny = ax, sd = (ny >= 0.0f) ? 1.0f : -1.0f;      // sd : le côté bas (ombre)
-  const float FL = 13.0f * S, w0 = 12.5f * S, w1 = 8.4f * S, wH = 4.9f * S, cH = 5.7f * S;
+  const float FL = 13.0f * S, w0 = 26.0f * S, w1 = 8.4f * S, wH = 4.9f * S, cH = 5.7f * S;      // 3.1.42 : manche en perspective : trapeze tres large en bas (pres du spectateur), etroit a la manchette puis au poignet
   const float c0x = wx - ax * FL, c0y = wy - ay * FL;      // bord de la manche (manchette)
   // manche : du bord de l'écran jusqu'à la manchette, avec plis, côté bas plus sombre et liseré clair en haut
   tri(g, R_.ex + nx * w0, R_.ey + ny * w0, R_.ex - nx * w0, R_.ey - ny * w0, c0x + nx * w1, c0y + ny * w1, MAN); tri(g, R_.ex - nx * w0, R_.ey - ny * w0, c0x - nx * w1, c0y - ny * w1, c0x + nx * w1, c0y + ny * w1, MAN);
@@ -1332,6 +1334,7 @@ static void dessinerMain(M5Canvas& g) {
   for (int q = 0; q < 6; q++) { const Braise& b = BRAIS[q]; if (!b.on) continue; const float u = lim(b.t / b.dur, 0.0f, 1.0f); disque(g, b.x, b.y, (u < 0.7f) ? 1.2f : 0.8f, CF(255.0f - 135.0f * u, 150.0f - 130.0f * u, 110.0f - 80.0f * u)); }
 }
 static void dessinerVisee(M5Canvas& g) {
+  if (iconDrag) { dessinerObjet(g, visType >= 0 ? (int)visType : 0, VS.x, VS.y, 4.6f, 0.0f, 0.0f); return; }      // 3.1.42 : seulement l'icone que l'on glisse vers la paume
   float dx = VS.x - VS.x0, dy = VS.y - VS.y0, l = sqrtf(dx * dx + dy * dy);
   if (l > 6) for (int i = 0; i < (int)l; i += 8) disque(g, VS.x0 + dx * i / l, VS.y0 + dy * i / l, 1.0f, C(255, 200, 160));
   dessinerObjet(g, visType >= 0 ? (int)visType : (int)LANCE[choixL], VS.x, VS.y, 4.6f, 0.0f, 0.0f);
@@ -1685,6 +1688,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       c.bob += 0.30f * c.s * sinf(c.resp * 2.7f);                   // respiration
       c.pitchC = c.pr + 0.015f * sinf(c.resp * 0.9f);               // léger balancement
       acteur(c, dt);
+      if (c.perch == 14 && idx == mgK && mgT > 0.5f) { const float ph_ = fmodf(mgT * 2.4f, 1.0f), dp_ = pas(sinf(ph_ * 3.1416f)); c.haC = c.ha0 + 0.65f * dp_; c.hbC = c.haC + 0.49f; c.pitchC = c.pr - 0.2f * dp_; c.bec = (dp_ > 0.6f) ? 0.5f : 0.0f; }      // 3.1.42 : il becquete la nourriture posee dans la paume
       if (c.objet && c.t > 1.2f && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN && mo::tresorDepart(c, (int)(&c - cr))) break;      // 3.1.30 : un objet brillant va toujours a la tour
       if (c.objet && c.t > 9.0f) { c.objet = 0; eclat(c.x + c.dv * 18 * c.s, c.y - 2, 0.3f, 0.7f); }
       if (c.perch < 10 && c.t * actFreq >= c.tfin && gAction <= 0 && c.act <= A_REGARDE && !fam::immobile(c)) {
@@ -2121,9 +2125,9 @@ static void rendreObjets();
 static void envoyerMain();
 static void tendreMain(float x, float y) {      // la main sort à une place fixe : le bras ne bouge plus ensuite (le toucher n'a plus d'effet sur lui)
   if (V.ph != V_RIEN || H.actif) return;
-  (void)x; (void)y; const float FX = 205.0f, FY = 128.0f;
+  (void)x; (void)y; const float FX = 160.0f, FY = 104.0f;      // 3.1.42 : la main est CENTREE (milieu de l'ecran), le bras sort du bas-milieu
   H.actif = true; H.x = H.tx = FX; H.y = H.ty = FY; H.ext = 0; H.gauche = false; H.pose = PS_REPOS; H.tPose = 0; H.vit = 1.0f; H.tRec = OP.paume ? ((OP.pvis > 0) ? rnd(1.8f, 3.2f) : 1e9f) : 0.9f; H.pal = H.palV = H.dip = H.dipV = H.halo = 0.0f; memset(BRAIS, 0, sizeof(BRAIS));
-  H.vx = H.vy = H.tilt = H.tiltV = H.resp = 0; H.exs = FX + 118.0f; H.ouv = H.ouvV = H.esp = H.espV = H.clos = H.closV = H.circ = 0; H.ctrl = false; H.lx = FX; H.ly = FY; H.tHold = 0; H.lok = false;
+  H.vx = H.vy = H.tilt = H.tiltV = H.resp = 0; H.exs = FX + 16.0f; H.ouv = H.ouvV = H.esp = H.espV = H.clos = H.closV = H.circ = 0; H.ctrl = false; H.lx = FX; H.ly = FY; H.tHold = 0; H.lok = false;
   for (int i = 0; i < 5; i++) { H.sp[i] = MP[PS_REPOS][i][0]; H.cu[i] = MP[PS_REPOS][i][1]; H.spv[i] = H.cuv[i] = 0; }
   for (int i = 0; i < 3; i++) H.om[i].actif = false;
   son(SN_GAZ, 140);
@@ -2379,14 +2383,33 @@ static void rendreObjets() {      // les objets posés dans la paume retombent
   }
 }
 static bool mainOccupee() { for (int k = 0; k < NCB; k++) if (cr[k].perch == 14) return true; return false; }
+static int nourrMain() { if (!H.actif) return -1; for (int i = 0; i < 3; i++) if (H.om[i].actif && H.om[i].type < T_BRILLANT) return i; return -1; }      // 3.1.42 : indice de la nourriture posee sur la paume (-1 = aucune)
+static bool surPaume(float x, float y) { const RepM r = repereMain(); float px, py; ptPaume(r, px, py); return fabsf(x - px) < 40.0f && fabsf(y - (py - 6.0f)) < 30.0f; }
+static void mainPoser(int type) {      // 3.1.42 : la nourriture choisie est posee sur la paume ouverte ; un corbeau PEUT venir la chercher (faim, caractere, confiance : jamais obligatoire), sinon elle disparait apres un moment
+  if (!H.actif || H.pal < 0.5f) return;
+  if (type < 0 || type >= T_BRILLANT) { infoMsg("Pas de la nourriture", "Choisis une nourriture dans la barre"); return; }
+  if (nourrMain() >= 0) { infoMsg("Il y a déjà de la nourriture", "Elle est sur la paume"); return; }
+  int j = -1; for (int q = 0; q < 3; q++) if (!H.om[q].actif) { j = q; break; }
+  if (j < 0) { infoMsg("La paume est pleine", nullptr); return; }
+  if (!stockPrend(type)) return;
+  ObjM& o = H.om[j]; o.actif = true; o.type = (uint8_t)type; o.u = 0.0f; o.t = 0.0f;
+  float px, py; { const RepM r = repereMain(); ptPaume(r, px, py); }
+  son(SN_POP_APP, 120); eclat(px, py - 6.0f, 0.15f, 0.6f); H.dipV += 26.0f; H.halo = 1.0f; H.tRec = rnd(1.2f, 2.6f);
+  infoMsg("Posée sur la main", "Un corbeau viendra peut-être la chercher");
+}
 static int choisirVisiteurMain() {      // le plus apprivoisé et curieux vient ; un parent qui protège un petit ne vient pas (sauf s'il est le seul corbeau)
-  int best = -1; float bs = -1e9f;
+  int best = -1; float bs = -1e9f; const int im_ = nourrMain(), tn = (im_ >= 0) ? (int)H.om[im_].type : -1;
   for (int pass = 0; pass < 2 && best < 0; pass++) {
     if (pass == 1 && OP.nb > 1) break;
     for (int k = 0; k < NCB; k++) {
       Corbeau& c = cr[k]; if (k == PC || c.etat == E_POOF || c.etat == E_TENU || c.etat == E_TIR || c.etat == E_ATTERRIT || c.etat == E_OFF) continue;
       if (c.objet || c.perch >= 10 || (c.etat == E_SOL && c.but != B_RIEN) || (c.etat == E_VOL && c.but != B_ORBITE && c.but != B_PERCHOIR && c.but != B_RIEN)) continue;
-      if (pass == 0 && fam::enService(c)) continue;
+      if (pass == 0 && fam::enService(c) && !(tn >= 0 && natSante(k) > 0 && !(k < 2 && fam::precieux()))) continue;      // un blesse affame peut venir chercher la nourriture posee sur la main
+      if (tn >= 0) {      // 3.1.42 : nourriture sur la main : il vient selon sa faim, son plat prefere, son caractere (confiance) ; jamais obligatoire
+        const float ev = mo::envie(k, tn); if (ev <= 0.0f) continue;
+        const float hun = 1.0f - lim(mo::en[k], 0.0f, 1.0f), tr = (fam::pret && k < fam::NM) ? (0.5f * fam::S.soc[k] + 0.3f * fam::S.cur[k] + 0.2f * fam::S.aud[k]) / 255.0f : 0.5f;
+        if (rnd01() > lim(0.12f + 0.55f * hun + 0.45f * tr - 0.35f * c.pCra + ((ev > 1.2f) ? 0.15f : 0.0f), 0.05f, 0.95f)) continue;
+      }
       float sc = c.pJou + 0.6f * c.pBav + 0.3f * c.pCal - 0.6f * c.pCra + rnd(0.0f, 0.25f) - 0.0015f * ((c.etat == E_DEHORS) ? 300.0f : hypotf(c.x - H.x, c.y - H.y));
       if (sc > bs) { bs = sc; best = k; }
     }
@@ -2506,9 +2529,23 @@ static void tendreSur(M5Canvas& g, int k) {      // par-dessus l'oiseau : plumes
     disque(g, hx - r * 0.55f, hy, r * 0.62f, cc); disque(g, hx + r * 0.55f, hy, r * 0.62f, cc); tri(g, hx - r * 1.12f, hy + r * 0.2f, hx + r * 1.12f, hy + r * 0.2f, hx, hy + r * 1.75f, cc);
   }
 }
+static void majMainNourr(float dt) {      // 3.1.42 : un corbeau pose dans la paume mange la nourriture qui s'y trouve : petits coups de bec (bruit de bec), puis il mange ; interaction tendre (petit coeur)
+  const int im = nourrMain(), k = (H.actif && H.pal > 0.6f) ? oiseauPaume() : -1;
+  if (im < 0 || k < 0) { mgK = -1; mgT = 0.0f; return; }
+  Corbeau& c = cr[k]; ObjM& o = H.om[im];
+  if (mgK != k) { mgK = (int8_t)k; mgT = 0.0f; }
+  if (c.t < 0.6f || (k < NAD && mo::envie(k, o.type) <= 0.0f)) return;      // il vient de se poser, ou il n'a pas faim
+  const int n0 = (int)(mgT * 2.4f); mgT += dt; const int n1 = (int)(mgT * 2.4f);
+  if (c.tfin - c.t < 2.5f) c.tfin = c.t + 2.5f;      // il reste tant qu'il mange
+  if (mgT > 0.5f && n1 != n0 && n1 <= 3) son(SN_CROC, 80);      // bruit de bec dans la main
+  if (mgT >= 0.5f + 3.0f / 2.4f) {
+    mo::mange(c, k, o.type); o.actif = false; mgK = -1; mgT = 0.0f; c.flash = 0.5f; c.hum = 1.0f; c.tfin = c.t + rnd(2.0f, 3.5f);
+    son(SN_GAZ, 70); H.dipV += 12.0f; if (!qMin) { TD.coeurT = 1.5f; TD.coeurX = c.x + (float)c.d * 5.0f * c.s; TD.coeurY = c.y - 15.0f * c.s; }
+  }
+}
 static void majMainPose(float dt) {
   if (!H.actif && H.ext <= 0.0f) return;
-  H.x = H.tx = (H.gauche ? 125.0f : 205.0f); H.y = H.ty = 128.0f; H.vx = H.vy = 0.0f;      // le bras reste immobile
+  H.x = H.tx = 160.0f; H.y = H.ty = 104.0f; H.vx = H.vy = 0.0f;      // le bras reste immobile
   H.resp = sinf(tAnim * 1.9f);
   H.circ *= expf(-dt * 0.7f); if (H.tHold > 0) H.tHold -= dt;
   majTendresse(dt);
@@ -2558,14 +2595,14 @@ static void majMainPose(float dt) {
     H.cu[i] = lim(H.cu[i], -0.5f, 1.25f); H.sp[i] = lim(H.sp[i], -0.7f, 0.7f);
   }
   if (H.pose != PS_REPOS) { H.tPose += dt; if (H.tPose > 1.9f / H.vit) { H.pose = PS_REPOS; H.tPose = 0; H.vit = 1.0f; } }
-  for (int i = 0; i < 3; i++) { ObjM& o = H.om[i]; if (o.actif) { o.t += dt; if (o.t > 10.0f) { ObjM c = o; o.actif = false; int j = -1; for (int q = 0; q < NOB; q++) if (!ob[q].actif) { j = q; break; } if (j >= 0) { Obj& b = ob[j]; b.actif = true; b.type = c.type; b.x = lim(H.x + c.u, 12, 308); b.y = H.y - 4.0f; b.vy = 0; b.t = 0; b.repos = false; b.reserve = -1; } } } }
+  for (int i = 0; i < 3; i++) { ObjM& o = H.om[i]; if (o.actif) { o.t += dt; if (o.t > (o.type < T_BRILLANT ? 25.0f : 10.0f)) { ObjM c = o; o.actif = false; int j = -1; if (c.type < T_BRILLANT) { float px_, py_; const RepM r_ = repereMain(); ptPaume(r_, px_, py_); eclat(px_, py_ - 6.0f, 0.2f, 0.5f); } else for (int q = 0; q < NOB; q++) if (!ob[q].actif) { j = q; break; } if (j >= 0) { Obj& b = ob[j]; b.actif = true; b.type = c.type; b.x = lim(H.x + c.u, 12, 308); b.y = H.y - 4.0f; b.vy = 0; b.t = 0; b.repos = false; b.reserve = -1; } } } }
   if (H.actif) {
     int nb = 0, k1 = -1; for (int k = 0; k < NCB; k++) if (cr[k].perch == 14) { nb++; if (k1 < 0) k1 = k; }
     if (nb > 1) for (int k = k1 + 1; k < NCB; k++) { Corbeau& c = cr[k]; if (c.perch != 14) continue; c.perch = -1; if (c.etat == E_PERCHE) versPerchoir(c); else retourLibre(c); }      // jamais deux oiseaux sur la main
     H.tRec -= dt;
     if (OP.paume) {
       if (H.ctrl && D.bas && D.type == 6 && TR.len <= 16.0f && millis() - TR.t0 > 600 && OP.pvis > 0 && H.tRec > 0.5f) H.tRec = 0.5f;      // le doigt posé et maintenu : la main s'offre, un corbeau vient
-      if (H.tRec <= 0) { H.tRec = 1.0f; if (nb == 0 && H.pal > 0.9f && OP.pvis > 0) envoyerMain(); }
+      if (H.tRec <= 0) { const bool nr_ = nourrMain() >= 0; H.tRec = nr_ ? rnd(2.2f, 4.0f) : 1.0f; if (nb == 0 && H.pal > 0.9f && (OP.pvis > 0 || nr_)) envoyerMain(); }      // 3.1.42 : de la nourriture sur la main : un corbeau peut venir meme si les visites sont sur Jamais
     } else if (H.tRec <= 0) { H.tRec = 1.2f; if (nb == 0) envoyerMain(); }
   }
 }
@@ -2628,13 +2665,13 @@ static void majGlobal(float dt) {
     if (eclT > 0.0f) eclT -= dt; else { gEcl -= dt; if (gEcl <= 0.0f && !panneau) { gEcl = rnd(40.0f, 120.0f); eclT = 0.42f; eclX = rnd(110.0f, 250.0f); eclGraine = (uint32_t)random(1000000) + 1; } }
   } else { lueurOeil = 1.0f; eclT = 0.0f; }
   gFeuille -= dt; if (gFeuille <= 0) { gFeuille = rnd(2.0f, 4.5f) * (OP.q == 0 ? 2.0f : 1.0f); feuille(); }
-  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt); fam::maj(dt); nat::maj(dt);
+  majVisiteur(dt); majMinis(dt); majOeuf(dt); majSocial(dt); majGP(dt); majMainPose(dt); majMainNourr(dt); fam::maj(dt); nat::maj(dt);
   if (H.actif) H.ext += (1.0f - H.ext) * mnf(1.0f, dt * 5.0f); else if (H.ext > 0) { H.ext -= dt * 4.0f; if (H.ext < 0) H.ext = 0; }
   for (int i = 0; i < NPROJ; i++) {      // objets lancés : trajectoire, puis ils retombent et deviennent de l'objet au sol
     Proj& p = proj[i]; if (!p.actif) continue;
     p.t += dt; float vit = hypotf(p.vx, p.vy), gr = 300.0f * (1.0f - lim((vit - 250.0f) / 500.0f, 0.0f, 0.75f));
     p.vy += gr * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
-    if (H.actif && p.type != T_OEUF && hypotf(p.x - (H.x + (H.gauche ? 4.0f : -4.0f)), p.y - (H.y - 5.0f)) < 16.0f) {      // l'objet lancé atterrit dans la paume
+    if (H.actif && p.type != T_OEUF && surPaume(p.x, p.y + 4.0f)) {      // l'objet lancé atterrit dans la paume
       int jm = -1; for (int q = 0; q < 3; q++) if (!H.om[q].actif) { jm = q; break; }
       if (jm >= 0) { H.om[jm].actif = true; H.om[jm].type = p.type; H.om[jm].u = rnd(-5.0f, 5.0f); H.om[jm].t = 0; p.actif = false; son(SN_CROC, 160); eclat(p.x, p.y, 0.15f, 0.7f); continue; }
     }
@@ -3642,7 +3679,7 @@ static void touchBarre(int x) {
   if (x < 176) {
     int m = (int)lim((x - 4) / 34.0f, 0, 4);
     if (m == modeCb && m == 1) { if (H.actif) retirerMain(); else tendreMain(200.0f, 140.0f); }      // re-toucher le mode Main : la main se retire ou ressort
-    else if (m != modeCb) { if (appelOn) appelFin(); if (H.actif && m != 1 && m != 2) retirerMain(); VS.on = false; modeCb = (uint8_t)m; if (m == 1 && !H.actif) tendreMain(200.0f, 140.0f); }      // choisir le mode Main : la main sort tout de suite
+    else if (m != modeCb) { if (appelOn) appelFin(); if (H.actif && m != 0 && m != 1 && m != 2) retirerMain(); VS.on = false; modeCb = (uint8_t)m; if (m == 1 && !H.actif) tendreMain(200.0f, 140.0f); }      // choisir le mode Main : la main sort tout de suite
   } else if (modeCb == 0 || modeCb == 2) {
     int i = (int)lim((x - 180) / 22.0f, 0, 5);
     if (modeCb == 0) choix = i; else choixL = (uint8_t)i;      // nourriture choisie : on décide ensuite où elle va (toucher = poser, glisser = lancer)
@@ -3678,6 +3715,7 @@ static void appui(int x, int y) {
     int b2 = trouverCorbeau((float)x, (float)y, 1.3f / zs);
     if (b2 >= 0) { if (tapK == b2 && m - tapT < 350) { FI.k = (int8_t)b2; FI.t = m; tapK = -1; pendOn = false; son(SN_POP_APP, 110); D.bas = false; return; } tapK = (int8_t)b2; tapT = m; } else tapK = -1;
   }
+  if (modeCb == 0 && H.actif && H.pal > 0.5f && surPaume((float)x, (float)y)) { mainPoser(choix); D.bas = false; return; }      // 3.1.42 : toucher la paume avec une nourriture choisie : elle se pose sur la main
   switch (modeCb) {
     case 0: {
       int b = trouverCorbeau((float)x, (float)y, 1.0f / zs);
@@ -3768,9 +3806,12 @@ static void toucher(const m5::touch_detail_t& t) {
   if (pinceOn) return;
   mo::appuiLong(t);
   if (tpCible && t.isPressed() && !tpFait && millis() - tpT0 > 600) { tpFait = true; if (D.type == 7) { D.type = 0; D.bas = false; VS.on = false; visType = -1; } if (tpCible == 1) bras(); else if (tpCible == 3) lancerVisite(); else invoquer(); }
+  if (barI >= 0 && modeCb == 0 && H.actif && t.isPressed() && t.y < H_SCENE - 8) { iconDrag = true; dragX = ((float)t.x - ztx) / zs; dragY = ((float)t.y - zty) / zs; VS.on = true; VS.x = VS.x0 = dragX; VS.y = VS.y0 = dragY; visType = barI; barInfo = true; }      // 3.1.42 : on glisse l'icone de la barre vers la scene
   if (barI >= 0) {      // toucher sur une icone de la barre : toucher long = nom et effet ; toucher court = la nourriture tombe
     if (t.isPressed() && !barInfo && millis() - barT0 > 450u) { barInfo = true; infoNourr(modeCb == 0 ? barI : -2 - barI); }
-    if (t.wasReleased() || !t.isPressed()) { const int bi = barI; const bool inf = barInfo; barI = -1; barInfo = false; presse = -1; barreCb(fond, choix, -1); syncUI(); barreSale = true; if (!inf && modeCb == 0 && !OP.lance) lacher(bi, rnd(112, 300)); }
+    if (t.wasReleased() || !t.isPressed()) { const int bi = barI; const bool inf = barInfo, drg = iconDrag; barI = -1; barInfo = false; presse = -1; barreCb(fond, choix, -1); syncUI(); barreSale = true;
+      if (drg) { iconDrag = false; VS.on = false; visType = -1; if (surPaume(dragX, dragY)) mainPoser(bi); else lacher(bi, lim(dragX, 12.0f, 308.0f)); }      // 3.1.42 : lache sur la paume = posee sur la main ; ailleurs = tombe la
+      else if (!inf && modeCb == 0 && !OP.lance) lacher(bi, rnd(112, 300)); }
   }
   if (t.wasReleased()) { if (tpCible && !tpFait) { if (tpCible == 1) gerbe(); else if (D.type != 7) lacher(choix, tpX); } tpCible = 0; relache(); }
   if (t.wasPressed()) { if (!nat::toucher(t.x, t.y)) appui(t.x, t.y); }      // un toucher sur un predateur le fait fuir
