@@ -497,14 +497,16 @@ static void dessinerSteles(M5Canvas& g) {      // les steles des disparus : peti
     if (!dgE()) { ligne(g, x + lean * 1.2f, y0 - h + 1.6f, x + lean * 1.2f, y0 - h + 6.0f, C(44, 38, 50)); ligne(g, x + 4.5f, y0 - 0.8f, x + 9.0f, y0 - 1.5f, C(10, 7, 12)); }
   }
 }
-static void sur(M5Canvas& g, int k) {      // un corbeau blesse ou marque : pansement clair sur l'aile, plume cassee (cicatrice)
+static void sur(M5Canvas& g, int k) {      // un corbeau blesse ou marque : trait rouge sombre fin, seulement de pres (3.1.40)
   if (!pretN || k < 0 || k >= NCB) return;
   const uint8_t sa = SV.sant[k]; const bool ci = SV.cic[k] != 0; if (!sa && !ci) return;
   const Corbeau& c = cr[k]; if (!c.visible) return;
   const float s = c.s, d = (c.dv >= 0.0f) ? 1.0f : -1.0f, bx = c.x - d * 3.0f * s, by = c.y + c.bob - 3.4f * s;
-  // 3.1.38 : la cicatrice (plume cassee, gardee a vie) etait un trait gris clair visible sur des corbeaux gueris : elle devient un trait sombre tres discret (a peine plus clair que le plumage), meme pas dessine s'il est tout petit ou en allegement maximal ; seul le pansement (blessure en cours) reste clair, en plus petit
-  if (ci && !mnE() && s * zs >= 0.55f) { ligne(g, bx, by, bx - d * 4.2f * s, by - 2.4f * s, C(46, 38, 54)); if (!dgE()) ligne(g, bx - d * 1.0f * s, by + 0.8f * s, bx - d * 4.6f * s, by - 0.2f * s, C(30, 24, 36)); }
-  if (sa) tri(g, bx + d * 1.0f * s, by + 0.8f * s, bx + d * 3.6f * s, by + 0.3f * s, bx + d * 2.0f * s, by + 3.0f * s, (sa == 2) ? C(226, 184, 112) : C(196, 188, 160));
+  // 3.1.40 : plus AUCUN point ni pansement clair sur les corbeaux. La blessure (en cours) et la cicatrice (gardee a vie) = un trait rouge sombre fin (1 px, ton du lisere), dessine seulement de pres (echelle ecran >= 1,3 : gros plan, main, vue arbre ou nid zoomee), jamais a petite echelle, ni en allegement
+  if (dgE() || mnE() || (c.s * zs < 1.3f && !(c.perch == 14 && c.etat != E_VOL))) return;
+  const uint16_t RC = (OP.hor == 2) ? C(70, 12, 18) : ((OP.hor == 1) ? C(88, 16, 22) : C(104, 20, 26));
+  ligne(g, bx, by, bx - d * 4.2f * s, by - 2.4f * s, RC);
+  if (sa) ligne(g, bx - d * 1.0f * s, by + 0.8f * s, bx - d * 4.6f * s, by - 0.2f * s, RC);      // blesse en cours : un deuxieme trait fin
 }
 
 }  // namespace nat

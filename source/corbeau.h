@@ -598,14 +598,6 @@ static void boutonVisiteur(M5Canvas& g) {
   g.fillRoundRect(176, 2, 58, 20, 8, C(14, 4, 8)); g.drawRoundRect(176, 2, 58, 20, 8, C(110, 22, 30));
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Visiteur", 205, 12); g.setTextDatum(top_left);
 }
-static void boutonOeufs(M5Canvas& g) {      // compteur discret des œufs éclos
-  VueId vid_;
-  g.fillRoundRect(142, 2, 32, 20, 8, C(14, 4, 8)); g.drawRoundRect(142, 2, 32, 20, 8, C(110, 22, 30));
-  dessinerObjet(g, T_OEUF, 151.0f, 12.0f, 3.2f, 0.0f, 0.0f);
-  g.drawFastHLine(166, 7, 5, C(255, 170, 150)); g.drawFastVLine(168, 5, 5, C(255, 170, 150));      // « + » : toucher pour faire apparaître un œuf tout de suite
-  char b[12]; snprintf(b, sizeof(b), "%u", (unsigned)nbOeufs);
-  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_left); g.setTextColor(C(230, 170, 160)); g.drawString(b, 157, 14); g.setTextDatum(top_left);
-}
 
 static void boutonVue(M5Canvas& g) {
   g.fillRoundRect(238, 2, 32, 20, 8, C(14, 4, 8)); g.drawRoundRect(238, 2, 32, 20, 8, C(110, 22, 30));
@@ -632,7 +624,7 @@ static void vignette(M5Canvas& g) {      // horreur : bords noirs (dessiné une 
 }
 static void construireFond() {
   { VueId v_; zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); cielLarge(fond); arbre(fond); mo::decorNormal(fond); vignette(fond); } mo::rebake();      // les arbres lointains sont dessinés dans cielLarge, derrière les collines
-  menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
+  menuCb(fond); boutonSons(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
   cOk = false; nEnCours = false;      // le paysage en cache de la caméra n'est plus valable (ambiance ou décor changés)
 }
 
@@ -2846,6 +2838,7 @@ static void tuile(M5Canvas& g, int x, int y, int w, int h, const char* lab, cons
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_center); g.drawString(lab, x + w / 2, y + 2);
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); g.setTextDatum(middle_center); g.drawString(val, x + w / 2, y + h - 10); g.setTextDatum(top_left);
 }
+static uint8_t oeufMsg = 0; static uint32_t oeufMsgT = 0;      // 3.1.40 : message de la tuile Faire pondre un oeuf (1 : deja un, 2 : impossible)
 static uint8_t natMsg = 0; static uint32_t natMsgT = 0;      // 3.1.36 : message de la page Envoyer un predateur
 static uint8_t panPage = 0;      // 0 : réglages généraux ; 1 : fréquence des événements
 static void segBarre(M5Canvas& g, int x, int y, int w, int h, int n, int sel, const char* const* lab) {      // barre tactile à n segments : le segment choisi est allumé
@@ -2862,7 +2855,7 @@ static void dessinerPanneau() {
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 11 ? "Envoyer un prédateur" : panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, nourriture" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 12 ? "Fiche de la colonie" : panPage == 11 ? "Envoyer un prédateur" : panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, oeuf" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   if (panPage == 0) {
     // volume : - barre + et TEST SON
@@ -2877,7 +2870,7 @@ static void dessinerPanneau() {
     tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
     tuile(g, 4, 100, 153, 32, "Secousse", SEC[OP.sec]); tuile(g, 163, 100, 153, 32, "Vibration", OP.vib ? "Oui" : "Non");
     tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Lumière", OP.hor == 2 ? "Horreur" : (OP.hor == 1 ? "Sombre" : "Clair"));
-    tuile(g, 4, 170, 153, 32, "Images par seconde", "API seulement"); tuile(g, 163, 170, 153, 32, "Bouton Visiteur", btnVis ? "Affiché" : "Masqué");
+    tuile(g, 4, 170, 153, 32, "Colonie", "Fiche >"); tuile(g, 163, 170, 153, 32, "Bouton Visiteur", btnVis ? "Affiché" : "Masqué");
   } else if (panPage == 7) {      // fluidité : compteur d'images/s, cadence maximale, allègement automatique, écran rapide (clés cbfps, cbcad, cbdeg, cbecr)
     static const char* const LM3[3] = {"Non", "Images/s", "Détails"}; static const char* const LC3[3] = {"20", "25", "30"}; static const char* const LO2[2] = {"Non", "Oui"}; static const char* const LE3[3] = {"Standard", "Essai 80 MHz", "Garder"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2891,6 +2884,16 @@ static void dessinerPanneau() {
     g.drawString("Caméra automatique (vue d'ensemble pendant les échanges)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, OP.cauto, LO);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Non : la vue choisie reste, sans gros plan ni visiteur spontanés.", 6, 77);
     g.drawString("Le bouton Vue ou la page Main et vue changent de vue.", 6, 93); g.drawString("En Suivi, touche un corbeau pour le suivre.", 6, 109);
+  } else if (panPage == 12) {      // 3.1.40 : fiche de la colonie (compteurs deja existants, rien de nouveau en memoire)
+    int nAd = 0, nBl = 0; for (int k = 0; k < NAD; k++) if (cr[k].etat != E_OFF) nAd++; for (int k = 0; k < NCB; k++) if (nat::sante(k) > 0) nBl++;
+    char v1[24], v2[24], v3[24], v4[24], v5[24], v6[24], v7[24]; snprintf(v1, sizeof(v1), "%d / %d", nAd, (int)OP.nb); snprintf(v2, sizeof(v2), "%u", (unsigned)nbOeufs); snprintf(v3, sizeof(v3), "%u", (unsigned)nat::SV.nMort); snprintf(v4, sizeof(v4), "%d", nBl);
+    snprintf(v5, sizeof(v5), "%u", (unsigned)nat::SV.nBless); snprintf(v6, sizeof(v6), "%u tour, %u mare", (unsigned)mo::cTour, (unsigned)mo::cMare); snprintf(v7, sizeof(v7), "%u", (unsigned)nat::SV.nPred);
+    tuile(g, 4, 32, 153, 32, "Adultes / maximum", v1); tuile(g, 163, 32, 153, 32, "Petit corbeau", cr[PC].etat != E_OFF ? "Présent" : "Absent");
+    tuile(g, 4, 67, 153, 32, "Oeufs éclos", v2); tuile(g, 163, 67, 153, 32, "Stèles", v3);
+    tuile(g, 4, 102, 153, 32, "Blessés maintenant", v4); tuile(g, 163, 102, 153, 32, "Blessures en tout", v5);
+    tuile(g, 4, 137, 153, 32, "Trésors cachés", v6); tuile(g, 163, 137, 153, 32, "Attaques de prédateurs", v7);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Faire pondre un oeuf : Réglages, page Fonctions.", 6, 176); g.drawString("Chiffres gardés depuis le début de la colonie.", 6, 190);
   } else if (panPage == 11) {      // 3.1.36 : envoyer un predateur tout de suite (rapace, hibou, renard), pour le voir et le tester
     static const char* const LN[3] = {"Rapace", "Hibou", "Renard"}; static const char* const LS[3] = {"du ciel", "silencieux", "au sol"}; static const char* const LMO[3] = {"Jamais", "Rare", "Réaliste"};
     static const char* const LM[5] = {"", "Un prédateur est déjà là.", "Pas de corbeau visible pour celui-là.", "Impossible maintenant (visite, absence...).", "Allègement automatique : prédateur coupé."};
@@ -2940,14 +2943,15 @@ static void dessinerPanneau() {
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Les autres corbeaux aident à nourrir et à garder le petit", 6, 73); segBarre(g, 4, 87, 312, 24, 3, fam::RG.aide, LA);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Protection du petit (ailes ouvertes, alarme, poursuite)", 6, 115); segBarre(g, 4, 129, 312, 24, 3, fam::RG.prot, LP);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vitesse de vie (poussin, jeune, moyen, adulte, vieux)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, fam::RG.vit, LV);
-  } else if (panPage == 4) {      // fonctions du bloc W
-    static const char* const LO[2] = {"Non", "Oui"};
+  } else if (panPage == 4) {      // fonctions : barre de metal, fiche, nourriture, taille, oeuf a la demande (3.1.40)
+    static const char* const LO[2] = {"Non", "Oui"}; static const char* const LT3[3] = {"Petit", "Normal", "Grand"}; static const char* const LPO[1] = {"Faire pondre un oeuf"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
-    g.drawString("Barre de métal pour l'approche du corbeau (gros plan)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, OP.barre, LO);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Fiche et nom au double toucher sur un corbeau", 6, 73); segBarre(g, 4, 87, 312, 24, 2, OP.fiche, LO);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Nourriture : toucher = poser, glisser = lancer", 6, 115); segBarre(g, 4, 129, 312, 24, 2, OP.lance, LO);
-    static const char* const LT3[3] = {"Petit", "Normal", "Grand"};
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Taille des corbeaux (Normal : un peu plus gros qu'avant)", 6, 157); segBarre(g, 4, 171, 312, 24, 3, OP.taille, LT3);
+    g.drawString("Barre de métal pour l'approche du corbeau (gros plan)", 6, 28); segBarre(g, 4, 41, 312, 20, 2, OP.barre, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Fiche et nom au double toucher sur un corbeau", 6, 63); segBarre(g, 4, 76, 312, 20, 2, OP.fiche, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Nourriture : toucher = poser, glisser = lancer", 6, 98); segBarre(g, 4, 111, 312, 20, 2, OP.lance, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Taille des corbeaux (Normal : un peu plus gros qu'avant)", 6, 133); segBarre(g, 4, 146, 312, 20, 3, OP.taille, LT3);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor((millis() < oeufMsgT && oeufMsg) ? C(255, 220, 120) : C(205, 145, 145));
+    g.drawString((millis() < oeufMsgT && oeufMsg == 1) ? "Il y a déjà un oeuf." : ((millis() < oeufMsgT && oeufMsg == 2) ? "Impossible maintenant (visite en cours)." : "Un oeuf apparaît tout de suite (le panneau se ferme)"), 6, 168); segBarre(g, 4, 181, 312, 20, 1, 0, LPO);
   } else if (panPage == 3) {      // monde : décor (tour en ruine / simple) et échanges à longue distance (monde.h)
     static const char* const LD[2] = {"Simple", "Tour en ruine"}; static const char* const LO[2] = {"Non", "Oui"}; static const char* const LDC[3] = {"Complet", "Allégé", "Minimal"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2975,7 +2979,7 @@ static void dessinerPanneau() {
   g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
   g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
-  g.drawString(panPage == 11 ? "< Réglages" : panPage == 10 ? "Envoyer >" : panPage == 9 ? "Nature >" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
+  g.drawString(panPage == 12 ? "< Réglages" : panPage == 11 ? "< Réglages" : panPage == 10 ? "Envoyer >" : panPage == 9 ? "Nature >" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
@@ -2993,7 +2997,8 @@ static int natEnvoyer(int kind) {      // 3.1.36 : bouton Envoyer un predateur e
 }
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
-  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 12); panSale = true; } return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (panPage >= 12) ? 0 : (uint8_t)((panPage + 1) % 12); panSale = true; } return; }
+  if (panPage == 12) return;      // 3.1.40 : fiche de la colonie : lecture seule
   if (panPage == 11) {      // envoyer un predateur : trois grosses touches (rapace, hibou, renard)
     if (y >= 44 && y < 116) {
       const int kd = (x < 108) ? 1 : (x < 214 ? 2 : 3);
@@ -3060,12 +3065,18 @@ static void touchPanneau(int x, int y) {
     if (OP.vib) vibrer(40);
     panSale = true; return;
   }
-  if (panPage == 4) {      // fonctions : barre de métal, fiche, nourriture (clés cbbarre, cbfiche, cblance)
-    if (y >= 42 && y < 72) { OP.barre = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbbarre", OP.barre); }
-    else if (y >= 84 && y < 114) { OP.fiche = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbfiche", OP.fiche); }
-    else if (y >= 126 && y < 156) { OP.lance = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblance", OP.lance); }
-    else if (y >= 168 && y < 198) { float av = tailleF(); OP.taille = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbtaille", OP.taille); appliquerTaille(av); }
-    else return;
+  if (panPage == 4) {      // fonctions : barre de metal, fiche, nourriture, taille (cles cbbarre, cbfiche, cblance, cbtaille) ; 5e rangee : faire pondre un oeuf (3.1.40, aucune cle)
+    const int r4 = (y - 28) / 35, o4 = (y - 28) % 35;
+    if (y < 28 || y >= 203 || o4 < 11 || r4 > 4) return;
+    if (r4 == 0) { OP.barre = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbbarre", OP.barre); }
+    else if (r4 == 1) { OP.fiche = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbfiche", OP.fiche); }
+    else if (r4 == 2) { OP.lance = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cblance", OP.lance); }
+    else if (r4 == 3) { float av = tailleF(); OP.taille = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbtaille", OP.taille); appliquerTaille(av); }
+    else {      // faire pondre un oeuf tout de suite : le panneau se ferme et l'oeuf apparait (comme l'ancienne pastille du haut)
+      if (OE.actif || OE.ponte >= 0) { oeufMsg = 1; oeufMsgT = millis() + 4000; }
+      else if (V.ph != V_RIEN || GP.ph) { oeufMsg = 2; oeufMsgT = millis() + 4000; }
+      else { oeufMsg = 0; if (OP.vib) vibrer(40); fermerPanneau(); oeufMaintenant(); return; }
+    }
     if (OP.vib) vibrer(40);
     panSale = true; return;
   }
@@ -3115,7 +3126,7 @@ static void touchPanneau(int x, int y) {
     case 3: OP.vib = OP.vib ? 0 : 1; prefs.putUChar("cbvib", OP.vib); if (OP.vib) vibrer(90); break;
     case 4: OP.amb = (uint8_t)((OP.amb + 1) % 3); prefs.putUChar("cbamb", OP.amb); appliquerAmb(); ambChange = true; break;
     case 5: OP.hor = (uint8_t)((OP.hor + 1) % 3); prefs.putUChar("cbniv", OP.hor); appliquerAmb(); ambChange = true; break;
-    case 6: return;      // (compteur d'images/s : jamais affiché)
+    case 6: panPage = 12; break;      // 3.1.40 : fiche de la colonie ;      // (compteur d'images/s : jamais affiché)
     default: btnVis = !btnVis; prefs.putUChar("cbbvis", btnVis ? 1 : 0); ambChange = true; break;      // 3.1.37 : affiche ou masque le bouton Visiteur du haut de l'écran (le fond est refait à la fermeture)
   }
   panSale = true;
@@ -3345,7 +3356,7 @@ static void chargerPas() {
     case 8: mo::bakePas(4); break;
     case 9: mo::bakePas(5); break;
     case 10: {
-      menuCb(fond); boutonSons(fond); boutonOeufs(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
+      menuCb(fond); boutonSons(fond); boutonVisiteur(fond); boutonVue(fond); barreCb(fond, choix, -1);
       cOk = false; nEnCours = false; fondSig = sigFond(); fondGarde = true;      // le paysage en cache de la camera n'est plus valable
       if (ldMode) { if (fondLOk) construireFondLarge(); }
       else fondOk = true;
@@ -3483,7 +3494,7 @@ static void dessiner() {
   if (tTestSon && millis() > tTestSon) { tTestSon = 0; M5.Speaker.setVolume(R.volume); }
   if (ecrEssaiFin && (int32_t)(millis() - ecrEssaiFin) > 0) { ecrEssaiFin = 0; if (!OP.ecr) vitesseEcran(false); plein = true; panSale = true; }      // essai de l'écran rapide terminé sans être gardé : retour à la vitesse d'usine
   if (panneau) { if (panSale) { panSale = false; dessinerPanneau(); } return; }
-  if (oeufsSale) { oeufsSale = false; boutonOeufs(fond); syncUI(); plein = true; }
+  if (oeufsSale) { oeufsSale = false; }
   uint32_t m0 = millis(), u0 = micros(); uCorb = 0;
   float dt = (m0 - tDernier) / 1000.0f; bool longue = dt > 0.4f; tDernier = m0; if (dt > 0.05f) dt = 0.05f; if (dt < 0.001f) dt = 0.001f;
   if (slowT > 0) { slowT -= dt; dt *= 0.4f; }      // ralenti court sur les moments forts
@@ -3628,7 +3639,7 @@ static void appui(int x, int y) {
     return;
   }
   if (sxp >= 270 && syp < 20) { D.bas = false; return; }      // (le compteur d'images/s ne se bascule plus par un toucher : il se règle seulement dans Réglages > Fluidité)
-  if (sxp >= 140 && sxp < 176 && syp < 24) { D.bas = false; oeufMaintenant(); return; }      // bouton œuf
+  if (sxp >= 140 && sxp < 176 && syp < 24) { D.bas = false; return; }      // 3.1.40 : plus de pastille d'oeufs en haut (le nombre est dans la fiche de la colonie, l'oeuf a la demande dans Reglages > Fonctions) ;      // bouton œuf
   if (btnVis && sxp >= 176 && sxp < 236 && syp < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
   if (V.ph == V_PRESENT && x >= VX - 26 && x < VX + (V.arm > 0.3f ? 40 : 26) && y >= visPiedsY() - 76 && y < visPiedsY() + 2) { tpCible = 1; tpT0 = m; return; }
   if (OE.actif && OE.etat == 0 && modeCb != 2 && modeCb != 4 && fabsf(x - OE.x) < 12 && fabsf(y - (OE.y - 5.0f)) < 13) { if (!fam::attraperOeuf()) craquer(); D.bas = false; return; }
