@@ -1,6 +1,6 @@
 {
     "version": "3.1.44",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=1289ec129d45",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=5f19d98ed361",
     "changes": [
         "3.1.44 : BOUTONS REFAITS (une seule famille : pilules sombres, filet rouge sombre fin, pictogrammes crème, bouton actif = filet vif + petit halo rouge). HAUT : trois boutons seulement, Menu | Réglages | Vue, répartis sur toute la largeur (le bouton Visiteur, masqué par défaut, s'intercale si tu l'affiches) ; zone tactile de 40 px de haut (sous 24 px, un corbeau touché garde la priorité). BAS : quatre modes à grosses touches, NOURRIR | MAIN | LANCER | VOIX. MAIN = tenir, caresser, et la FRONDE devient un geste de ce mode (main sortie : touche un corbeau, tire-le en arrière, lâche ; tout le comportement de la fronde est gardé, coups spéciaux compris). LANCER = kunai, shuriken, bague, parchemin, oeuf (l'objet brillant n'y est plus ; il reste dans la nourriture). VOIX = Appel + Effrayer réunis : un toucher ou un appui prolongé appelle, un balayage rapide du doigt les fait fuir. NOURRITURE : toujours six icônes (appui long = nom et effet), stock de viande et de noix en gros chiffres sous l'icône (rouge à 0). Aucune fonction supprimée.",
         "3.1.44 : RÉGLAGE Interface : Réglages, page « Main, vue et interface » : Nouvelle (défaut) ou Ancienne (les boutons et les cinq modes d'avant). Les barres sont toujours dessinées une fois dans le fond en cache et redessinées seulement quand quelque chose change (mode, stock, appui) : pas de redessin par image.",
@@ -159,17 +159,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "1289ec129d45552c420b3d0a7c1d00f2b57854e07bbf2b3289c5683aaeb59209",
-    "size": 5199248,
+    "sha256": "5f19d98ed361ca3c4e8b72f3d2a05c70e02902924fd1dafc7c195d0e05cc1da6",
+    "size": 5202944,
     "canal": "test",
     "notes": [
-        "3.1.43 : fronde (coup special sur un predateur, le projete chasse l'autre corbeau), chat errant, gouttes plus lisibles",
+        "3.1.44 : boutons refaits (BLOC AV) : pilules sombres, 3 boutons en haut, 4 modes en bas, fronde dans Main, Voix, reglage Interface",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.43",
-        "run": "45257700023",
-        "commit": "b445923f7899"
+        "version": "3.1.44",
+        "run": "45260858261",
+        "commit": "30b62004d2d8"
     }
 }
