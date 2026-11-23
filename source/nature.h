@@ -339,7 +339,7 @@ static void bagarre(int w, int l, int src) {      // une bagarre peut blesser le
   if (fw < 250) fw = (uint8_t)(fw + 3); if (fl > 25) fl = (uint8_t)(fl - 4);
   fam::changer(w, l, -15); refRangs(); fam::sale = true;
   const float k = (src == 0) ? 1.0f : 0.55f;
-  if (RN.bles && rnd01() < (0.34f + 0.2f * ((int)fw - (int)fl) / 255.0f) * k) blesser(l, random(100) < 25 ? 2 : 1);
+  if (RN.bles && (src == 0 || fl < 60) && rnd01() < (0.34f + 0.2f * ((int)fw - (int)fl) / 255.0f) * k) blesser(l, random(100) < 25 ? 2 : 1);      // 3.1.38 : une dispute pour un morceau de nourriture ne blesse plus (sauf un perdant deja tres affaibli) : lancer de la viande remplissait la colonie de pansements
   if (rnd01() < 0.45f * k) { tExil[l] = rnd(50.0f, 100.0f); tExilCd[l] = rnd(8.0f, 14.0f); }
   const bool mortel = (RN.mort == 2 && SV.sant[l] >= 1 && random(100) < 9) || (RN.mort == 1 && SV.sant[l] == 2 && random(100) < 4);
   if (mortel && src == 0 && peutMourir(l)) tuer(l, 2);
@@ -502,8 +502,9 @@ static void sur(M5Canvas& g, int k) {      // un corbeau blesse ou marque : pans
   const uint8_t sa = SV.sant[k]; const bool ci = SV.cic[k] != 0; if (!sa && !ci) return;
   const Corbeau& c = cr[k]; if (!c.visible) return;
   const float s = c.s, d = (c.dv >= 0.0f) ? 1.0f : -1.0f, bx = c.x - d * 3.0f * s, by = c.y + c.bob - 3.4f * s;
-  if (ci) { ligne(g, bx, by, bx - d * 4.6f * s, by - 2.8f * s, C(150, 146, 152)); if (!dgE()) ligne(g, bx - d * 1.0f * s, by + 0.8f * s, bx - d * 5.0f * s, by - 0.4f * s, C(112, 108, 118)); }
-  if (sa) tri(g, bx + d * 1.0f * s, by + 0.8f * s, bx + d * 4.4f * s, by + 0.2f * s, bx + d * 2.2f * s, by + 3.6f * s, (sa == 2) ? C(238, 196, 120) : C(214, 206, 178));
+  // 3.1.38 : la cicatrice (plume cassee, gardee a vie) etait un trait gris clair visible sur des corbeaux gueris : elle devient un trait sombre tres discret (a peine plus clair que le plumage), meme pas dessine s'il est tout petit ou en allegement maximal ; seul le pansement (blessure en cours) reste clair, en plus petit
+  if (ci && !mnE() && s * zs >= 0.55f) { ligne(g, bx, by, bx - d * 4.2f * s, by - 2.4f * s, C(46, 38, 54)); if (!dgE()) ligne(g, bx - d * 1.0f * s, by + 0.8f * s, bx - d * 4.6f * s, by - 0.2f * s, C(30, 24, 36)); }
+  if (sa) tri(g, bx + d * 1.0f * s, by + 0.8f * s, bx + d * 3.6f * s, by + 0.3f * s, bx + d * 2.0f * s, by + 3.0f * s, (sa == 2) ? C(226, 184, 112) : C(196, 188, 160));
 }
 
 }  // namespace nat

@@ -6,7 +6,7 @@
 // Les corbeaux partent en excursion (tour, portique, stèles, mare, champ, épouvantail) puis reviennent : ils utilisent le même code de vol que sur l'arbre.
 // Échanges à longue distance (appels et réponses, poursuites, vols de parade, tournées de groupe, regroupement sur alerte) : section « longue distance ».
 static void alerte();
-namespace fam { static bool libre(int k); static bool detourner(Corbeau& c, int idx); static float persMul(int k, int type); }
+namespace fam { static bool libre(int k); static bool detourner(Corbeau& c, int idx); static float persMul(int k, int type); static int dominant(int k); static float faimPetit(); }
 static void chasser(Corbeau& c);
 static void choc(float x, float y, Corbeau* a, Corbeau* b, float force);
 static void chamaille();
@@ -862,9 +862,20 @@ static void miettes(Corbeau& c) {      // le pain se partage : deux miettes tomb
     Obj& o = ob[i]; o.actif = true; o.type = T_GRAINE; o.x = lim(c.x + (j ? 14.0f : -14.0f) * c.s, 12.0f, 308.0f); o.y = solHaut(o.x) - 3.2f; o.vy = 0.0f; o.t = 0.0f; o.repos = true; o.reserve = -1;
   }
 }
+// 3.1.38 : la nourriture n'a d'interet que pour un corbeau qui a faim ; chacun a un plat prefere selon son trait dominant
+static const uint8_t FAV[5] = {T_BAIES, T_GRAINE, T_NOIX, T_PAIN, T_VIANDE};      // audacieux : baies, calme : graines, curieux : noix, sociable : pain, costaud : viande
+static int favori(int k) { const int m = fam::dominant(k); return (m >= 0 && m < 5) ? (int)FAV[m] : -1; }
+static float envie(int k, int type) {      // 0 = ignore (rassasie), 1 = interesse, 1,6 = son plat prefere ; un objet brillant ne depend pas de la faim (gout du tresor) ; le petit et un adulte dont le petit a faim sont toujours preneurs
+  if (type >= T_BRILLANT || k < 0 || k >= NAD) return 1.0f;
+  if (fam::faimPetit() > 0.55f) return 1.0f;
+  const bool fav = (favori(k) == type);
+  if (en[k] >= (fav ? 0.80f : 0.60f)) return 0.0f;
+  return fav ? 1.6f : 1.0f;
+}
 static void mange(Corbeau& c, int idx, int type) {      // chaque nourriture a un effet réel et visible
   if (idx < 0 || idx >= NAD) return;
   natNourri(idx);
+  if (favori(idx) == type) { en[idx] += 0.05f; if (tJoie[idx] < 8.0f) tJoie[idx] = 8.0f; c.hum = 1.0f; }      // son plat prefere : plus de joie
   switch (type) {
     case T_GRAINE: en[idx] += 0.10f; break;
     case T_VIANDE: en[idx] += 0.45f; tHer[idx] = 25.0f; if (forceK[idx] < 3) forceK[idx]++; c.flash = 0.6f; break;      // beaucoup d'énergie : plus gros, plus fort
@@ -1282,10 +1293,10 @@ static void maj(float dt) {
   majBetes(dt); chasseBetes(dt); majTresors(dt);
   for (int k = 0; k < NAD; k++) {      // énergie qui baisse, gros après la viande, joie des baies, sieste quand il est rassasié
     Corbeau& c = cr[k]; en[k] = mxf(0.0f, en[k] - 0.004f * dt); if (tHer[k] > 0.0f) tHer[k] -= dt; if (tJoie[k] > 0.0f) tJoie[k] -= dt;
-    if (!rt[k].away && c.etat != E_DEHORS && c.etat != E_OFF) { float tg = sBase[k] * (1.0f + 0.07f * lim(tHer[k] / 3.0f, 0.0f, 1.0f)); if (fabsf(c.s - tg) > 0.002f) c.s += (tg - c.s) * mnf(1.0f, dt * 2.0f); }
+    if (!rt[k].away && c.etat != E_DEHORS && c.etat != E_OFF) { float tg = sBase[k] * (1.0f + 0.07f * lim(tHer[k] / 3.0f, 0.0f, 1.0f)) * ((c.perch == 14 && c.but == B_VISITEUR) ? 1.28f : 1.0f);      // 3.1.38 : l'oiseau posé dans la paume est plus gros (bien visible, en proportion de la grande main) if (fabsf(c.s - tg) > 0.002f) c.s += (tg - c.s) * mnf(1.0f, dt * 2.0f); }
     if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN) {
       if (tJoie[k] > 0.0f && random(1000) < 6) { sonCri(); c.surs = 0.25f; c.bec = 1.0f; }
-      if (en[k] > 0.85f && c.act <= A_REGARDE && random(1000) < 5) { c.act = A_DORT; c.tAct = 0.0f; c.dAct = rnd(9.0f, 15.0f); en[k] = 0.7f; }
+      if (en[k] > 0.85f && c.act <= A_REGARDE && random(1000) < 5) { c.act = A_DORT; c.tAct = 0.0f; c.dAct = rnd(9.0f, 15.0f); en[k] = 0.74f; }
     }
     if (rt[k].away && rt[k].dest == D_DISPUTE && rt[k].ph == 0 && c.etat != E_SOL) { rt[k].tw += dt; if (rt[k].tw > 6.0f) rt[k].ph = 3; }
   }

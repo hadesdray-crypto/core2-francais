@@ -162,6 +162,11 @@ static float persMul(int k, int type) {      // 3.1.28 : comportement propre a c
   if (S.role[k] == R_JEUNE && type != 1) m *= 0.6f;      // le jeune reste plus pres de l'arbre
   return m < 0.15f ? 0.15f : m;
 }
+static int dominant(int k) {      // 3.1.38 : trait dominant (0 audacieux, 1 calme, 2 curieux, 3 sociable, 4 costaud), -1 si inconnu : sert au plat prefere et a la fiche
+  if (!pret || k < 0 || k >= NM) return -1;
+  const uint8_t v[5] = {S.aud[k], S.cal[k], S.cur[k], S.soc[k], S.frc[k]}; int m = 0; for (int i = 1; i < 5; i++) if (v[i] > v[m]) m = i; return m;
+}
+static float faimPetit() { return soinOn() ? faimP : 0.0f; }      // 3.1.38 : un adulte s'interesse a la nourriture quand le petit a faim, meme s'il est rassasie
 static bool calme() {
   if (V.ph != V_RIEN || GP.ph || appelOn || H.actif || panneau || tAlerte > 0.0f) return false;
   for (int i = 0; i < NOB; i++) if (ob[i].actif) return false;

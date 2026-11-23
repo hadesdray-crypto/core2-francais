@@ -53,7 +53,7 @@ static const float PERCH[NPE][2] = {{94, 141}, {138, 135.8f}, {182, 130.3f}, {22
 
 enum { E_PERCHE = 0, E_DECOLLE, E_VOL, E_ATTERRIT, E_SOL, E_DEHORS, E_POOF, E_TENU, E_TIR, E_OFF };
 enum { B_RIEN = 0, B_PERCHOIR, B_NOUR, B_SORTIR, B_OBJET, B_ORBITE, B_VISITEUR, B_ATTRAPE, B_FOURRAGE, B_BAIN, B_POURSUITE, B_MONDE, B_FAM };      // B_FAM : mission d'un parent (famille.h)
-namespace mo { static void decorNormal(M5Canvas& g); static void dessinBetes(M5Canvas& g); static void majNbBetes(); static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); static void decorChange(); static bool vueFixe(); static void cibler(int b); }      // monde.h : paysage, camera, excursions
+namespace mo { static void decorNormal(M5Canvas& g); static void dessinBetes(M5Canvas& g); static void majNbBetes(); static const char* etiquette(); static void rebake(); static void basculer(); static void demandeLarge(bool on); static void compet(int iO); static void decorChange(); static bool vueFixe(); static void cibler(int b); static float envie(int k, int type); static int favori(int k); }      // monde.h : paysage, camera, excursions
 static void syncUI();
 enum { T_GRAINE = 0, T_VIANDE, T_NOIX, T_PAIN, T_BAIES, T_BRILLANT, T_BAGUE, T_KUNAI, T_SHURIKEN, T_PARCHEMIN, T_OEUF, T_NB };
 
@@ -102,6 +102,17 @@ static float msMax = 0.0f; static uint32_t maxIntervalle = 0, tPrecImg = 0;     
 static int choix = 0, presse = -1;
 static float gAction = 2.0f, gPoof = 18.0f, gObjet = 30.0f, gAttrib = 0.0f;
 static bool volVu = false, barreSale = false, sonsReels = false;
+// 3.1.38 : petite bulle d'information au-dessus de la barre (nom et effet d'une nourriture au toucher long, messages), stock de nourritures fortes qui se renouvelle
+static char infoL1[40] = "", infoL2[56] = ""; static uint32_t infoT = 0, infoDur = 0; static bool gRassasie = false, stSale = false; static int8_t barI = -1; static uint32_t barT0 = 0; static bool barInfo = false;
+static void infoMsg(const char* a, const char* b, uint32_t dur = 2600) { snprintf(infoL1, sizeof(infoL1), "%s", a); snprintf(infoL2, sizeof(infoL2), "%s", b ? b : ""); infoT = millis(); if (!infoT) infoT = 1; infoDur = dur; }
+static float stK[2] = {3.0f, 4.0f};      // stock de viande (0) et de noix (1) : les nourritures fortes sont rares et se renouvellent
+static const float STMAX[2] = {3.0f, 4.0f}, STREG[2] = {42.0f, 28.0f};      // maximum, secondes pour en retrouver une
+static inline int stIdx(int type) { return type == 1 ? 0 : (type == 2 ? 1 : -1); }      // T_VIANDE = 1, T_NOIX = 2
+static bool stockPrend(int type) {
+  const int i = stIdx(type); if (i < 0) return true;
+  if (stK[i] < 1.0f) { char b[48]; snprintf(b, sizeof(b), "Il en revient une dans %d s", (int)((1.0f - stK[i]) * STREG[i]) + 1); infoMsg(i == 0 ? "Plus de viande" : "Plus de noix", b); return false; }
+  stK[i] -= 1.0f; stSale = true; return true;
+}
 static bool btnVis = false;      // 3.1.37 : bouton « Visiteur » en haut de l'écran (clé cbbvis) : masqué par défaut ; les visites (gros plan, visiteur mystérieux) restent comme avant
 static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 0 nourrir, 1 main, 2 lancer, 3 appel / effrayer, 4 fronde
 
@@ -555,6 +566,10 @@ static void barreCb(M5Canvas& g, int sel, int pr) {   // barre du bas : cinq mod
       if (i == cur) { g.fillCircle(cx, cy, 11, C(70, 16, 20)); g.drawCircle(cx, cy, 11, C(214, 60, 52)); }
       if (i == pr) g.drawCircle(cx, cy, 9, C(255, 230, 200));
       dessinerObjet(g, typ, (float)cx, (float)cy, 5.2f, 0.0f, 0.0f);
+      if (modeCb == 0 && stIdx(typ) >= 0) {      // 3.1.38 : combien il en reste (viande, noix : rares, le stock se renouvelle)
+        const int n_ = (int)stK[stIdx(typ)]; char nb_[4]; snprintf(nb_, sizeof(nb_), "%d", n_);
+        g.fillCircle(cx + 7, cy + 7, 5, n_ ? C(60, 14, 18) : C(120, 20, 20)); g.drawCircle(cx + 7, cy + 7, 5, n_ ? C(170, 60, 52) : C(255, 90, 80)); g.setTextColor(n_ ? C(255, 236, 220) : C(255, 200, 190)); g.drawString(nb_, cx + 7, cy + 7); g.setTextColor(C(230, 170, 160));
+      }
     }
   } else if (modeCb == 3) {
     for (int i = 0; i < 2; i++) {
@@ -702,7 +717,7 @@ static const float VX = 166.0f;               // où il se tient sur la branche
 static inline float visPiedsY() { return ytop(VX) + 0.4f; }
 struct RepM { float hx, hy, ux, uy, S, ex, ey, mx; bool g; };
 static RepM repereMain() {      // repère de la main : le bras (manche et avant-bras) est FIXE ; la paume pivote autour du poignet ; calculée comme une main gauche puis retournée pour le côté droit
-  RepM r; r.g = H.gauche; r.S = 1.37f;      // 3.1.26 : la main suit les oiseaux (15 % plus petits)
+  RepM r; r.g = H.gauche; r.S = 2.30f;      // 3.1.38 : grosse paume (3.1.26 : 1,37 ; la main était plus petite que l'oiseau posé dessus) : l'oiseau entier se voit bien
    float e = pas(H.ext);
   r.ex = H.exs; r.ey = 262.0f;
   const float hx0 = lerpf(r.ex, H.x, e), hy0 = lerpf(r.ey, H.y + 0.6f * H.resp, e);      // position de repos de la paume (la main sort du bas de l'écran)
@@ -716,7 +731,7 @@ static RepM repereMain() {      // repère de la main : le bras (manche et avant
 static inline void ptMain(const RepM& r, float u, float v, float& X, float& Y) {
   float X0 = r.hx + (u * r.ux - v * r.uy) * r.S; Y = r.hy + (u * r.uy + v * r.ux) * r.S; X = r.g ? X0 : 2.0f * r.mx - X0;
 }
-static const float PAUME_VK = 0.55f;      // la paume vue de profil : sa hauteur à l'écran est réduite à 55 %
+static const float PAUME_VK = 0.62f;      // la paume vue de profil : sa hauteur à l'écran est réduite à 62 % (3.1.38 : 55 % avant)
 static inline void ptPaume(const RepM& r, float& X, float& Y) {      // le creux de la paume (main tournée vers le haut) : c'est là que les pattes se posent
   ptMain(r, -0.85f, 0.7f, X, Y); Y += 0.9f + H.dip;
 }
@@ -1475,6 +1490,7 @@ static void attribuer(int iO, int force = -1);
 static void lacher(int type, float x, float y0 = -6.0f) {       // une nourriture tombe du ciel (ou de l'endroit touché)
   int idx = -1; for (int i = 0; i < NOB; i++) if (!ob[i].actif) { idx = i; break; }
   if (idx < 0) { float vieux = -1; for (int i = 0; i < NOB; i++) if (ob[i].t > vieux && ob[i].repos) { vieux = ob[i].t; idx = i; } if (idx < 0) return; }
+  if (!stockPrend(type)) return;      // 3.1.38 : viande et noix sont rares (stock qui se renouvelle)
   Obj& o = ob[idx]; o.actif = true; o.type = (uint8_t)type; o.x = lim(x, 12, 308); o.y = (y0 < 0.0f) ? -6.0f : mnf(y0, solHaut(o.x) - 3.2f); o.vy = (y0 < 0.0f) ? 20.0f : 0.0f; o.t = 0; o.repos = false; o.reserve = -1;
   for (int k = 0; k < NCB; k++) if (cr[k].item == idx) { cr[k].item = -1; if (cr[k].but == B_NOUR) cr[k].but = B_RIEN; }
   son(SN_CROC, 110);
@@ -1482,16 +1498,17 @@ static void lacher(int type, float x, float y0 = -6.0f) {       // une nourritur
     Corbeau& c = cr[k]; if (c.etat != E_PERCHE || !c.visible) continue;
     c.d = (o.x >= c.x) ? 1 : -1; c.look = lim(atan2f(solHaut(o.x) - c.y, fabsf(o.x - c.x) + 8.0f) * 0.7f, -0.3f, 0.8f); c.tLook = 1.6f; c.clin = 0; c.tClin = rnd(1.5f, 3.0f);
   }
-  { int fk = cibleK; cibleK = -1; attribuer(idx, fk); } mo::compet(idx);      // et l'un d'eux (celui qu'on a désigné par son nom, sinon le plus proche) part sans attendre ; s'il n'y a qu'un gros morceau, un rival vient le disputer
+  { int fk = cibleK; cibleK = -1; attribuer(idx, fk); if (ob[idx].reserve < 0 && gRassasie && fk < 0) infoMsg("Ils n'ont pas faim", "Ils reviendront dès qu'ils auront faim"); } mo::compet(idx);      // et l'un d'eux (celui qu'on a désigné par son nom, sinon le plus proche) part sans attendre ; s'il n'y a qu'un gros morceau, un rival vient le disputer
 }
 
-static void attribuer(int iO, int force) {       // un corbeau libre vient chercher la nourriture
-  Obj& o = ob[iO]; int best = -1; float bd = 1e9f;
+static void attribuer(int iO, int force) {       // un corbeau libre vient chercher la nourriture (3.1.38 : seulement s'il a faim ; son plat prefere attire davantage)
+  Obj& o = ob[iO]; int best = -1; float bd = 1e9f; gRassasie = false;
   for (int k = 0; k < NCB; k++) {
     Corbeau& c = cr[k];
     bool ok = (c.etat == E_PERCHE && c.objet == 0 && c.perch < 10) || c.etat == E_DEHORS || (c.etat == E_SOL && c.but == B_RIEN);
     if (!ok || c.but == B_NOUR || c.rapporte) continue;
-    float px = (c.etat == E_DEHORS) ? 160.0f + (k % 2 ? 200.0f : -200.0f) : c.x; float dd = fabsf(px - o.x) + rnd(0, 25) + rangPoids(k);
+    const float ev = mo::envie(k, o.type); if (ev <= 0.0f && k != force) { gRassasie = true; continue; }
+    float px = (c.etat == E_DEHORS) ? 160.0f + (k % 2 ? 200.0f : -200.0f) : c.x; float dd = fabsf(px - o.x) + rnd(0, 25) + rangPoids(k) - ((ev > 1.2f) ? 45.0f : 0.0f);
     if (dd < bd) { bd = dd; best = k; }
   }
   if (force >= 0 && force < NCB) { const Corbeau& cf = cr[force]; if (((cf.etat == E_PERCHE && cf.objet == 0 && cf.perch < 10) || cf.etat == E_DEHORS || (cf.etat == E_SOL && cf.but == B_RIEN)) && cf.but != B_NOUR && !cf.rapporte) best = force; }
@@ -2102,6 +2119,7 @@ static void poursuivre(int idx) {      // les deux corbeaux les plus proches de 
     Corbeau& c = cr[k];
     bool ok = c.objet == 0 && c.perch < 10 && ((c.etat == E_PERCHE) || (c.etat == E_SOL && c.but == B_RIEN) || (c.etat == E_VOL && (c.but == B_ORBITE || c.but == B_RIEN || c.but == B_PERCHOIR)));
     if (!ok) continue;
+    if (cibleK != k && mo::envie(k, p.type) <= 0.0f) continue;      // 3.1.38 : un corbeau rassasie ne se precipite pas sur une nourriture
     float d = hypotf(c.x - tx, c.y - ty);
     if (d < d1) { d2 = d1; c2 = c1; d1 = d; c1 = k; } else if (d < d2) { d2 = d; c2 = k; }
   }
@@ -2114,6 +2132,7 @@ static void poursuivre(int idx) {      // les deux corbeaux les plus proches de 
   }
 }
 static void lancerType(uint8_t type, float x, float y, float vx, float vy) {      // on lance un objet ou une nourriture (direction et force du geste)
+  if (!stockPrend(type)) return;
   int idx = -1; for (int i = 0; i < NPROJ; i++) if (!proj[i].actif) { idx = i; break; } if (idx < 0) idx = 0;
   float sp = hypotf(vx, vy); if (sp < 130.0f) { vx *= 130.0f / (sp + 0.01f); vy *= 130.0f / (sp + 0.01f); } if (sp > 520.0f) { vx *= 520.0f / sp; vy *= 520.0f / sp; }
   Proj& p = proj[idx]; p.actif = true; p.type = type; p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.rot = 0; p.t = 0; p.ox = x;
@@ -2510,6 +2529,7 @@ static void contacts(float dt) {
 static void majGlobal(float dt) {
   contacts(dt); mo::maj(dt);
   gAction -= dt * actFreq; gPoof -= dt * actFreq; gObjet -= dt * actFreq; gAttrib -= dt; gCalme -= dt;
+  for (int i = 0; i < 2; i++) if (stK[i] < STMAX[i]) { const int a_ = (int)stK[i]; stK[i] = mnf(STMAX[i], stK[i] + dt / STREG[i]); if ((int)stK[i] != a_) stSale = true; }      // 3.1.38 : le stock de viande et de noix se renouvelle
   if (OP.hor == 2) {      // horreur : lueur des yeux instable (très discret), de rares battements de lumière et éclairs rouges lointains
     float n = sinf(tAnim * 9.0f) * sinf(tAnim * 2.3f + 1.0f) + 0.5f * sinf(tAnim * 23.0f); lueurOeil = 1.0f + 0.07f * n;
     if (battT > 0.0f) { battT -= dt; float u = 1.0f - lim(battT / 0.95f, 0.0f, 1.0f); lueurOeil += 0.9f * (powf(sinf(3.1416f * lim(u * 2.0f, 0.0f, 1.0f)), 2.0f) + 0.7f * powf(sinf(3.1416f * lim(u * 2.0f - 1.0f, 0.0f, 1.0f)), 2.0f)); }
@@ -2570,7 +2590,7 @@ static void majGlobal(float dt) {
       o.vy += 330.0f * dt; o.y += o.vy * dt; o.t = 0;
       float sol = solHaut(o.x) - 3.2f;
       if (o.y >= sol) { o.y = sol; if (o.vy > 60) { o.vy = -o.vy * 0.3f; } else { o.vy = 0; o.repos = true; o.t = 0; } }
-    } else { o.t += dt; if (o.t > (o.reserve >= 0 ? 40.0f : 14.0f)) { o.actif = false; for (int k = 0; k < NCB; k++) if (cr[k].item == i) { cr[k].item = -1; } } }
+    } else { o.t += dt; if (o.t > (o.reserve >= 0 ? 40.0f : (o.type < T_BRILLANT ? 36.0f : 14.0f))) { o.actif = false; for (int k = 0; k < NCB; k++) if (cr[k].item == i) { cr[k].item = -1; } } }
   }
   for (int i = 0; i < NPART; i++) {
     Plume& p = pl[i]; if (!p.actif) continue;
@@ -2683,7 +2703,7 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   rec(NCB + NOB + 8, [&] { if (OP.hor == 2 && eclT > 0.0f && !qMin) dessinerEclair(g); });
   rec(E0 + 14, [&] { nat::dessinerPred(g); });      // le predateur (rapace, hibou, renard) : une silhouette de plus, par-dessus les corbeaux
   rec(NCB + NOB + 11, [&] { dessinerGP(g); });      // la visite d'un corbeau au gros plan : redessinee par zones, comme le reste
-  if (veut(NCB + NOB + 12)) { bbReset(); if (OP.fiche) dessinerFiche(g); fin(NCB + NOB + 12); }      // la fiche flottante d'un corbeau (double toucher)
+  if (veut(NCB + NOB + 12)) { bbReset(); if (OP.fiche || infoT) dessinerFiche(g); fin(NCB + NOB + 12); }      // la fiche flottante d'un corbeau (double toucher)
   sec = false;
 }
 
@@ -3137,6 +3157,12 @@ static void reactionRetardee() { if (cibleK >= 0 && millis() - cibleT > 20000) c
 static int fbx = 0, fby = 0, fbh = 80, fbb = 60; static const int FBW = 150, FBH = 80;      // position de la fiche affichée (pour les boutons)
 static void dessinerFiche(M5Canvas& g) {
   if (FI.k >= 0 && (millis() - FI.t > 6000 || !cr[FI.k].visible)) FI.k = -1;
+  if (infoT && millis() - infoT > infoDur) infoT = 0;
+  if (infoT) {      // 3.1.38 : bulle d'information au-dessus de la barre du bas (nom et effet d'une nourriture, messages)
+    const int iw = 292, ih = 34, ix = 14, iy = H_SCENE - ih - 3;
+    bbPt((float)ix, (float)iy); bbPt((float)(ix + iw), (float)(iy + ih));
+    if (!sec) { g.fillRoundRect(ix, iy, iw, ih, 8, C(10, 2, 6)); g.drawRoundRect(ix, iy, iw, ih, 8, C(170, 34, 40)); g.setTextDatum(top_left); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); g.drawString(infoL1, ix + 8, iy + 2); g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(230, 170, 160)); g.drawString(infoL2, ix + 8, iy + 19); }
+  }
   if (cibleK >= 0 && !cr[cibleK].visible) cibleK = -1;
   if (cibleK >= 0 && cibleK != FI.k) {      // pastille : « → Nom » au-dessus du corbeau désigné
     Corbeau& c = cr[cibleK]; float px = TX(c.x), py = TY(c.y + c.bob); int w = 60, x0 = (int)lim(px - w * 0.5f, 2.0f, 318.0f - w), y0 = (int)lim(py - 30.0f * c.s * zs - 20.0f, 28.0f, 180.0f);
@@ -3153,7 +3179,7 @@ static void dessinerFiche(M5Canvas& g) {
   snprintf(l3, sizeof(l3), "%s, énergie %d %%", hum, pct);
   if (fam::pret && k < fam::NM) {
     int m = 0, best = 0; const uint8_t v[5] = {fam::S.aud[k], fam::S.cal[k], fam::S.cur[k], fam::S.soc[k], fam::S.frc[k]}; for (int i = 1; i < 5; i++) if (v[i] > v[m]) m = i;
-    snprintf(l2, sizeof(l2), "Trait : %s", TRT[m]);
+    { static const char* const GOUT[6] = {"graines", "viande", "noix", "pain", "baies", ""}; const int fv_ = mo::favori(k); snprintf(l2, sizeof(l2), "%s, aime %s", TRT[m], (fv_ >= 0 && fv_ < 5) ? GOUT[fv_] : "?"); }
     int j2 = -1; for (int j = 0; j < fam::NM; j++) if (j != k) { int a = fam::lien(k, j); if (j2 < 0 || abs(a) > abs(best)) { j2 = j; best = a; } }
     const char* lk = "sans lien fort";
     if (j2 >= 0 && best >= 80) { lk = "couple avec"; } else if (j2 >= 0 && best >= 40) { lk = "ami de"; } else if (j2 >= 0 && best <= -40) { lk = "rival de"; }
@@ -3161,16 +3187,17 @@ static void dessinerFiche(M5Canvas& g) {
   } else { snprintf(l2, sizeof(l2), "Trait : ?"); snprintf(l4, sizeof(l4), "Colonie en formation"); }
   char l5[40]; l5[0] = 0; fam::texteLien(k, l5, sizeof(l5), nomC);
   char l6[40]; l6[0] = 0; nat::texteSante(k, l6, sizeof(l6));
-  fbh = FBH + (l5[0] ? 12 : 0) + (l6[0] ? 12 : 0); fbb = fbh - 20;
+  fbh = FBH + 4 + (l5[0] ? 12 : 0) + (l6[0] ? 12 : 0); fbb = fbh - 20;
   float px = TX(c.x), py = TY(c.y + c.bob);
   int x0 = (int)lim(px - FBW * 0.5f, 2.0f, 318.0f - FBW), y0 = (int)lim(py - 30.0f * c.s * zs - fbh - 2.0f, 28.0f, (float)(H_SCENE - fbh - 2));
   fbx = x0; fby = y0;
   bbPt((float)x0, (float)y0); bbPt((float)(x0 + FBW), (float)(y0 + fbh)); if (sec) return;
   g.fillRoundRect(x0, y0, FBW, fbh, 6, C(10, 2, 6)); g.drawRoundRect(x0, y0, FBW, fbh, 6, C(170, 34, 40));
   g.setTextDatum(top_left); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); g.drawString(l1, x0 + 6, y0 + 3);
-  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(230, 170, 160)); g.drawString(l2, x0 + 6, y0 + 22); g.drawString(l3, x0 + 6, y0 + 34); g.drawString(l4, x0 + 6, y0 + 46);
-  if (l5[0]) { g.setTextColor(C(255, 205, 130)); g.drawString(l5, x0 + 6, y0 + 58); }
-  if (l6[0]) { g.setTextColor(C(255, 170, 150)); g.drawString(l6, x0 + 6, y0 + 58 + (l5[0] ? 12 : 0)); }
+  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(230, 170, 160)); g.drawString(l2, x0 + 6, y0 + 22); g.drawString(l3, x0 + 6, y0 + 34); g.drawString(l4, x0 + 6, y0 + 50);
+  if (k < NAD) { const int gw = FBW - 12, gf = (int)(lim(en_, 0.0f, 1.0f) * gw + 0.5f); g.fillRect(x0 + 6, y0 + 47, gw, 3, C(44, 12, 16)); g.fillRect(x0 + 6, y0 + 47, gf, 3, pct < 25 ? C(230, 60, 50) : (pct < 60 ? C(230, 150, 60) : C(120, 200, 110))); }      // 3.1.38 : jauge de faim / d'énergie
+  if (l5[0]) { g.setTextColor(C(255, 205, 130)); g.drawString(l5, x0 + 6, y0 + 62); }
+  if (l6[0]) { g.setTextColor(C(255, 170, 150)); g.drawString(l6, x0 + 6, y0 + 62 + (l5[0] ? 12 : 0)); }
   g.fillRoundRect(x0 + 6, y0 + fbb, 66, 16, 6, C(50, 100, 60)); g.fillRoundRect(x0 + 78, y0 + fbb, 66, 16, 6, C(100, 50, 40));      // boutons : Lui donner / Lui lancer
   g.setTextDatum(middle_center); g.setTextColor(C(255, 250, 240)); g.drawString("Lui donner", x0 + 39, y0 + fbb + 8); g.drawString("Lui lancer", x0 + 111, y0 + fbb + 8); g.setTextDatum(top_left);
 }
@@ -3250,7 +3277,7 @@ static void chargerPas() {
   if (zoomC < 0.5f) { zs = ZN; ztx = zax * (1 - zs); zty = zay * (1 - zs); }
   memset(&GP, 0, sizeof(GP)); gVisGP = rnd(50.0f, 90.0f) * multFreq(OP.gp); tToucher = millis(); gEcl = rnd(30.0f, 70.0f); gBatt = rnd(35.0f, 80.0f); eclT = 0.0f; battT = 0.0f;
   memset(&OE, 0, sizeof(OE)); OE.ponte = -1; gOeuf = rnd(20.0f, 45.0f) * multFreq(OP.oe); agePous = 0; panneau = false; panSale = true; ambChange = false; oeufsSale = false; appliquerNb(); fam::restaurerY();
-  gAction = 3.0f; gPoof = rnd(14, 24); gObjet = rnd(24, 40); gAttrib = 0; choix = 0; presse = -1; tDernier = millis(); tSec = millis(); nImg = 0; fps = 0; msDessin = 0; volVu = false;
+  gAction = 3.0f; gPoof = rnd(14, 24); gObjet = rnd(24, 40); gAttrib = 0; choix = 0; presse = -1; stK[0] = STMAX[0]; stK[1] = STMAX[1]; stSale = false; infoT = 0; barI = -1; barInfo = false; tDernier = millis(); tSec = millis(); nImg = 0; fps = 0; msDessin = 0; volVu = false;
   fpsHN = 0; fpsMoy10 = 0; fpsMin = 0; msMax = 0.0f; maxIntervalle = 0; tPrecImg = 0; qDeg = qMin = false; tQ = tBon = millis();      // compteur d'images/s et allègement : on repart de zéro
   vitesseEcran(OP.ecr != 0);      // écran rapide (80 MHz) seulement s'il a été essayé puis gardé dans Réglages > Fluidité
   if (prefs.getUChar("cbvol1", 0) == 0) { if (R.volume < 200) { R.volume = 200; sauverReglages(); } prefs.putUChar("cbvol1", 1); }      // volume de départ plus fort, une seule fois
@@ -3411,7 +3438,8 @@ static void dessiner() {
   majGlobal(dt * pr::facteurMonde());      // presence : en absence les evenements du monde sont rares
   presenceCb();
   uint32_t u1 = micros();
-  if (presse >= 0 && millis() - tPressee > 180) { presse = -1; barreCb(fond, choix, -1); syncUI(); barreSale = true; }
+  if (presse >= 0 && millis() - tPressee > 180 && barI < 0) { presse = -1; stSale = false; barreCb(fond, choix, -1); syncUI(); barreSale = true; }
+  else if (stSale) { stSale = false; barreCb(fond, choix, presse); syncUI(); barreSale = true; }      // 3.1.38 : le compteur de viande / noix a change
   nListe = 0;
   dessinerEntites(cv, true);        // 1) boîtes englobantes (rien n'est dessiné)
   const int lvPr = pr::niveauCb();      // presence : lumiere du ciel (basse en absence, elle revient a l'arrivee)
@@ -3472,6 +3500,15 @@ static int trouverCorbeau(float x, float y, float marge) {
   }
   return best;
 }
+static void infoNourr(int i) {      // 3.1.38 : nom et effet d'une nourriture (i >= 0) ou d'un objet du mode Lancer (i <= -2 : indice = -2 - i), au toucher long sur son icone
+  static const char* const NN[6] = {"Graines", "Viande", "Noix", "Pain", "Baies", "Objet brillant"};
+  static const char* const EN[6] = {"Un peu d'énergie. Préférées des calmes.", "Beaucoup d'énergie, plus fort. Costauds.", "Énergie moyenne, craque au bec. Curieux.", "Bonne énergie, se partage. Sociables.", "Peu d'énergie, mais de la joie. Audacieux.", "Un trésor : ils le cachent à la tour."};
+  static const char* const NL[6] = {"Kunai", "Shuriken", "Bague", "Parchemin", "Objet brillant", "Oeuf"};
+  static const char* const EL[6] = {"Ils l'attrapent en vol.", "Ils l'attrapent en vol.", "Un trésor à rapporter.", "Ils l'attrapent en vol.", "Un trésor à cacher.", "Attrapé il éclot, raté il éclate."};
+  char a[40];
+  if (i >= 0 && i < 6) { const int si = stIdx(i); if (si >= 0) snprintf(a, sizeof(a), "%s  (%d/%d, rare)", NN[i], (int)stK[si], (int)STMAX[si]); else snprintf(a, sizeof(a), "%s", NN[i]); infoMsg(a, EN[i], 3200); }
+  else if (i <= -2 && -2 - i < 6) { const int j = -2 - i; infoMsg(NL[j], EL[j], 3200); }
+}
 static void touchBarre(int x) {
   if (x < 176) {
     int m = (int)lim((x - 4) / 34.0f, 0, 4);
@@ -3479,8 +3516,8 @@ static void touchBarre(int x) {
     else if (m != modeCb) { if (appelOn) appelFin(); if (H.actif && m != 1 && m != 2) retirerMain(); VS.on = false; modeCb = (uint8_t)m; if (m == 1 && !H.actif) tendreMain(200.0f, 140.0f); }      // choisir le mode Main : la main sort tout de suite
   } else if (modeCb == 0 || modeCb == 2) {
     int i = (int)lim((x - 180) / 22.0f, 0, 5);
-    if (modeCb == 0) { choix = i; if (!OP.lance) lacher(i, rnd(112, 300)); } else choixL = (uint8_t)i;      // nourriture choisie : on décide ensuite où elle va (toucher = poser, glisser = lancer)
-    presse = i; tPressee = millis();
+    if (modeCb == 0) choix = i; else choixL = (uint8_t)i;      // nourriture choisie : on décide ensuite où elle va (toucher = poser, glisser = lancer)
+    presse = i; tPressee = millis(); barI = (int8_t)i; barT0 = tPressee; barInfo = false;      // 3.1.38 : la nourriture tombe au relâchement d'un toucher court ; un toucher long (0,45 s) affiche son nom et son effet, sans la lancer
   } else if (modeCb == 3) appelSub = (x < 248) ? 0 : 1;
   barreCb(fond, choix, presse); syncUI(); barreSale = true;
 }
@@ -3600,6 +3637,10 @@ static void toucher(const m5::touch_detail_t& t) {
   if (pinceOn) return;
   mo::appuiLong(t);
   if (tpCible && t.isPressed() && !tpFait && millis() - tpT0 > 600) { tpFait = true; if (D.type == 7) { D.type = 0; D.bas = false; VS.on = false; visType = -1; } if (tpCible == 1) bras(); else if (tpCible == 3) lancerVisite(); else invoquer(); }
+  if (barI >= 0) {      // toucher sur une icone de la barre : toucher long = nom et effet ; toucher court = la nourriture tombe
+    if (t.isPressed() && !barInfo && millis() - barT0 > 450u) { barInfo = true; infoNourr(modeCb == 0 ? barI : -2 - barI); }
+    if (t.wasReleased() || !t.isPressed()) { const int bi = barI; const bool inf = barInfo; barI = -1; barInfo = false; presse = -1; barreCb(fond, choix, -1); syncUI(); barreSale = true; if (!inf && modeCb == 0 && !OP.lance) lacher(bi, rnd(112, 300)); }
+  }
   if (t.wasReleased()) { if (tpCible && !tpFait) { if (tpCible == 1) gerbe(); else if (D.type != 7) lacher(choix, tpX); } tpCible = 0; relache(); }
   if (t.wasPressed()) { if (!nat::toucher(t.x, t.y)) appui(t.x, t.y); }      // un toucher sur un predateur le fait fuir
   else if (t.isPressed()) glisse(t.x, t.y);
