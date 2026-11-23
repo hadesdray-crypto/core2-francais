@@ -1293,7 +1293,7 @@ static void maj(float dt) {
   majBetes(dt); chasseBetes(dt); majTresors(dt);
   for (int k = 0; k < NAD; k++) {      // énergie qui baisse, gros après la viande, joie des baies, sieste quand il est rassasié
     Corbeau& c = cr[k]; en[k] = mxf(0.0f, en[k] - 0.004f * dt); if (tHer[k] > 0.0f) tHer[k] -= dt; if (tJoie[k] > 0.0f) tJoie[k] -= dt;
-    if (!rt[k].away && c.etat != E_DEHORS && c.etat != E_OFF) { float tg = sBase[k] * (1.0f + 0.07f * lim(tHer[k] / 3.0f, 0.0f, 1.0f)) * ((c.perch == 14 && c.but == B_VISITEUR) ? 1.28f : 1.0f);      // 3.1.38 : l'oiseau posé dans la paume est plus gros (bien visible, en proportion de la grande main) if (fabsf(c.s - tg) > 0.002f) c.s += (tg - c.s) * mnf(1.0f, dt * 2.0f); }
+    if (!rt[k].away && c.etat != E_DEHORS && c.etat != E_OFF) { float tg = sBase[k] * (1.0f + 0.07f * lim(tHer[k] / 3.0f, 0.0f, 1.0f)) * ((c.perch == 14 && c.but == B_VISITEUR) ? 1.28f : 1.0f); if (fabsf(c.s - tg) > 0.002f) c.s += (tg - c.s) * mnf(1.0f, dt * 2.0f); }      // 3.1.38 : l'oiseau posé dans la paume est plus gros (x1,28 : bien visible, en proportion de la grande main)
     if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN) {
       if (tJoie[k] > 0.0f && random(1000) < 6) { sonCri(); c.surs = 0.25f; c.bec = 1.0f; }
       if (en[k] > 0.85f && c.act <= A_REGARDE && random(1000) < 5) { c.act = A_DORT; c.tAct = 0.0f; c.dAct = rnd(9.0f, 15.0f); en[k] = 0.74f; }
