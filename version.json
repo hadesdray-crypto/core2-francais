@@ -1,6 +1,6 @@
 {
     "version": "3.1.39",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=ce70935cb462",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=adf2f864d07d",
     "changes": [
         "3.1.39 : GROS PLAN soigné (corbeau vu de près : visite à la vitre, zoom, oiseau posé dans la paume) : volume en trois tons (noir, bleu nuit, reflet clair côté lune, rouge sombre en ambiance Horreur), plumes en couches sur le flanc, reflet sur le bord de l'aile (repliée et ouverte), sur la tête, le bec et les plumes du cou, orbite sombre et point de lumière dans l'œil ; le dessus de la barre de métal accroche la lumière et le corbeau y porte son ombre. Seul l'oiseau est redessiné ; le coût (environ 60 traits de plus pendant les quelques secondes de la visite) est coupé par l'allègement automatique et en décor minimal ; un oiseau de taille normale est dessiné comme avant.",
         "3.1.39 : ARRIÈRE-PLAN FIXE pendant le gros plan : la vue (arbre, mare, large…) ne se referme plus et ne se recompose plus quand un corbeau vient à la vitre ; elle se ferme seulement pour la main, un visiteur ou un appel.",
@@ -146,17 +146,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "ce70935cb462199cdad261e281636f189150432bed6ce63827829a8580f100dc",
-    "size": 5184912,
+    "sha256": "adf2f864d07de6fb14ca4bb904eae75798ea78cd73b30bbc151d30391abe696d",
+    "size": 5189616,
     "canal": "test",
     "notes": [
-        "3.1.38 : correction d'une ligne de monde.h (commentaire qui avalait du code)",
+        "3.1.39 : gros plan soigne (volume, lumiere, ombre), arriere-plan fixe, tendresse (caresse, serrer, calins)",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.38",
-        "run": "45234576261",
-        "commit": "52194f302756"
+        "version": "3.1.39",
+        "run": "45235375232",
+        "commit": "fd248df81722"
     }
 }
