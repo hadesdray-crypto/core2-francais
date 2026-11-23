@@ -119,7 +119,7 @@ static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 
 // ---------- réglages du mode (nouvelles clés mémoire : cbnb, cbvis, cbsec, cbvib, cbamb, cbfps, cboeufs) ----------
 // nouvelles clés (2.9.0) : cbact (activité 1 à 5), cbgp (visites au gros plan 0 à 3), cboefq (fréquence des œufs 0 à 3), cbhor (ambiance Horreur)
 // fps : 0 non, 1 images/s en petit coin, 2 mesures détaillées ; cad : cadence maximale 0 = 20, 1 = 25, 2 = 30 images/s (défaut) ; deg : allègement automatique des détails si l'image est trop lente ; ecr : écran rapide (80 MHz) gardé
-struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto, dec, tend, calin; };      // 3.1.39 : tend = tendresse avec l'oiseau dans la paume (clé cbtend), calin = câlins rares / normaux / fréquents (clé cbcalin)      // dec : decor 0 complet (defaut, s'allege seul si l'image ralentit), 1 allege, 2 minimal ;      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
+struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto, dec, tend, calin, ui; };      // 3.1.39 : tend = tendresse avec l'oiseau dans la paume (clé cbtend), calin = câlins rares / normaux / fréquents (clé cbcalin)      // dec : decor 0 complet (defaut, s'allege seul si l'image ralentit), 1 allege, 2 minimal ;      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
 static Opt OP = {4, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0, 1, 1, 1, 1, 1, 2, 0, 2, 1, 0, 0};      // paume : main ouverte paume vers le haut (1 oui) ; pvis : visites dans la paume (0 jamais, 1 rare, 2 normales, 3 souvent) ; recul : vue reculée (0 normale, 1 reculée, 2 très reculée)
 static uint8_t nbMax = 4;      // 3.1.41 : maximum de corbeaux CHOISI par le joueur (cle cbnb : seul le joueur la change) ; OP.nb = effectif en service (peut depasser le maximum quand un oeuf attrape grandit : cle cbeff)
 static inline float tailleF() { static const float F[3] = {0.744f, 0.818f, 0.930f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux (3.1.26 : tous 15 % plus petits qu'avant pour que l'arbre paraisse plus grand) : petit, normal, grand
@@ -179,6 +179,7 @@ static void chargerOptions() {
   OP.barre = prefs.getUChar("cbbarre", 1) ? 1 : 0; OP.fiche = prefs.getUChar("cbfiche", 1) ? 1 : 0; OP.lance = prefs.getUChar("cblance", 1) ? 1 : 0;      // fonctions du bloc W : toutes activées par défaut, réglables
   OP.paume = prefs.getUChar("cbpaume", 1) ? 1 : 0; OP.pvis = prefs.getUChar("cbpvis", 2); if (OP.pvis > 3) OP.pvis = 2; { uint8_t v_ = prefs.getUChar("cbvue2", 255); if (v_ == 255) v_ = prefs.getUChar("cbrecul", 0) ? 4 : 0; OP.recul = (v_ > 5) ? 0 : v_; } OP.cauto = prefs.getUChar("cbcam", 0) ? 1 : 0;      // caméra automatique : Non par défaut (clé cbcam) ;      // vue choisie : 0 normale, 1 reculée, 2 très reculée, 3 arbre et rivière, 4 mare, 5 vieux bâtiments (clé cbvue)      // bloc AA : main paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
   OP.tend = prefs.getUChar("cbtend", 1) ? 1 : 0; OP.calin = prefs.getUChar("cbcalin", 1); if (OP.calin > 2) OP.calin = 1;
+  OP.ui = prefs.getUChar("cbui", 1) ? 1 : 0;      // 3.1.44 : interface des boutons : 1 nouvelle (defaut), 0 ancienne (cle cbui, un octet)
   OP.taille = prefs.getUChar("cbtaille", 1); if (OP.taille > 2) OP.taille = 1;      // taille : normal par défaut
   nbOeufs = prefs.getUInt("cboeufs", 0);
   appliquerAct(); appliquerAmb(); appliquerSec(); debug = false;
@@ -534,7 +535,9 @@ static void arbreLoin(M5Canvas& g, int v, float bx, float by, float h, float bru
   tri(g, bx - 0.12f * h, by + 2, bx, by - 0.06f * h, bx + 0.12f * h, by + 2, nr);      // pied du tronc
   coulMembre = 0;
 }
-static const uint8_t LANCE[6] = {T_KUNAI, T_SHURIKEN, T_BAGUE, T_PARCHEMIN, T_BRILLANT, T_OEUF};      // objets que l'on peut lancer
+static const uint8_t LANCE[6] = {T_KUNAI, T_SHURIKEN, T_BAGUE, T_PARCHEMIN, T_BRILLANT, T_OEUF};      // objets que l'on peut lancer (interface ancienne)
+static inline uint8_t lanceTyp(int i) { static const uint8_t LN[5] = {T_KUNAI, T_SHURIKEN, T_BAGUE, T_PARCHEMIN, T_OEUF}; return OP.ui ? LN[i < 0 ? 0 : (i > 4 ? 4 : i)] : LANCE[i < 0 ? 0 : (i > 5 ? 5 : i)]; }      // 3.1.44 : interface nouvelle = 5 objets, sans l'objet brillant (il reste dans la nourriture)
+static inline int lanceVieux(int i) { return (OP.ui && i >= 4) ? 5 : i; }      // indice du texte d'aide (NL / EL) de l'objet
 static void iconeMode(M5Canvas& g, int m, int cx, int cy, uint16_t col) {
   switch (m) {
     case 0: dessinerObjet(g, T_GRAINE, (float)cx - 3, (float)cy + 2, 5.0f, 0.0f, 0.0f); dessinerObjet(g, T_BAIES, (float)cx + 4, (float)cy - 3, 4.0f, 0.0f, 0.0f); break;      // nourrir
@@ -551,8 +554,92 @@ static void iconeMode(M5Canvas& g, int m, int cx, int cy, uint16_t col) {
     default: g.drawLine(cx, cy + 8, cx, cy + 1, col); g.drawLine(cx, cy + 1, cx - 6, cy - 7, col); g.drawLine(cx, cy + 1, cx + 6, cy - 7, col); g.drawLine(cx - 6, cy - 7, cx + 6, cy - 7, col); g.fillCircle(cx, cy - 5, 2, col); break;      // fronde
   }
 }
-static void barreCb(M5Canvas& g, int sel, int pr) {   // barre du bas : cinq modes à gauche, le choix d'objet (ou de geste) à droite
+// ---------- 3.1.44 : interface des boutons : une seule famille de pilules sombres (fond presque noir, filet rouge sombre, pictogrammes creme) ----------
+// Tout est dessine dans le fond en cache (haut : 24 px, bas : 34 px) ; seul l'appui, le changement de mode ou de stock redessine la zone concernee.
+static void bnPilule(M5Canvas& g, int x, int y, int w, int h, int r, bool on, bool pr) {
+  if (on) { g.drawRoundRect(x - 2, y - 2, w + 4, h + 4, r + 2, C(46, 9, 13)); g.drawRoundRect(x - 1, y - 1, w + 2, h + 2, r + 1, C(92, 17, 23)); }      // petit halo rouge autour du bouton actif
+  g.fillRoundRect(x, y, w, h, r, pr ? C(60, 14, 20) : (on ? C(40, 9, 15) : C(14, 5, 10)));
+  g.drawRoundRect(x, y, w, h, r, pr ? C(255, 150, 120) : (on ? C(222, 66, 56) : C(104, 20, 26)));
+}
+static void bnIcone(M5Canvas& g, int id, int cx, int cy, uint16_t col, uint16_t bg) {      // pictogrammes de modes : 0 nourrir (epi), 1 main, 2 lancer (etoile de lancer), 3 voix (ondes)
+  switch (id) {
+    case 0:
+      g.fillRoundRect(cx - 8, cy + 2, 17, 6, 3, col);      // bol
+      g.fillCircle(cx - 4, cy - 3, 2, col); g.fillCircle(cx + 1, cy - 5, 2, col); g.fillCircle(cx + 5, cy - 2, 2, col);      // graines
+      break;
+    case 1:
+      g.fillRoundRect(cx - 5, cy - 1, 10, 8, 2, col);
+      for (int i = 0; i < 4; i++) g.fillRoundRect(cx - 5 + i * 3, cy - 8 + ((i == 1 || i == 2) ? 0 : 2), 2, 8, 1, col);
+      g.fillTriangle(cx - 5, cy + 1, cx - 9, cy - 2, cx - 5, cy + 5, col);
+      break;
+    case 2:
+      g.fillTriangle(cx, cy - 8, cx - 2, cy - 2, cx + 2, cy - 2, col); g.fillTriangle(cx + 8, cy, cx + 2, cy - 2, cx + 2, cy + 2, col);
+      g.fillTriangle(cx, cy + 8, cx + 2, cy + 2, cx - 2, cy + 2, col); g.fillTriangle(cx - 8, cy, cx - 2, cy + 2, cx - 2, cy - 2, col);
+      g.fillRect(cx - 2, cy - 2, 5, 5, col); g.fillCircle(cx, cy, 1, bg);
+      break;
+    default:
+      g.fillCircle(cx - 6, cy, 2, col);
+      for (int k = 1; k <= 3; k++) { const float r = 2.0f + 3.4f * k; for (int a = -2; a < 2; a++) { const float a0 = a * 0.4f, a1 = (a + 1) * 0.4f; g.drawLine((int)(cx - 6 + r * cosf(a0)), (int)(cy + r * sinf(a0)), (int)(cx - 6 + r * cosf(a1)), (int)(cy + r * sinf(a1)), col); } }
+      break;
+  }
+}
+static void bnIconeHaut(M5Canvas& g, int kind, int cx, int cy, uint16_t col, uint16_t bg) {      // pictogrammes du haut : 0 menu, 1 reglages (rouage), 2 visiteur, 3 vue (oeil)
+  switch (kind) {
+    case 0: g.fillRoundRect(cx - 5, cy - 5, 11, 2, 1, col); g.fillRoundRect(cx - 5, cy - 1, 11, 2, 1, col); g.fillRoundRect(cx - 5, cy + 3, 11, 2, 1, col); break;
+    case 1: {
+      static const int8_t D8[8][2] = {{6, 0}, {-6, 0}, {0, 6}, {0, -6}, {4, 4}, {-4, 4}, {4, -4}, {-4, -4}};
+      g.fillCircle(cx, cy, 4, col); for (int i = 0; i < 8; i++) g.fillRect(cx + D8[i][0] - 1, cy + D8[i][1] - 1, 3, 3, col);
+      g.fillCircle(cx, cy, 2, bg);
+    } break;
+    case 2: g.fillCircle(cx, cy - 3, 3, col); g.fillRoundRect(cx - 5, cy + 1, 11, 5, 2, col); break;
+    default:
+      g.fillTriangle(cx - 7, cy, cx, cy - 4, cx + 7, cy, col); g.fillTriangle(cx - 7, cy, cx, cy + 4, cx + 7, cy, col);
+      g.fillCircle(cx, cy, 3, bg); g.fillCircle(cx, cy, 1, col);
+      break;
+  }
+}
+static inline int hautN() { return btnVis ? 4 : 3; }      // boutons du haut : Menu | Reglages | Vue (le bouton Visiteur, masque par defaut, s'intercale)
+static void hautPilule(M5Canvas& g, int slot, int kind, const char* lab) {
+  const int n = hautN(), w = (308 - 7 * (n - 1)) / n, x = 6 + slot * (w + 7);
+  bnPilule(g, x, 1, w, 22, 10, false, false);
+  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_left); g.setTextColor(C(236, 224, 206));
+  const int tw = g.textWidth(lab), tot = 14 + 5 + tw; const bool ico = (tot <= w - 8);
+  const int sx = x + (w - (ico ? tot : tw)) / 2;
+  if (ico) { bnIconeHaut(g, kind, sx + 7, 12, C(236, 224, 206), C(14, 5, 10)); g.drawString(lab, sx + 19, 12); } else g.drawString(lab, sx, 12);
+  g.setTextDatum(top_left);
+}
+static void barreCbN(M5Canvas& g, int pr) {      // barre du bas : 4 modes (Nourrir, Main + fronde, Lancer, Voix = appel + effrayer) puis la nourriture (6) ou les objets (5)
+  static const char* const LAB[4] = {"NOURRIR", "MAIN", "LANCER", "VOIX"};
+  g.fillRect(0, H_SCENE, 320, 34, C(5, 2, 4));
+  for (int m = 0; m < 4; m++) {
+    const int x = 4 + m * 48; const bool on = (m == modeCb);
+    bnPilule(g, x, 208, 46, 28, 9, on, false);
+    bnIcone(g, m, x + 23, 217, on ? C(255, 240, 222) : C(196, 176, 160), on ? C(40, 9, 15) : C(14, 5, 10));
+    g.setFont(&fonts::Font0); g.setTextDatum(middle_center); g.setTextColor(on ? C(255, 240, 222) : C(176, 156, 142)); g.drawString(LAB[m], x + 23, 230);
+  }
+  g.drawFastVLine(199, 212, 20, C(70, 13, 18));
+  if (modeCb == 0 || modeCb == 2) {
+    const int n = (modeCb == 0) ? 6 : 5, cur = (modeCb == 0) ? choix : choixL;
+    for (int i = 0; i < n; i++) {
+      const int x0 = 203 + (114 * i) / n, x1 = 203 + (114 * (i + 1)) / n, w = x1 - x0 - 2, cx = x0 + w / 2;
+      const int typ = (modeCb == 0) ? i : lanceTyp(i);
+      bnPilule(g, x0, 208, w, 28, 8, i == cur, i == pr);
+      dessinerObjet(g, typ, (float)cx, (modeCb == 0) ? 217.0f : 222.0f, 5.0f, 0.0f, 0.0f);
+      if (modeCb == 0 && stIdx(typ) >= 0) {      // combien il en reste (viande, noix : rares, le stock se renouvelle)
+        const int n_ = (int)stK[stIdx(typ)]; char nb_[4]; snprintf(nb_, sizeof(nb_), "%d", n_);
+        g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(n_ ? C(255, 240, 222) : C(255, 96, 84)); g.drawString(nb_, cx, 230);
+      }
+    }
+  } else {
+    bnPilule(g, 203, 208, 114, 28, 12, false, false);
+    g.setFont(&fonts::Font0); g.setTextDatum(middle_center); g.setTextColor(C(222, 202, 186));
+    g.drawString(modeCb == 1 ? "Tiens, caresse" : "Touche : appel", 260, 217); g.drawString(modeCb == 1 ? "Tire : fronde" : "Balaie : fuite", 260, 228);
+  }
+  g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(top_left);
+}
+static void barreCb(M5Canvas& g, int sel, int pr) {   // barre du bas : cinq modes à gauche, le choix d'objet (ou de geste) à droite (interface ancienne ; la nouvelle : barreCbN)
   (void)sel; VueId vid_;
+  if (OP.ui) { barreCbN(g, pr); return; }
   g.fillRect(0, H_SCENE, 320, 34, C(5, 2, 4));
   g.fillRoundRect(2, 208, 316, 30, 10, C(16, 5, 9)); g.drawRoundRect(2, 208, 316, 30, 10, C(96, 18, 26));
   for (int m = 0; m < 5; m++) {
@@ -585,22 +672,26 @@ static void barreCb(M5Canvas& g, int sel, int pr) {   // barre du bas : cinq mod
   g.setTextDatum(top_left);
 }
 static void menuCb(M5Canvas& g) {
+  if (OP.ui) { hautPilule(g, 0, 0, "Menu"); return; }
   g.fillRoundRect(2, 2, 46, 20, 8, C(14, 4, 8)); g.drawRoundRect(2, 2, 46, 20, 8, C(110, 22, 30));
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Menu", 25, 12); g.setTextDatum(top_left);
 }
 
 static void boutonSons(M5Canvas& g) {
+  if (OP.ui) { hautPilule(g, 1, 1, "Réglages"); return; }
   g.fillRoundRect(52, 2, 86, 20, 8, C(14, 4, 8)); g.drawRoundRect(52, 2, 86, 20, 8, C(110, 22, 30));
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160));
   g.drawString("Réglages", 95, 12); g.setTextDatum(top_left);
 }
 static void boutonVisiteur(M5Canvas& g) {
   if (!btnVis) return;
+  if (OP.ui) { hautPilule(g, 2, 2, "Visiteur"); return; }
   g.fillRoundRect(176, 2, 58, 20, 8, C(14, 4, 8)); g.drawRoundRect(176, 2, 58, 20, 8, C(110, 22, 30));
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString("Visiteur", 205, 12); g.setTextDatum(top_left);
 }
 
 static void boutonVue(M5Canvas& g) {
+  if (OP.ui) { hautPilule(g, hautN() - 1, 3, mo::etiquette()); return; }
   g.fillRoundRect(238, 2, 32, 20, 8, C(14, 4, 8)); g.drawRoundRect(238, 2, 32, 20, 8, C(110, 22, 30));
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextDatum(middle_center); g.setTextColor(C(230, 170, 160)); g.drawString(mo::etiquette(), 254, 12); g.setTextDatum(top_left);
 }
@@ -1337,7 +1428,7 @@ static void dessinerVisee(M5Canvas& g) {
   if (iconDrag) { dessinerObjet(g, visType >= 0 ? (int)visType : 0, VS.x, VS.y, 4.6f, 0.0f, 0.0f); return; }      // 3.1.42 : seulement l'icone que l'on glisse vers la paume
   float dx = VS.x - VS.x0, dy = VS.y - VS.y0, l = sqrtf(dx * dx + dy * dy);
   if (l > 6) for (int i = 0; i < (int)l; i += 8) disque(g, VS.x0 + dx * i / l, VS.y0 + dy * i / l, 1.0f, C(255, 200, 160));
-  dessinerObjet(g, visType >= 0 ? (int)visType : (int)LANCE[choixL], VS.x, VS.y, 4.6f, 0.0f, 0.0f);
+  dessinerObjet(g, visType >= 0 ? (int)visType : (int)lanceTyp(choixL), VS.x, VS.y, 4.6f, 0.0f, 0.0f);
   float vx = D.vx, vy = D.vy; if (hypotf(vx, vy) < 200) { vx = dx * 7.0f; vy = dy * 7.0f; }
   for (int i = 1; i <= 5; i++) { float t = i * 0.12f; disque(g, VS.x + vx * 0.9f * t, VS.y + vy * 0.9f * t + 150.0f * t * t, 1.2f, C(255, 236, 200)); }
 }
@@ -2181,7 +2272,7 @@ static void lancerType(uint8_t type, float x, float y, float vx, float vy) {    
   p.vr = (p.type == T_SHURIKEN ? 24.0f : 10.0f) * (random(2) ? 1.0f : -1.0f); p.dern = -1;
   son(SN_PLUMES, 150); poursuivre(idx);      // même pour un œuf : les corbeaux essaient de l'attraper avant qu'il explose
 }
-static void lancer(float x, float y, float vx, float vy) { lancerType(LANCE[choixL], x, y, vx, vy); }
+static void lancer(float x, float y, float vx, float vy) { lancerType(lanceTyp(choixL), x, y, vx, vy); }
 static void balayage(float x0, float y0, float x1, float y1) {      // un geste de balayage : les corbeaux près du trajet s'envolent
   float dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy + 0.01f; int n = 0;
   for (int k = 0; k < NCB; k++) {
@@ -2921,7 +3012,7 @@ static void dessinerPanneau() {
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 13 ? "Nature : réalisme et capacité" : panPage == 12 ? "Fiche de la colonie" : panPage == 11 ? "Envoyer un prédateur" : panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, oeuf" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 13 ? "Nature : réalisme et capacité" : panPage == 12 ? "Fiche de la colonie" : panPage == 11 ? "Envoyer un prédateur" : panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main, vue et interface" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, oeuf" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   if (panPage == 0) {
     // volume : - barre + et TEST SON
@@ -3006,10 +3097,11 @@ static void dessinerPanneau() {
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
     static const char* const LCA[3] = {"Rares", "Normaux", "Fréquents"}; static const char* const LV6[6] = {"Normal", "Arbre", "Mare", "Bâtim.", "Large", "Nid"};
     (void)LRC; (void)LLI;
-    g.drawString("Main ouverte, paume vers le haut (mode Main)", 6, 29); segBarre(g, 4, 42, 312, 22, 2, OP.paume, LO);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Visites d'un corbeau dans la paume", 6, 66); segBarre(g, 4, 79, 312, 22, 4, OP.pvis, LPV);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Tendresse (caresser, serrer)", 6, 103); g.drawString("Câlins sur les doigts", 112, 103); segBarre(g, 4, 116, 100, 22, 2, OP.tend, LO); segBarre(g, 108, 116, 208, 22, 3, OP.calin, LCA);      // 3.1.39
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vue (elle reste fixe) : normale, arbre, mare, bâtiments, large, nid", 6, 141); segBarre(g, 4, 154, 312, 22, 6, (OP.recul <= 5) ? OP.recul : -1, LV6);
+    g.drawString("Main ouverte, paume vers le haut (mode Main)", 6, 28); segBarre(g, 4, 40, 312, 20, 2, OP.paume, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Visites d'un corbeau dans la paume", 6, 62); segBarre(g, 4, 74, 312, 20, 4, OP.pvis, LPV);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Tendresse (caresser, serrer)", 6, 96); g.drawString("Câlins sur les doigts", 112, 96); segBarre(g, 4, 108, 100, 20, 2, OP.tend, LO); segBarre(g, 108, 108, 208, 20, 3, OP.calin, LCA);      // 3.1.39
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vue (elle reste fixe) : normale, arbre, mare, bâtiments, large, nid", 6, 130); segBarre(g, 4, 142, 312, 20, 6, (OP.recul <= 5) ? OP.recul : -1, LV6);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Interface : boutons du haut, du bas et nourriture", 6, 164); { static const char* const LUI[2] = {"Ancienne", "Nouvelle"}; segBarre(g, 4, 176, 312, 20, 2, OP.ui, LUI); }      // 3.1.44
   } else if (panPage == 5) {      // famille : parent attitré, entraide, protection, croissance du petit (clés cbfam, cbfaid, cbfpro, cbfvit)
     static const char* const LF[2] = {"Désactivée", "Activée"}; static const char* const LA[3] = {"Non", "Selon caractère", "Tous aident"}; static const char* const LP[3] = {"Douce", "Normale", "Forte"}; static const char* const LV[3] = {"Lente", "Normale", "Rapide"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -3130,10 +3222,14 @@ static void touchPanneau(int x, int y) {
     panSale = true; return;
   }
   if (panPage == 6) {      // main et vue (clés cbpaume, cbpvis, cbrecul)
-    if (y >= 39 && y < 67) { OP.paume = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbpaume", OP.paume); }
-    else if (y >= 76 && y < 104) { OP.pvis = (uint8_t)constrain((x - 4) * 4 / 312, 0, 3); prefs.putUChar("cbpvis", OP.pvis); }
-    else if (y >= 113 && y < 141) { if (x < 106) { OP.tend = (((x - 4) * 2 / 100) >= 1) ? 1 : 0; prefs.putUChar("cbtend", OP.tend); } else { OP.calin = (uint8_t)constrain((x - 108) * 3 / 208, 0, 2); prefs.putUChar("cbcalin", OP.calin); } }
-    else if (y >= 151 && y < 179) { mo::reglerRecul((uint8_t)constrain((x - 4) * 6 / 312, 0, 5)); }
+    if (y >= 38 && y < 64) { OP.paume = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbpaume", OP.paume); }
+    else if (y >= 72 && y < 98) { OP.pvis = (uint8_t)constrain((x - 4) * 4 / 312, 0, 3); prefs.putUChar("cbpvis", OP.pvis); }
+    else if (y >= 106 && y < 132) { if (x < 106) { OP.tend = (((x - 4) * 2 / 100) >= 1) ? 1 : 0; prefs.putUChar("cbtend", OP.tend); } else { OP.calin = (uint8_t)constrain((x - 108) * 3 / 208, 0, 2); prefs.putUChar("cbcalin", OP.calin); } }
+    else if (y >= 140 && y < 166) { mo::reglerRecul((uint8_t)constrain((x - 4) * 6 / 312, 0, 5)); }
+    else if (y >= 174 && y < 200) {      // 3.1.44 : interface des boutons : nouvelle (4 modes, pilules) ou ancienne (5 modes, boutons d'avant) ; le fond est refait a la fermeture du panneau
+      const uint8_t nu = (x >= 160) ? 1 : 0;
+      if (nu != OP.ui) { if (appelOn) appelFin(); OP.ui = nu; prefs.putUChar("cbui", OP.ui); choixL = 0; appelSub = 0; if (nu && modeCb == 4) { modeCb = 1; if (!H.actif) tendreMain(200.0f, 140.0f); } ambChange = true; }
+    }
     else return;
     if (OP.vib) vibrer(40);
     panSale = true; return;
@@ -3395,7 +3491,7 @@ static const int LD_FIN0 = 14, LD_FIN1 = 11;      // nombre d'etapes : ouverture
 static inline uint32_t hmS(uint32_t h, uint32_t v) { return (h ^ v) * 16777619u; }
 static uint32_t sigFond() {      // tout ce dont depend le fond (ciel, arbre, decor, vignettage)
   uint32_t h = 2166136261u;
-  h = hmS(h, OP.hor); h = hmS(h, OP.amb); h = hmS(h, OP.dec); h = hmS(h, (uint32_t)mo::RGM.tour); h = hmS(h, (uint32_t)(int)(ambVig * 1000.0f)); h = hmS(h, (uint32_t)ambEt); h = hmS(h, (uint32_t)bpp); h = hmS(h, btnVis ? 1u : 0u);
+  h = hmS(h, OP.hor); h = hmS(h, OP.amb); h = hmS(h, OP.dec); h = hmS(h, (uint32_t)mo::RGM.tour); h = hmS(h, (uint32_t)(int)(ambVig * 1000.0f)); h = hmS(h, (uint32_t)ambEt); h = hmS(h, (uint32_t)bpp); h = hmS(h, btnVis ? 1u : 0u); h = hmS(h, (uint32_t)OP.ui);
   return h;
 }
 static void chargerEcran(bool premier) {      // ecran de chargement : seule la barre est renvoyee a l'ecran apres la premiere image
@@ -3695,7 +3791,32 @@ static void infoNourr(int i) {      // 3.1.38 : nom et effet d'une nourriture (i
   if (i >= 0 && i < 6) { const int si = stIdx(i); if (si >= 0) snprintf(a, sizeof(a), "%s  (%d/%d, rare)", NN[i], (int)stK[si], (int)STMAX[si]); else snprintf(a, sizeof(a), "%s", NN[i]); infoMsg(a, EN[i], 3200); }
   else if (i <= -2 && -2 - i < 6) { const int j = -2 - i; infoMsg(NL[j], EL[j], 3200); }
 }
+static void touchBarreN(int x) {      // 3.1.44 : modes a gauche (4 colonnes de 48 px), nourriture ou objets a droite
+  if (x < 198) {
+    int m = (x - 4) / 48; if (m < 0) m = 0; if (m > 3) m = 3;
+    if (m == modeCb && m == 1) { if (H.actif) retirerMain(); else tendreMain(200.0f, 140.0f); }      // re-toucher le mode Main : la main se retire ou ressort
+    else if (m != modeCb) { if (appelOn) appelFin(); if (H.actif && m != 0 && m != 1 && m != 2) retirerMain(); VS.on = false; modeCb = (uint8_t)m; if (m == 1 && !H.actif) tendreMain(200.0f, 140.0f); son(SN_POP_APP, 90); }
+  } else if (modeCb == 0 || modeCb == 2) {
+    const int n = (modeCb == 0) ? 6 : 5; int i = ((x - 203) * n) / 114; if (i < 0) i = 0; if (i > n - 1) i = n - 1;
+    if (modeCb == 0) choix = i; else choixL = (uint8_t)i;
+    presse = i; tPressee = millis(); barI = (int8_t)i; barT0 = tPressee; barInfo = false;
+  }
+  barreCb(fond, choix, presse); syncUI(); barreSale = true;
+}
+static int hautTouche(int sx, int sy, int x, int y) {      // 3.1.44 : boutons du haut : 0 menu, 1 reglages, 2 visiteur, 3 vue ; zone tactile de 40 px de haut (au-dela de 24 px seulement si aucun corbeau n'est sous le doigt)
+  if (sy >= 40) return -1;
+  if (sy >= 24 && trouverCorbeau((float)x, (float)y, 1.0f / zs) >= 0) return -1;
+  const int n = hautN(), w = (308 - 7 * (n - 1)) / n; int s = (sx - 3) / (w + 7); if (s < 0) s = 0; if (s > n - 1) s = n - 1;
+  return (s == 0) ? 0 : ((s == n - 1) ? 3 : ((s == 1) ? 1 : 2));
+}
+static void hautAction(int k) {
+  if (k == 0) { page = 6; bip(700, 40); }
+  else if (k == 1) ouvrirPanneau();
+  else if (k == 2) { if (V.ph == V_RIEN) invoquer(); else finVisite(); }
+  else mo::basculer();
+}
 static void touchBarre(int x) {
+  if (OP.ui) { touchBarreN(x); return; }
   if (x < 176) {
     int m = (int)lim((x - 4) / 34.0f, 0, 4);
     if (m == modeCb && m == 1) { if (H.actif) retirerMain(); else tendreMain(200.0f, 140.0f); }      // re-toucher le mode Main : la main se retire ou ressort
@@ -3713,6 +3834,8 @@ static void appui(int x, int y) {
   if (y < H_SCENE) { x = (int)((x - ztx) / zs); y = (int)((y - zty) / zs); }      // la scène est en coordonnées du monde
   D.bas = true; D.x0 = D.x = (float)x; D.y0 = D.y = (float)y; D.vx = D.vy = 0; D.t0 = D.tp = m; D.cible = -1; D.type = 0; D.fait = false; D.grab = false; tpCible = 0; tpFait = false;
   if (syp >= H_SCENE) { D.bas = false; touchBarre(sxp); return; }
+  if (OP.ui) { const int hk = hautTouche(sxp, syp, x, y); if (hk >= 0) { D.bas = false; hautAction(hk); return; } }
+  else {
   if (sxp < 50 && syp < 24) { D.bas = false; page = 6; bip(700, 40); return; }
   if (sxp >= 238 && sxp < 270 && syp < 24) { D.bas = false; mo::basculer(); return; }
   if (sxp >= 52 && sxp < 140 && syp < 24) {
@@ -3723,6 +3846,7 @@ static void appui(int x, int y) {
   if (sxp >= 270 && syp < 20) { D.bas = false; return; }      // (le compteur d'images/s ne se bascule plus par un toucher : il se règle seulement dans Réglages > Fluidité)
   if (sxp >= 140 && sxp < 176 && syp < 24) { D.bas = false; return; }      // 3.1.40 : plus de pastille d'oeufs en haut (le nombre est dans la fiche de la colonie, l'oeuf a la demande dans Reglages > Fonctions) ;      // bouton œuf
   if (btnVis && sxp >= 176 && sxp < 236 && syp < 24) { D.bas = false; if (V.ph == V_RIEN) invoquer(); else finVisite(); return; }
+  }
   if (V.ph == V_PRESENT && x >= VX - 26 && x < VX + (V.arm > 0.3f ? 40 : 26) && y >= visPiedsY() - 76 && y < visPiedsY() + 2) { tpCible = 1; tpT0 = m; return; }
   if (OE.actif && OE.etat == 0 && modeCb != 2 && modeCb != 4 && fabsf(x - OE.x) < 12 && fabsf(y - (OE.y - 5.0f)) < 13) { if (!fam::attraperOeuf()) craquer(); D.bas = false; return; }
   if (FI.k >= 0 && sxp >= fbx && sxp < fbx + FBW && syp >= fby && syp < fby + fbh) {      // toucher sur la fiche : les deux boutons, rien d'autre ne réagit
@@ -3747,16 +3871,22 @@ static void appui(int x, int y) {
     case 1: D.type = 1; D.cible = (int8_t)trouverCorbeau((float)x, (float)y, 1.5f / zs);
       if (!H.actif && D.cible < 0) tendreMain((float)x, (float)y);      // un appui sur le mode Main : la main sort tout de suite, à sa place fixe
       if (H.actif && OP.tend && TD.k >= 0 && D.cible == TD.k) { D.type = 8; D.grab = false; TD.carHold = 0.0f; break; }      // 3.1.39 : un toucher ou un glisser du doigt sur l'oiseau posé dans la paume = une caresse (pas un tracé de geste)
+      if (OP.ui && H.actif) {      // 3.1.44 : la fronde est un geste du mode Main : toucher un corbeau (pas celui de la paume), le tirer en arriere, lacher
+        const int bf = trouverCorbeau((float)x, (float)y, 1.0f / zs);
+        if (bf >= 0 && cr[bf].perch != 14 && cr[bf].etat != E_TENU) { saisir(bf, (float)x, (float)y, true); if (cr[bf].etat == E_TENU) { D.type = 4; D.cible = (int8_t)bf; break; } }
+      }
       if (H.actif) {      // un trait tracé n'importe où sur l'écran pilote le poignet et les doigts ; le bras ne bouge pas
         D.cible = -1; D.type = 6; TR.n = 0; TR.len = 0; TR.t0 = m; traceAjoute((float)x, (float)y);
         H.ctrl = true; H.circ = 0; H.lok = false; H.lx = (float)x; H.ly = (float)y;
       }
       break;
     case 2: D.type = 2; VS.on = true; VS.x0 = VS.x = (float)x; VS.y0 = VS.y = (float)y; break;
-    case 3: if (appelSub == 0) { D.type = 3; appelDebut((float)x, (float)y); } else { effrayer((float)x, (float)y); D.bas = false; } break;
+    case 3: if (OP.ui || appelSub == 0) { D.type = 3; appelDebut((float)x, (float)y); }      // 3.1.44 (interface nouvelle) : Voix = un toucher appelle, un balayage rapide les fait fuir (voir glisse)
+       else { effrayer((float)x, (float)y); D.bas = false; } break;
     default: { int b = trouverCorbeau((float)x, (float)y, 1.6f / zs); if (b >= 0) { D.type = 4; D.cible = (int8_t)b; saisir(b, (float)x, (float)y, true); } else D.bas = false; } break;
   }
 }
+static float balX = 0.0f, balY = 0.0f;      // 3.1.44 : dernier point du balayage (mode Voix)
 static void glisse(int x, int y) {
   if (!D.bas) return;
   x = (int)((x - ztx) / zs); y = (int)((y - zty) / zs);
@@ -3781,7 +3911,11 @@ static void glisse(int x, int y) {
       }
     } break;
     case 2: case 7: VS.x = D.x; VS.y = D.y; break;
-    case 3: if (appelOn) { orbCx = D.x; orbCy = D.y; } break;
+    case 3:
+      if (OP.ui && dist > 36.0f && hypotf(D.vx, D.vy) > 240.0f) { appelFin(); effrayer(D.x, D.y); D.type = 9; balX = D.x; balY = D.y; }      // 3.1.44 : balayage rapide = geste de repoussement : ils fuient
+      else if (appelOn) { orbCx = D.x; orbCy = D.y; }
+      break;
+    case 9: if (hypotf(D.x - balX, D.y - balY) > 60.0f) { effrayer(D.x, D.y); balX = D.x; balY = D.y; } break;      // le balayage continue : chaque 60 px les corbeaux proches fuient encore
     case 4:
       if (D.cible >= 0 && cr[D.cible].etat == E_TENU) {
         float dx = D.x - FR.ax, dy = D.y - FR.ay, l = hypotf(dx, dy); if (l > 38.0f && !frTendu) { frTendu = true; son(SN_CROC, 75); }      // 3.1.43 : bruit de la fronde qui se tend
@@ -3829,7 +3963,7 @@ static void toucher(const m5::touch_detail_t& t) {
   if (tpCible && t.isPressed() && !tpFait && millis() - tpT0 > 600) { tpFait = true; if (D.type == 7) { D.type = 0; D.bas = false; VS.on = false; visType = -1; } if (tpCible == 1) bras(); else if (tpCible == 3) lancerVisite(); else invoquer(); }
   if (barI >= 0 && modeCb == 0 && H.actif && t.isPressed() && t.y < H_SCENE - 8) { iconDrag = true; dragX = ((float)t.x - ztx) / zs; dragY = ((float)t.y - zty) / zs; VS.on = true; VS.x = VS.x0 = dragX; VS.y = VS.y0 = dragY; visType = barI; barInfo = true; }      // 3.1.42 : on glisse l'icone de la barre vers la scene
   if (barI >= 0) {      // toucher sur une icone de la barre : toucher long = nom et effet ; toucher court = la nourriture tombe
-    if (t.isPressed() && !barInfo && millis() - barT0 > 450u) { barInfo = true; infoNourr(modeCb == 0 ? barI : -2 - barI); }
+    if (t.isPressed() && !barInfo && millis() - barT0 > 450u) { barInfo = true; infoNourr(modeCb == 0 ? barI : -2 - lanceVieux(barI)); }
     if (t.wasReleased() || !t.isPressed()) { const int bi = barI; const bool inf = barInfo, drg = iconDrag; barI = -1; barInfo = false; presse = -1; barreCb(fond, choix, -1); syncUI(); barreSale = true;
       if (drg) { iconDrag = false; VS.on = false; visType = -1; if (surPaume(dragX, dragY)) mainPoser(bi); else lacher(bi, lim(dragX, 12.0f, 308.0f)); }      // 3.1.42 : lache sur la paume = posee sur la main ; ailleurs = tombe la
       else if (!inf && modeCb == 0 && !OP.lance) lacher(bi, rnd(112, 300)); }
