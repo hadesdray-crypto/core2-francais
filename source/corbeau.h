@@ -2732,6 +2732,7 @@ static void tuile(M5Canvas& g, int x, int y, int w, int h, const char* lab, cons
   g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_center); g.drawString(lab, x + w / 2, y + 2);
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); g.setTextDatum(middle_center); g.drawString(val, x + w / 2, y + h - 10); g.setTextDatum(top_left);
 }
+static uint8_t natMsg = 0; static uint32_t natMsgT = 0;      // 3.1.36 : message de la page Envoyer un predateur
 static uint8_t panPage = 0;      // 0 : réglages généraux ; 1 : fréquence des événements
 static void segBarre(M5Canvas& g, int x, int y, int w, int h, int n, int sel, const char* const* lab) {      // barre tactile à n segments : le segment choisi est allumé
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center);
@@ -2747,7 +2748,7 @@ static void dessinerPanneau() {
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, nourriture" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 11 ? "Envoyer un prédateur" : panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, nourriture" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   if (panPage == 0) {
     // volume : - barre + et TEST SON
@@ -2776,6 +2777,24 @@ static void dessinerPanneau() {
     g.drawString("Caméra automatique (vue d'ensemble pendant les échanges)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, OP.cauto, LO);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Non : la vue choisie reste, sans gros plan ni visiteur spontanés.", 6, 77);
     g.drawString("Le bouton Vue ou la page Main et vue changent de vue.", 6, 93); g.drawString("En Suivi, touche un corbeau pour le suivre.", 6, 109);
+  } else if (panPage == 11) {      // 3.1.36 : envoyer un predateur tout de suite (rapace, hibou, renard), pour le voir et le tester
+    static const char* const LN[3] = {"Rapace", "Hibou", "Renard"}; static const char* const LS[3] = {"du ciel", "silencieux", "au sol"}; static const char* const LMO[3] = {"Jamais", "Rare", "Réaliste"};
+    static const char* const LM[5] = {"", "Un prédateur est déjà là.", "Pas de corbeau visible pour celui-là.", "Impossible maintenant (visite, absence...).", "Allègement automatique : prédateur coupé."};
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Touche pour l'envoyer tout de suite (essai) :", 6, 31);
+    for (int i = 0; i < 3; i++) {
+      const int bx = 4 + i * 106;
+      g.fillRoundRect(bx, 48, 100, 64, 10, C(120, 28, 34)); g.drawRoundRect(bx, 48, 100, 64, 10, C(255, 120, 90));
+      g.setTextDatum(middle_center); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 250, 240)); g.drawString(LN[i], bx + 50, 48 + 24);
+      g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(255, 190, 170)); g.drawString(LS[i], bx + 50, 48 + 47);
+    }
+    g.setTextDatum(top_left); g.setFont(&fonts::lgfxJapanGothic_12);
+    if (millis() < natMsgT && natMsg >= 1 && natMsg <= 4) { g.setTextColor(C(255, 220, 120)); g.drawString(LM[natMsg], 6, 118); } else { g.setTextColor(C(150, 255, 170)); g.drawString("Le panneau se ferme, il arrive.", 6, 118); }
+    g.setTextColor(C(205, 145, 145));
+    g.drawString("Cible : le plus faible. Alarme : les audacieux foncent.", 6, 138);
+    g.drawString("Repousse-le : toucher, main, fronde, nourriture.", 6, 154);
+    { char sb[64]; snprintf(sb, sizeof(sb), "Mort : %s (jamais le dernier corbeau)", LMO[nat::RN.mort > 2 ? 0 : nat::RN.mort]); g.drawString(sb, 6, 170); }
+    g.drawString(nat::RN.pred == 0 ? "Prédateurs sur Jamais : démo, blessé léger au plus." : "Hibou et renard viennent même de jour ici.", 6, 186);
   } else if (panPage == 10) {      // nature : predateurs, blessures, mort, mode (cles cbnpre, cbnble, cbnmor, cbnmod)
     static const char* const LPR[3] = {"Jamais", "Rares", "Fréquents"}; static const char* const LBL[2] = {"Non", "Oui"}; static const char* const LMO[3] = {"Jamais", "Rare", "Réaliste"}; static const char* const LMD[2] = {"Nature", "Protecteur"};
     char sb[64]; snprintf(sb, sizeof(sb), "Mode : Nature ou Protecteur   (stèles : %u)", (unsigned)nat::SV.nMort);
@@ -2840,7 +2859,7 @@ static void dessinerPanneau() {
   g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
   g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
-  g.drawString(panPage == 10 ? "< Réglages" : panPage == 9 ? "Nature >" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
+  g.drawString(panPage == 11 ? "< Réglages" : panPage == 10 ? "Envoyer >" : panPage == 9 ? "Nature >" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
@@ -2851,9 +2870,23 @@ static void fermerPanneau() {
   panneau = false; plein = true; tDernier = millis();
   if (ambChange) { ambChange = false; ldMode = 1; ldPas = 0; ldAff = false; }      // 3.1.32 : le decor est reconstruit par etapes, sous un ecran de chargement, au lieu de geler l'image
 }
+static int natEnvoyer(int kind) {      // 3.1.36 : bouton Envoyer un predateur et /api/reglages?predateur= : ferme le panneau puis declenche ; 0 fait, 1 deja un, 2 pas de cible, 3 impossible, 4 allegement
+  const int r = nat::peut(kind); if (r) return r;
+  if (panneau) fermerPanneau();
+  return nat::envoyer(kind);
+}
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
-  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 11); panSale = true; } return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (uint8_t)((panPage + 1) % 12); panSale = true; } return; }
+  if (panPage == 11) {      // envoyer un predateur : trois grosses touches (rapace, hibou, renard)
+    if (y >= 44 && y < 116) {
+      const int kd = (x < 108) ? 1 : (x < 214 ? 2 : 3);
+      const int r = natEnvoyer(kd);
+      if (OP.vib) vibrer(r ? 20 : 40);
+      if (r) { natMsg = (uint8_t)r; natMsgT = millis() + 4000; panSale = true; }
+    }
+    return;
+  }
   if (panPage == 10) {      // nature (cles cbnpre, cbnble, cbnmor, cbnmod)
     if (y >= 42 && y < 72) { nat::RN.pred = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbnpre", nat::RN.pred); nat::gPred = nat::delaiPred(); }
     else if (y >= 84 && y < 114) { nat::RN.bles = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbnble", nat::RN.bles); }

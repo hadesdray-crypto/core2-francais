@@ -26,7 +26,7 @@
 #include "presence.h"      // presence / absence des personnages et des univers (3.1.6)
 #define NB_PERSOS 3      // personnages disponibles (4 emplacements prévus en mémoire)
 
-#define VERSION_PROGRAMME "3.1.35"
+#define VERSION_PROGRAMME "3.1.36"
 #define SOURCE_MAJ "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/version.json"
 #define DEBUT_BIN "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/"
 #define SOURCE_MAJ_TEST "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/version.json"      // canal « test » (par défaut) : publié automatiquement après chaque compilation réussie de la branche corbeau
@@ -217,6 +217,7 @@ void activite() { derniereActivite = millis(); }
 uint32_t derniereVraie = 0;      // dernier vrai geste de l'utilisateur (toucher, secousse, bouton, branchement) ; activite() est aussi forcée par des pages qui restent éveillées
 void activiteReelle() { derniereVraie = millis(); activite(); pr::interaction(); }      // presence : un vrai geste (toucher, secousse, bouton, branchement) = quelqu'un est la
 uint8_t reposNiv = 1;      // Ralentissement au repos (cle repos) : 0 Jamais, 1 Apres 5 min (defaut), 2 Apres 15 min ; seulement sur pile, jamais en USB
+const char* predEnvoiMsg = "";      // 3.1.36 : resultat du dernier envoi de predateur par l'API
 bool presenceOn = true;      // presence : animations reduites quand personne n'interagit depuis 25 s (cle memoire pres) ; reglable dans Reglages des corbeaux > Image
 bool ecoForte = true;            // réglage « Économie de batterie : normale / forte » (clé econiv), forte par défaut ; sans effet quand le Core2 est branché
 int palierEco = 0;               // 0 plein régime, 1 puis 2 = inactivité de plus en plus longue (écran qui baisse, moins d'images)
@@ -3395,6 +3396,13 @@ void appliquerReglagesWeb() {
   if (serveur.hasArg("canal")) { String c = serveur.arg("canal"); if (c == "test" || c == "stable") changerCanal(c == "test"); }      // canal de mise à jour
   if (serveur.hasArg("dessus")) { vueDessusOn = serveur.arg("dessus") == "1"; prefs.putBool("vdessus", vueDessusOn); if (!vueDessusOn) { vue = 0; rotEcran = 0; changeVue = true; } }
   if (serveur.hasArg("repos")) { int v = serveur.arg("repos").toInt(); reposNiv = (uint8_t)(v < 0 ? 0 : (v > 2 ? 2 : v)); prefs.putUChar("repos", reposNiv); }      // ralentissement au repos : 0 jamais, 1 apres 5 min, 2 apres 15 min
+  if (serveur.hasArg("predateur")) {      // 3.1.36 : envoie tout de suite un predateur (mode Corbeaux ouvert) : rapace, hibou ou renard (ou 1, 2, 3)
+    String p = serveur.arg("predateur"); p.toLowerCase();
+    const int kd = (p == "rapace" || p == "1") ? 1 : ((p == "hibou" || p == "2") ? 2 : ((p == "renard" || p == "3") ? 3 : 0));
+    const int r = kd ? cb::natEnvoyer(kd) : 5;
+    static const char* const MS[6] = {"ok : le predateur arrive", "ignore : un predateur est deja la", "pas de cible visible pour celui-la", "impossible maintenant (mode Corbeaux ferme, visite, absence, chargement)", "allegement automatique : predateur coupe", "predateur inconnu (rapace, hibou ou renard)"};
+    predEnvoiMsg = MS[r > 5 ? 5 : r];
+  }
   if (serveur.hasArg("presence")) { presenceOn = serveur.arg("presence") == "1"; prefs.putBool("pres", presenceOn); }      // presence / absence automatique
   if (serveur.hasArg("perso")) R.perso = constrain(serveur.arg("perso").toInt(), 0, NB_PERSOS - 1);
   { Fiche& f = FA; bool mf = false;
@@ -3426,6 +3434,7 @@ void demarrerServeur() {
     serveur.send(200, "application/json; charset=utf-8", jsonEtat());
     if (reseau) { delay(300); sauverPerso(); esp_restart(); }
   });
+  serveur.on("/api/predateur", HTTP_GET, []() { autoriserCors(); appliquerReglagesWeb(); serveur.send(200, "application/json; charset=utf-8", jsonEtat()); });      // 3.1.36 : /api/predateur?predateur=rapace|hibou|renard
   serveur.on("/api/reglages", HTTP_OPTIONS, []() { autoriserCors(); serveur.sendHeader("Access-Control-Allow-Headers", "*"); serveur.send(204); });
   serveur.on("/api/maj", HTTP_POST, []() {
     autoriserCors();
@@ -3493,7 +3502,7 @@ void demarrerServeur() {
     d["secondesDepuisDemarrage"] = millis() / 1000; d["economieForte"] = ecoForte; d["presence"] = presenceOn; d["repos"] = reposNiv; d["absence"] = cb::cbAbsent; d["palierEco"] = palierEco; d["consoMa"] = (int)consoMa; d["matinaleVisible"] = matVisible; d["cpuMHz"] = (int)getCpuFrequencyMhz();
     ajouterMesuresEcran(d);
     d["fps"] = cb::fpsMoy10 / 10.0f; d["fpsmin"] = cb::fpsMin; d["msimage"] = cb::emaTot; d["msmax"] = cb::msMax; d["cbCadenceMax"] = (cb::OP.cad == 0 ? 20 : (cb::OP.cad == 1 ? 25 : 30)); d["cbAllegement"] = cb::qMin ? 2 : (cb::qDeg ? 1 : 0); d["cbEcran80MHz"] = cb::ecr80;
-  d["natPredateur"] = (int)cb::nat::PD.kind; d["natPhase"] = (int)cb::nat::PD.ph; d["natSteles"] = cb::nat::SV.nMort; d["natBlessures"] = cb::nat::SV.nBless; d["natCoups"] = cb::nat::SV.nPred; d["natVivants"] = cb::nat::pretN ? cb::nat::vivTot() : 0;
+  d["natEnvoi"] = predEnvoiMsg; d["natPredateur"] = (int)cb::nat::PD.kind; d["natPhase"] = (int)cb::nat::PD.ph; d["natSteles"] = cb::nat::SV.nMort; d["natBlessures"] = cb::nat::SV.nBless; d["natCoups"] = cb::nat::SV.nPred; d["natVivants"] = cb::nat::pretN ? cb::nat::vivTot() : 0;
   d["cbImagesParSeconde"] = cb::fps; d["cbMsImage"] = cb::msDessin; d["cbMsLogique"] = cb::emaMaj; d["cbMsFond"] = cb::emaCmp; d["cbMsDessin"] = cb::emaEnt; d["cbMsEcran"] = cb::emaPush; d["cbMsCorbeaux"] = cb::emaCorb; d["cbQualite"] = cb::OP.q; d["cbLumiere"] = cb::OP.hor;
     d["uptimeMs"] = millis(); d["prEtat"] = pr::etat; d["prAbsMs"] = pr::absent() ? (uint32_t)(millis() - pr::debAbsence) : 0; d["derniereAct"] = derniereActivite; d["dbgM"] = dbgM; d["dbgAct"] = dbgAct; d["touchers"] = nbTouch; d["clicsPwr"] = nbClicPwr; d["sommeilClic"] = nbSommeilClic; d["sommeilTimeout"] = nbSommeilTimeout; d["veille"] = veille; d["page"] = page;
     d["pileMv"] = M5.Power.getBatteryVoltage(); d["usbMv"] = M5.Power.getVBUSVoltage(); d["courantMa"] = M5.Power.getBatteryCurrent(); d["niveau"] = M5.Power.getBatteryLevel(); d["etatCharge"] = (int)M5.Power.isCharging(); d["puce"] = (int)M5.Power.getType();

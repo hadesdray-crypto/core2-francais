@@ -17,6 +17,7 @@ static float tSan[NCB], tFaim[NCB], tExil[NCB], tExilCd[NCB];
 enum { P_RIEN = 0, P_RAPACE, P_HIBOU, P_RENARD };
 struct Pd { uint8_t kind, ph; int8_t cible; bool rep, porte, fait, aboie; float t, x, y, vx, vy, sx, sy, hx, hy, tx, ty, dir, det; int8_t mob[2]; };
 static Pd PD;
+static bool fcF = false;      // 3.1.36 : le predateur en cours a ete envoye a la main (bouton Envoyer, /api/reglages?predateur=) : memes regles, mais l'heure et le reglage Predateurs ne le bloquent pas
 static float gPred = 90.0f, tAcc = 180.0f, tSec = -1.0f, tVieux = 0.0f, tCol = 0.0f, tDeuil = -1.0f, dX = 0.0f, dY = 0.0f, tOld = -1.0f; static int8_t oldK = -1; static bool vuRepos = false;
 
 static uint8_t sante(int k) { return (k >= 0 && k < NCB && pretN) ? SV.sant[k] : 0; }
@@ -122,16 +123,16 @@ static void heritage(int p) {      // selection naturelle : le petit herite des 
 }
 
 // ---------- predateurs ----------
-static bool predOk() { return pretN && fam::pret && ouvert && ldPas < 0 && RN.pred > 0 && decLvl() < 2 && !panneau && V.ph == V_RIEN && !GP.ph && !cbAbsent && vivTot() >= 1; }
+static bool predOk() { return pretN && fam::pret && ouvert && ldPas < 0 && (RN.pred > 0 || fcF) && decLvl() < 2 && !panneau && V.ph == V_RIEN && !GP.ph && !cbAbsent && vivTot() >= 1; }
 static float delaiPred() { float d = (RN.pred == 2) ? rnd(70.0f, 140.0f) : rnd(170.0f, 320.0f); return (RN.mode == 1) ? d * 2.3f : d; }
 static bool cibleOk(int k, int kind) {
   if (k < 0 || k >= NCB) return false; const Corbeau& c = cr[k];
   if (c.etat == E_OFF || !c.visible || (k < NAD && (SV.mort[k] || k >= (int)OP.nb))) return false;
   if (!mo::vis(c.x - 12.0f, c.x + 12.0f)) return false;
-  if (kind == P_RENARD) return k < NAD && c.etat == E_SOL && c.objet == 0;
+  if (kind == P_RENARD) return k < NAD && c.objet == 0 && (c.etat == E_SOL || (fcF && c.etat == E_PERCHE && c.but == B_RIEN && c.perch >= 0 && c.perch < 10));      // envoye a la main sans corbeau au sol : il rode au pied de l'arbre (le corbeau percha le voit et s'envole, jamais de blessure)
   if (c.etat != E_PERCHE || c.but == B_FAM || c.objet != 0) return false;
   if (k != PC && (c.perch < 0 || c.perch >= 10)) return false;
-  if (kind == P_HIBOU) return c.act == A_DORT;
+  if (kind == P_HIBOU) return fcF || c.act == A_DORT;
   return true;
 }
 static float score(int k, int kind) {
@@ -156,7 +157,7 @@ static void sortirPred(bool apres) {      // le predateur s'en va (apres un coup
   PD.ph = 2; PD.t = 0.0f; PD.fait = true; (void)apres;
   if (PD.kind == P_RENARD) PD.dir = (PD.x >= PD.tx) ? 1.0f : -1.0f;
 }
-static void finPred() { memset(&PD, 0, sizeof(PD)); PD.mob[0] = PD.mob[1] = -1; gPred = delaiPred(); }
+static void finPred() { memset(&PD, 0, sizeof(PD)); PD.mob[0] = PD.mob[1] = -1; fcF = false; gPred = delaiPred(); }
 static float protection(int k) {      // ce que fait le joueur pour proteger la cible : main, fronde, nourriture ou objet lance, appel
   const Corbeau& c = cr[k]; float p = 0.0f;
   if (H.actif && hypotf(H.x - c.x, H.y - c.y) < 90.0f) p += 0.55f;
@@ -185,13 +186,14 @@ static void touche(int k) {      // le coup porte : blessure, ou (rarement, gard
   float pl = (RN.mort == 2) ? 0.34f : 0.13f;
   if (SV.sant[k] > 0) pl *= 1.7f; if (k == PC) pl *= 0.7f; if (PD.kind == P_RENARD) pl *= 0.55f; if (RN.mode == 1) pl *= 0.35f;
   if (k < NAD && fam::vieux(k)) pl *= 1.5f;
-  const bool letal = peutMourir(k) && rnd01() < pl;
+  const bool demo = fcF && RN.pred == 0;      // demonstration (Predateurs sur Jamais) : jamais de mort, blessure legere au plus
+  const bool letal = !demo && peutMourir(k) && rnd01() < pl;
   SV.nPred++; sale = true; son(SN_PLUMES, 170); vib(40);
   if (letal) { PD.porte = true; tuer(k, PD.kind == P_HIBOU ? 4 : (PD.kind == P_RENARD ? 5 : 1)); }
   else {
     const int g = (PD.kind == P_HIBOU) ? 50 : (PD.kind == P_RENARD ? 30 : 40);
     plumes(c.x, c.y - 3.0f, 9); eclat(c.x, c.y - 4.0f, 0.25f, 1.1f); son(SN_ALARME, 190);
-    blesser(k, random(100) < g ? 2 : 1);
+    blesser(k, (!demo && random(100) < g) ? 2 : 1);
     if (k != PC && SV.sant[k] < 2 && c.etat == E_PERCHE) chasser(c);
   }
   sortirPred(true);
@@ -199,6 +201,7 @@ static void touche(int k) {      // le coup porte : blessure, ou (rarement, gard
 static void frappe() {      // fin du piquer / du bond : resolution (protection du joueur, des autres, du parent ; esquive ; blessure ou mort)
   if (PD.fait) return; PD.fait = true;
   const int k = PD.cible;
+  if (PD.kind == P_RENARD && k >= 0 && k < NCB && cr[k].etat == E_PERCHE) { ratee(); return; }      // renard envoye a la main vers un corbeau perche : il ne l'atteint pas
   if (!cibleOk(k, PD.kind) && !(PD.kind == P_RENARD && k >= 0 && k < NCB && cr[k].etat != E_OFF && cr[k].visible && cr[k].etat != E_VOL)) { ratee(); return; }
   const float prot = protection(k);
   if (k == PC) {      // le petit : son parent s'interpose d'abord (combat), il n'est atteint qu'en cas de defaite
@@ -248,6 +251,19 @@ static void declencher() {
   if (!ok) ok = lancer(P_RAPACE);
   if (!ok) gPred = rnd(20.0f, 40.0f);
 }
+static int peut(int kind) {      // 3.1.36 : bouton Envoyer un predateur / /api/reglages?predateur= : 0 possible, 1 deja un, 2 pas de cible, 3 impossible maintenant, 4 allegement automatique
+  if (kind < P_RAPACE || kind > P_RENARD) return 3;
+  if (PD.kind) return 1;
+  if (!pretN || !fam::pret || !ouvert || ldPas >= 0 || V.ph != V_RIEN || GP.ph || cbAbsent || vivTot() < 1) return 3;
+  if (decLvl() >= 2) return 4;
+  fcF = true; const int k = cibleChoisie(kind); fcF = false;
+  return (k < 0) ? 2 : 0;
+}
+static int envoyer(int kind) {      // declenche tout de suite le predateur choisi (cible la plus faible, alarme, repoussable) ; garde-fous de mort inchanges
+  const int r = peut(kind); if (r) return r;
+  fcF = true; if (!lancer(kind)) { fcF = false; return 2; }
+  return 0;
+}
 static void repousser() {      // le joueur touche le predateur : il s'enfuit tout de suite
   PD.rep = true; sortirPred(false); son(SN_ALARME, 160); eclat(PD.x, PD.y, 0.2f, 1.0f); vib(40);
 }
@@ -275,7 +291,7 @@ static void pdMaj(float dt) {
       if (p.det >= 0.5f) {      // la sentinelle peut le voir arriver : tout le groupe se reveille et il renonce
         p.det -= 0.5f; const int s = (int)fam::sent;
         float pd = 0.10f + ((s >= 0 && s < NAD) ? 0.22f * fam::S.cal[s] / 255.0f : 0.0f); if (RN.mode == 1) pd *= 1.8f;
-        if (fam::repos <= 0.0f) sortirPred(false);
+        if (fam::repos <= 0.0f) { if (!fcF) sortirPred(false); }
         else if (s >= 0 && s < NAD && cr[s].etat != E_OFF && rnd01() < pd) { fam::finRepos(true); fam::choeur(p.x, p.y, 3, true); son(SN_ALARME, 210); sonCri(); sortirPred(false); }
       }
       if (p.ph == 0 && p.t >= 3.4f) { p.ph = 1; p.t = 0.0f; p.hx = p.x; p.hy = p.y; }
@@ -404,7 +420,7 @@ static void maj(float dt) {
   tTk += dt; if (tTk < 0.5f) return;
   const float h = tTk; tTk = 0.0f; tick(h);
 }
-static void ferme() { sauver(true); memset(&PD, 0, sizeof(PD)); PD.mob[0] = PD.mob[1] = -1; pretN = false; }
+static void ferme() { fcF = false; sauver(true); memset(&PD, 0, sizeof(PD)); PD.mob[0] = PD.mob[1] = -1; pretN = false; }
 static void texteSante(int k, char* b, int n) {      // pour la fiche d'un corbeau (double toucher)
   if (n < 4) return; b[0] = 0; if (!pretN || k < 0 || k >= NCB) return;
   const uint8_t sa = SV.sant[k]; const bool ci = SV.cic[k] != 0;
