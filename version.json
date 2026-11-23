@@ -1,6 +1,6 @@
 {
     "version": "3.1.40",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=adf2f864d07d",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=2098506a1c25",
     "changes": [
         "3.1.40 : PLUS DE POINT BLANC sur les corbeaux : le pansement clair et la marque de plume cassée sont supprimés. Une blessure (en cours ou guérie, gardée à vie) se voit maintenant comme un trait rouge sombre très fin, une petite cicatrice, dessiné seulement quand l'oiseau est vu de près (gros plan, main, vue Arbre ou Nid zoomée) et jamais en vue large ni à petite taille ; rien de plus à dessiner de loin. L'état blessé (boite, repos) et la fiche (double toucher : « Blessé léger », « Cicatrice à l'aile ») sont inchangés ; l'œil n'est pas touché.",
         "3.1.40 : la pastille du nombre d'œufs est retirée de la barre du haut. Le NOMBRE d'œufs éclos est dans la nouvelle FICHE DE LA COLONIE (Réglages des corbeaux, première page, tuile « Colonie ») avec les adultes vivants / maximum, le petit corbeau, les stèles, les blessés, les blessures en tout, les trésors cachés et les attaques de prédateurs (compteurs déjà existants, rien de nouveau en mémoire). Faire apparaître un œuf tout de suite se fait maintenant dans Réglages des corbeaux, page Fonctions : bouton « Faire pondre un oeuf » (le panneau se ferme et l'œuf apparaît). Les autres boutons et la barre du bas ne changent pas.",
@@ -148,17 +148,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "adf2f864d07de6fb14ca4bb904eae75798ea78cd73b30bbc151d30391abe696d",
-    "size": 5189616,
+    "sha256": "2098506a1c255c016ee49dd087f3750dd145c6bc5ec41f269de5a6dafda2b2e5",
+    "size": 5190320,
     "canal": "test",
     "notes": [
-        "3.1.39 : gros plan soigne (volume, lumiere, ombre), arriere-plan fixe, tendresse (caresse, serrer, calins)",
+        "3.1.40 : plus de point blanc (trait rouge sombre de pres), pastille oeufs retiree, fiche de la colonie",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.39",
-        "run": "45235375232",
-        "commit": "fd248df81722"
+        "version": "3.1.40",
+        "run": "45251531220",
+        "commit": "130d1bd00cdc"
     }
 }
