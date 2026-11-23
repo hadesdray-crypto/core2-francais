@@ -7,13 +7,15 @@
 // Reglages (page « Nature ») : cles cbnpre (predateurs), cbnble (blessures), cbnmor (mort), cbnmod (mode Nature / Protecteur).
 namespace nat {
 
-struct Rg { uint8_t pred, bles, mort, mode; };      // pred 0 jamais, 1 rares, 2 frequents ; bles 0 non, 1 oui ; mort 0 jamais, 1 rare, 2 realiste ; mode 0 nature, 1 protecteur
-static Rg RN = {1, 1, 1, 0};
+struct Rg { uint8_t pred, bles, mort, mode, real, capa; };      // 3.1.41 : real 0 Sobre / 1 Realiste (cle cbnrea), capa = capacite du territoire 3 a 8 (cle cbncap)      // pred 0 jamais, 1 rares, 2 frequents ; bles 0 non, 1 oui ; mort 0 jamais, 1 rare, 2 realiste ; mode 0 nature, 1 protecteur
+static Rg RN = {1, 1, 2, 0, 1, 5};
 struct Sv { uint8_t ver; uint8_t sant[NCB]; uint8_t cic[NCB]; uint8_t mort[NCB]; uint16_t nMort, nPred, nBless; };      // sant 0 sain, 1 leger, 2 grave ; cic : cicatrice ; mort : emplacement vide (le corbeau est mort) ; nMort : nombre de steles
 static Sv SV;
 static bool pretN = false, sale = false;
 static float tSauvN = 0.0f, tTk = 0.0f;
 static float tSan[NCB], tFaim[NCB], tExil[NCB], tExilCd[NCB];
+static float tMal[NCB], tTrace[NCB];      // 3.1.41 : tMal = temps d'un blesse grave affame sans rien a manger (mort lente) ; tTrace = trace sombre sur le plumage qui s'estompe (memoire vive seulement)
+struct Sg { bool on; float x, y, vx, vy, t; }; static Sg SG[6];      // 3.1.41 : gouttes de sang (Realiste), brèves
 enum { P_RIEN = 0, P_RAPACE, P_HIBOU, P_RENARD };
 struct Pd { uint8_t kind, ph; int8_t cible; bool rep, porte, fait, aboie; float t, x, y, vx, vy, sx, sy, hx, hy, tx, ty, dir, det; int8_t mob[2]; };
 static Pd PD;
@@ -21,9 +23,34 @@ static bool fcF = false;      // 3.1.36 : le predateur en cours a ete envoye a l
 static float gPred = 90.0f, tAcc = 180.0f, tSec = -1.0f, tVieux = 0.0f, tCol = 0.0f, tDeuil = -1.0f, dX = 0.0f, dY = 0.0f, tOld = -1.0f; static int8_t oldK = -1; static bool vuRepos = false;
 
 static uint8_t sante(int k) { return (k >= 0 && k < NCB && pretN) ? SV.sant[k] : 0; }
+static bool patteB(int k) { return k >= 0 && k < NCB && pretN && SV.sant[k] > 0 && (SV.cic[k] & 2) != 0; }      // 3.1.41 : blessure localisee dans le bit 2 de cic (bit 1 = cicatrice) : 0 aile, 1 patte ; la taille du bloc memorise ne change pas
+static bool aileB(int k) { return k >= 0 && k < NCB && pretN && SV.sant[k] > 0 && (SV.cic[k] & 2) == 0; }
 static bool estMort(int k) { return k >= 0 && k < NAD && SV.mort[k] != 0; }
 static int vivAd() { int n = 0; for (int k = 0; k < NAD && k < (int)OP.nb; k++) if (!SV.mort[k]) n++; return n; }      // adultes vivants (emplacements en service, moins les morts)
 static int vivTot() { return vivAd() + ((cr[PC].etat != E_OFF) ? 1 : 0); }
+static int surplus() { if (!pretN) return 0; const int e = vivTot() - (int)RN.capa; return e < 0 ? 0 : (e > 3 ? 3 : e); }      // 3.1.41 : oiseaux au-dessus de la capacite du territoire (0 a 3)
+static float presMul() {      // multiplicateur de la frequence des predateurs : plus de monde que la capacite = plus d'attaques ; en dessous = plus rares ; Protecteur : effet attenue
+  const int e = vivTot() - (int)RN.capa; float m = 1.0f;
+  if (e > 0) m = 1.0f + 0.45f * (float)(e > 4 ? 4 : e); else if (e <= -2) m = 0.70f; else if (e < 0) m = 0.82f;
+  if (RN.mode == 1 && m > 1.0f) m = 1.0f + (m - 1.0f) * 0.4f;
+  return m;
+}
+static int effMax() { return (int)(OP.nb < nbMax ? OP.nb : nbMax); }      // le jeu ne remplace par un oeuf de secours que jusqu'au maximum CHOISI (jamais jusqu'a un effectif gonfle)
+static bool nourritureAccessible() {      // de la nourriture est posee au sol (ou sur la main) : un blesse affame peut la rejoindre
+  for (int i = 0; i < NOB; i++) if (ob[i].actif && ob[i].type < T_BRILLANT) return true;
+  return false;
+}
+static uint16_t couleurLiseret() { return (OP.hor == 2) ? C(70, 12, 18) : ((OP.hor == 1) ? C(88, 16, 22) : C(104, 20, 26)); }
+static bool sangOk() { return pretN && RN.real && RN.bles && !qDeg && !qMin && OP.dec < 2; }      // sang : Realiste seulement, coupe par l'allegement automatique et en decor minimal
+static void goutte(int k, int n) {      // 1 a 3 petites gouttes rouge sombre qui tombent du blesse (vu de pres ou en vol) puis disparaissent
+  if (!sangOk() || k < 0 || k >= NCB) return; const Corbeau& c = cr[k];
+  if (!c.visible || !mo::vis(c.x - 10.0f, c.x + 10.0f) || (c.s * zs < 1.0f && c.etat != E_VOL)) return;
+  const bool pa = (SV.cic[k] & 2) != 0; const float d = (c.dv >= 0.0f) ? 1.0f : -1.0f;
+  for (int j = 0; j < n; j++) for (int i = 0; i < 6; i++) if (!SG[i].on) {
+    Sg& q = SG[i]; q.on = true; q.t = 0.0f; q.x = (pa ? c.x + d * c.s : c.x - d * 3.0f * c.s) + rnd(-1.5f, 1.5f); q.y = c.y + c.bob + (pa ? 5.0f : -2.0f) * c.s; q.vx = c.vx * 0.2f + rnd(-6.0f, 6.0f); q.vy = c.vy * 0.2f + rnd(-14.0f, 4.0f); break;
+  }
+}
+static void sangMaj(float dt) { for (int i = 0; i < 6; i++) { Sg& q = SG[i]; if (!q.on) continue; q.t += dt; q.vy += 150.0f * dt; q.x += q.vx * dt; q.y += q.vy * dt; if (q.t > 1.3f || q.y > solHaut(q.x)) q.on = false; } }
 static bool peutMourir(int k) {      // garde-fous : jamais le dernier, jamais le couple d'un nid qui a des oeufs ou des petits, jamais si le reglage est Jamais
   if (!pretN || !fam::pret || RN.mort == 0 || k < 0 || k >= NCB) return false;
   if (cr[k].etat == E_OFF || (k < NAD && (SV.mort[k] || k >= (int)OP.nb))) return false;
@@ -32,14 +59,18 @@ static bool peutMourir(int k) {      // garde-fous : jamais le dernier, jamais l
   if (k < 2 && fam::precieux()) return false;
   return true;
 }
-static void blesser(int k, int niv) {
+static void blesser(int k, int niv, int lieu = -1) {      // lieu : 0 aile, 1 patte, -1 au hasard (3.1.41)
   if (!pretN || !RN.bles || k < 0 || k >= NCB || niv < 1 || cr[k].etat == E_OFF) return;
   if (k < NAD && SV.mort[k]) return;
-  uint8_t& s = SV.sant[k];
-  if (niv > (int)s) s = (uint8_t)niv; else if (niv == (int)s && s == 1 && random(100) < 35) s = 2;
-  if (niv >= 2 || random(100) < 55) SV.cic[k] = 1;
-  tSan[k] = 0.0f; SV.nBless++; sale = true;
+  if (!RN.real && niv > 1) niv = 1;      // Sobre : blessures legeres seulement
+  uint8_t& s = SV.sant[k]; const uint8_t s0 = s;
+  if (niv > (int)s) s = (uint8_t)niv; else if (RN.real && niv == (int)s && s == 1 && random(100) < 35) s = 2;
+  if (s0 == 0 || niv >= (int)s0) SV.cic[k] = (uint8_t)((SV.cic[k] & 1) | (((lieu < 0) ? (int)random(2) : lieu) ? 2 : 0));      // localisation : aile ou patte
+  if (niv >= 2 || random(100) < 55) SV.cic[k] |= 1;
+  tSan[k] = 0.0f; tMal[k] = 0.0f; SV.nBless++; sale = true;
   Corbeau& c = cr[k]; c.flash = 0.8f; c.bec = 1.0f; c.surs = 0.35f;
+  if (RN.real) { tTrace[k] = 26.0f; goutte(k, 1 + (int)random(3)); }
+  if (c.visible) son(SN_CROA2, 55);      // petit cri de douleur, discret
 }
 static void coupleRompu() {      // l'un des deux parents n'est plus la : le cycle de la famille recommence a zero
   fam::par.on = false; fam::par.calin = false; fam::men.on = false; fam::RLV.ph = 0;
@@ -54,8 +85,9 @@ static void refRangs() {
   fam::calculerRangs(); fam::calculerFoyers();
   for (int j = 0; j < NAD; j++) { mo::rang[j] = (int8_t)fam::S.rang[j]; mo::forceK[j] = (int8_t)(fam::S.frc[j] / 100); }
 }
-static void tuer(int k, int cause) {      // cause : 1 rapace, 2 bagarre, 3 vieillesse, 4 hibou, 5 renard, 6 accident
-  if (k < 0 || k >= NCB) return; Corbeau& c = cr[k]; const float x = c.x, y = c.y;
+static void tuer(int k, int cause) {      // cause : 1 rapace, 2 bagarre, 3 vieillesse, 4 hibou, 5 renard, 6 accident, 7 faim (blesse grave sans nourriture)
+  if (k < 0 || k >= NCB || !peutMourir(k)) return;      // 3.1.41 : garde-fou UNIQUE : tous les chemins de mort passent ici par peutMourir (jamais le dernier, jamais le couple d'un nid occupe, jamais si Jamais)
+  Corbeau& c = cr[k]; const float x = c.x, y = c.y;
   for (int j = 0; j < NCB; j++) { Corbeau& o = cr[j]; if (j != k && o.pj == k && o.but == B_POURSUITE) { o.pj = -1; if (o.etat == E_VOL) retourLibre(o); } }
   if (k < NAD) { mo::finR(mo::rt[k]); }
   for (int i = 0; i < NOB; i++) if (ob[i].reserve == k) ob[i].reserve = -1;
@@ -69,13 +101,13 @@ static void tuer(int k, int cause) {      // cause : 1 rapace, 2 bagarre, 3 viei
   if (k < NAD && fam::ADU.ver == 1 && fam::ADU.k == k) { fam::ADU.ver = 0; fam::saleAdu = true; fam::sauverAdu(true); }
   c.etat = E_OFF; c.visible = false; c.perch = -1; c.but = B_RIEN; c.objet = 0; c.item = -1; c.pj = -1; c.rapporte = false; c.fuite = false; c.aWp = false; c.act = A_REPOS;
   if (k < NAD) { SV.mort[k] = 1; }
-  SV.sant[k] = 0; SV.cic[k] = 0; tSan[k] = 0.0f; tFaim[k] = 0.0f; tExil[k] = 0.0f;
+  SV.sant[k] = 0; SV.cic[k] = 0; tSan[k] = 0.0f; tFaim[k] = 0.0f; tExil[k] = 0.0f; tMal[k] = 0.0f; tTrace[k] = 0.0f;
   SV.nMort++; sale = true;
   if (cause != 3) { plumes(x, y - 3.0f, 10); eclat(x, y - 5.0f, 0.35f, 1.3f); son(SN_ALARME, 180); } else { eclat(x, y - 5.0f, 0.5f, 0.7f); }
   if (k < NAD) {
     if (k < 2) coupleRompu();
     refRangs(); fam::sale = true;
-    if (vivAd() < (int)OP.nb && tSec < 0.0f) tSec = rnd(100.0f, 160.0f);      // oeuf de secours : la colonie est sous le nombre regle
+    if (vivAd() < effMax() && tSec < 0.0f) tSec = rnd(100.0f, 160.0f);      // oeuf de secours : la colonie est sous le nombre regle
   }
   tDeuil = 1.4f; dX = steleX((int)SV.nMort - 1); dY = solHaut(dX) - 14.0f;
   tSauvN = 80.0f;
@@ -124,7 +156,7 @@ static void heritage(int p) {      // selection naturelle : le petit herite des 
 
 // ---------- predateurs ----------
 static bool predOk() { return pretN && fam::pret && ouvert && ldPas < 0 && (RN.pred > 0 || fcF) && decLvl() < 2 && !panneau && V.ph == V_RIEN && !GP.ph && !cbAbsent && vivTot() >= 1; }
-static float delaiPred() { float d = (RN.pred == 2) ? rnd(70.0f, 140.0f) : rnd(170.0f, 320.0f); return (RN.mode == 1) ? d * 2.3f : d; }
+static float delaiPred() { float d = (RN.pred == 2) ? rnd(70.0f, 140.0f) : rnd(170.0f, 320.0f); return (RN.mode == 1) ? d * 2.3f : d; }      // 3.1.41 : le compte a rebours avance plus vite (ou moins vite) selon presMul (densite)
 static bool cibleOk(int k, int kind) {
   if (k < 0 || k >= NCB) return false; const Corbeau& c = cr[k];
   if (c.etat == E_OFF || !c.visible || (k < NAD && (SV.mort[k] || k >= (int)OP.nb))) return false;
@@ -141,6 +173,7 @@ static float score(int k, int kind) {
   bool seul = true;
   for (int j = 0; j < NCB; j++) if (j != k && cr[j].visible && cr[j].etat != E_OFF && fabsf(cr[j].x - c.x) < 48.0f && fabsf(cr[j].y - c.y) < 40.0f) { seul = false; break; }
   if (seul) s += 0.9f;
+  { const int su = surplus(); if (su > 0) s += 0.30f * (float)su * (seul ? 1.0f : 0.4f) + 0.25f * (float)su * (float)SV.sant[k]; }      // au-dessus de la capacite : on s'en prend aux plus faibles et aux isoles
   if (k == PC && fam::PE.stade >= 1 && fam::PE.stade <= 2) s += 1.2f;
   s += 0.9f * (float)SV.sant[k]; if (k < NAD && fam::vieux(k)) s += 0.8f;
   s += 0.6f * (1.0f - fo); s -= 0.4f * cal;
@@ -178,13 +211,13 @@ static float esquive(int k) {      // les prudents survivent mieux : prudence, c
 static void ratee() {      // le coup echoue : des plumes, un cri, il s'en va
   const int k = PD.cible; if (k >= 0 && k < NCB) { Corbeau& c = cr[k]; plumes(c.x, c.y - 3.0f, 5); eclat(c.x, c.y - 4.0f, 0.2f, 0.8f); c.surs = 0.35f; c.bec = 1.0f; if (k != PC && c.etat == E_PERCHE && SV.sant[k] < 2 && random(100) < 40) chasser(c); }
   son(SN_ALARME, 180); sonCri();
-  if (PD.mob[0] >= 0 && random(100) < 22) { int m = PD.mob[random(2) && PD.mob[1] >= 0 ? 1 : 0]; blesser(m, 1); }
+  if (PD.mob[0] >= 0 && random(100) < 22) { int m = PD.mob[random(2) && PD.mob[1] >= 0 ? 1 : 0]; blesser(m, 1, PD.kind == P_RENARD ? 1 : 0); }
   sortirPred(true);
 }
 static void touche(int k) {      // le coup porte : blessure, ou (rarement, garde-fous) la mort
   Corbeau& c = cr[k];
   float pl = (RN.mort == 2) ? 0.34f : 0.13f;
-  if (SV.sant[k] > 0) pl *= 1.7f; if (k == PC) pl *= 0.7f; if (PD.kind == P_RENARD) pl *= 0.55f; if (RN.mode == 1) pl *= 0.35f;
+  if (SV.sant[k] > 0) pl *= 1.7f; pl *= 1.0f + 0.25f * (float)surplus(); if (k == PC) pl *= 0.7f; if (PD.kind == P_RENARD) pl *= 0.55f; if (RN.mode == 1) pl *= 0.35f;
   if (k < NAD && fam::vieux(k)) pl *= 1.5f;
   const bool demo = fcF && RN.pred == 0;      // demonstration (Predateurs sur Jamais) : jamais de mort, blessure legere au plus
   const bool letal = !demo && peutMourir(k) && rnd01() < pl;
@@ -193,7 +226,7 @@ static void touche(int k) {      // le coup porte : blessure, ou (rarement, gard
   else {
     const int g = (PD.kind == P_HIBOU) ? 50 : (PD.kind == P_RENARD ? 30 : 40);
     plumes(c.x, c.y - 3.0f, 9); eclat(c.x, c.y - 4.0f, 0.25f, 1.1f); son(SN_ALARME, 190);
-    blesser(k, (!demo && random(100) < g) ? 2 : 1);
+    blesser(k, (!demo && random(100) < g) ? 2 : 1, PD.kind == P_RENARD ? 1 : 0);      // rapace et hibou : l'aile ; renard : la patte
     if (k != PC && SV.sant[k] < 2 && c.etat == E_PERCHE) chasser(c);
   }
   sortirPred(true);
@@ -209,8 +242,8 @@ static void frappe() {      // fin du piquer / du bond : resolution (protection 
     if (pk >= 0) {
       Corbeau& pc = cr[pk]; pc.bec = 1.0f; pc.flash = 0.8f; pc.wlC = 1.0f; plumes((pc.x + PD.x) * 0.5f, (pc.y + PD.y) * 0.5f, 6); son(SN_CROASSE2, 200);
       const float win = 0.40f + 0.40f * fam::S.frc[pk] / 255.0f + 0.15f * fam::S.aud[pk] / 255.0f + 0.5f * prot + ((RN.mode == 1) ? 0.2f : 0.0f);
-      if (rnd01() < win) { if (random(100) < 30) blesser(pk, 1); fam::changer(pk, PC, 6); ratee(); return; }
-      blesser(pk, 1);
+      if (rnd01() < win) { if (random(100) < 30) blesser(pk, 1, PD.kind == P_RENARD ? 1 : 0); fam::changer(pk, PC, 6); ratee(); return; }
+      blesser(pk, 1, PD.kind == P_RENARD ? 1 : 0);
     }
   }
   if (rnd01() < esquive(k) + prot * 0.6f) { ratee(); return; }
@@ -324,7 +357,7 @@ static void accident() {
   if ((fam::S.fph == fam::F_POUSSINS || fam::S.fph == fam::F_JEUNES) && fam::S.nPou >= 2 && random(100) < 40) { chutePoussin(); return; }
   if (RN.bles && random(100) < 60) {      // un faux pas : une patte prise, une blessure legere
     int l[NAD], n = 0; for (int k = 0; k < NAD && k < (int)OP.nb; k++) if (!SV.mort[k] && !(k < 2 && fam::precieux()) && cr[k].etat == E_PERCHE && cr[k].visible && cr[k].perch >= 0 && cr[k].perch < 10 && SV.sant[k] == 0) l[n++] = k;
-    if (n) { int k = l[random(n)]; Corbeau& c = cr[k]; plumes(c.x, c.y - 2.0f, 3); son(SN_PLUMES, 130); c.surs = 0.4f; blesser(k, 1); }
+    if (n) { int k = l[random(n)]; Corbeau& c = cr[k]; plumes(c.x, c.y - 2.0f, 3); son(SN_PLUMES, 130); c.surs = 0.4f; blesser(k, 1, 1); }      // un faux pas : la patte
   }
 }
 static void vieillesse() {      // un vieux corbeau peut s'eteindre tranquillement (tres rare)
@@ -348,7 +381,7 @@ static void choc(Corbeau* a, Corbeau* b, float force) {      // collision en vol
   if (!pretN || !RN.bles || !a || !b || force < 60.0f || tCol > 0.0f) return;
   const int ia = (int)(a - cr), ib = (int)(b - cr); if (ia < 0 || ib < 0 || ia >= NAD || ib >= NAD) return;
   if (a->etat != E_VOL || b->etat != E_VOL || random(100) >= 12) return;
-  tCol = 90.0f; blesser(fam::S.frc[ia] <= fam::S.frc[ib] ? ia : ib, 1);
+  tCol = 90.0f; blesser(fam::S.frc[ia] <= fam::S.frc[ib] ? ia : ib, 1, 0);      // collision en vol : l'aile
 }
 static void nourri(int k) {      // le joueur (ou la chasse) nourrit un corbeau : il guerit plus vite
   if (!pretN || k < 0 || k >= NCB) return;
@@ -369,16 +402,17 @@ static void sauver(bool force) {
 static void init() {
   RN.pred = prefs.getUChar("cbnpre", 1); if (RN.pred > 2) RN.pred = 1;
   RN.bles = prefs.getUChar("cbnble", 1) ? 1 : 0;
-  RN.mort = prefs.getUChar("cbnmor", 1); if (RN.mort > 2) RN.mort = 1;
+  RN.mort = prefs.getUChar("cbnmor", 2); if (RN.mort > 2) RN.mort = 2;      // 3.1.41 : defaut Realiste pour une installation neuve (une valeur deja memorisee n'est pas touchee)
+  RN.real = prefs.getUChar("cbnrea", 1) ? 1 : 0; RN.capa = prefs.getUChar("cbncap", 5); if (RN.capa < 3) RN.capa = 3; if (RN.capa > 8) RN.capa = 8;
   RN.mode = prefs.getUChar("cbnmod", 0) ? 1 : 0;
   memset(&SV, 0, sizeof(SV));
   if (prefs.getBytesLength("cbnat") == sizeof(Sv)) { prefs.getBytes("cbnat", &SV, sizeof(SV)); if (SV.ver != 1) memset(&SV, 0, sizeof(SV)); }
-  for (int k = 0; k < NCB; k++) { if (SV.sant[k] > 2) SV.sant[k] = 0; SV.cic[k] = SV.cic[k] ? 1 : 0; SV.mort[k] = SV.mort[k] ? 1 : 0; tSan[k] = tFaim[k] = tExil[k] = tExilCd[k] = 0.0f; }
+  for (int k = 0; k < NCB; k++) { if (SV.sant[k] > 2) SV.sant[k] = 0; SV.cic[k] &= 3; SV.mort[k] = SV.mort[k] ? 1 : 0; tSan[k] = tFaim[k] = tExil[k] = tExilCd[k] = tMal[k] = tTrace[k] = 0.0f; }
   SV.mort[PC] = 0;
   { int vivants = 0; for (int k = 0; k < NAD && k < (int)OP.nb; k++) if (!SV.mort[k]) vivants++; if (vivants < 1) for (int k = 0; k < NAD; k++) SV.mort[k] = 0; }
-  memset(&PD, 0, sizeof(PD)); PD.mob[0] = PD.mob[1] = -1;
+  memset(&PD, 0, sizeof(PD)); PD.mob[0] = PD.mob[1] = -1; memset(SG, 0, sizeof(SG));
   gPred = (RN.pred == 2) ? rnd(40.0f, 80.0f) : rnd(70.0f, 130.0f); tAcc = rnd(120.0f, 240.0f); tVieux = 0.0f; tCol = 0.0f; tDeuil = -1.0f; tOld = -1.0f; oldK = -1; vuRepos = false;
-  { int vivants = 0; for (int k = 0; k < NAD && k < (int)OP.nb; k++) if (!SV.mort[k]) vivants++; tSec = (vivants < (int)OP.nb) ? rnd(45.0f, 90.0f) : -1.0f; }
+  { int vivants = 0; for (int k = 0; k < NAD && k < (int)OP.nb; k++) if (!SV.mort[k]) vivants++; tSec = (vivants < effMax()) ? rnd(45.0f, 90.0f) : -1.0f; }
   sale = false; tSauvN = 0.0f; tTk = 0.0f; pretN = true;
 }
 static void tick(float h) {
@@ -386,9 +420,15 @@ static void tick(float h) {
     Corbeau& c = cr[k]; if (c.etat == E_OFF || (k < NAD && SV.mort[k])) continue;
     if (SV.sant[k]) {      // guerison par le repos (plus lente en vol) et la nourriture
       float v = (c.etat == E_PERCHE || c.etat == E_SOL) ? 1.0f : 0.4f; if (RN.mort == 2) v *= 0.8f;
+      if (k < NAD && RN.real && SV.sant[k] == 2 && mo::en[k] < 0.12f && !nourritureAccessible()) v = 0.0f;      // affame, rien a manger : il ne guerit plus
       tSan[k] += h * v;
       if (tSan[k] >= (SV.sant[k] == 2 ? 210.0f : 140.0f)) { SV.sant[k] = (uint8_t)(SV.sant[k] - 1); tSan[k] = 0.0f; sale = true; if (c.visible) { c.flash = 0.5f; eclat(c.x, c.y - 6.0f * c.s, 0.25f, 0.5f); } }
     }
+    if (tTrace[k] > 0.0f) { tTrace[k] -= h; if (SV.sant[k] && c.visible && random(100) < 16) goutte(k, 1); }      // quelques gouttes rares apres la blessure, puis la trace s'estompe
+    if (k < NAD && RN.real && RN.mort > 0 && RN.mode == 0 && SV.sant[k] == 2 && mo::en[k] < 0.12f && !nourritureAccessible()) {      // MORT LENTE : blesse grave, affame, rien a manger depuis tres longtemps (garde-fous : peutMourir dans tuer)
+      tMal[k] += h;
+      if (tMal[k] >= (RN.mort == 2 ? 420.0f : 660.0f)) { tMal[k] = 300.0f; if (peutMourir(k)) { tuer(k, 7); continue; } }
+    } else tMal[k] = mxf(0.0f, tMal[k] - 2.0f * h);
     if (k < NAD && RN.bles) {      // faiblesse par la faim prolongee
       if (mo::en[k] < 0.10f) { tFaim[k] += h; if (tFaim[k] > 160.0f) { tFaim[k] = 0.0f; blesser(k, 1); } } else tFaim[k] = mxf(0.0f, tFaim[k] - 2.0f * h);
     }
@@ -398,7 +438,7 @@ static void tick(float h) {
     }
   }
   if (!PD.kind) {
-    gPred -= h;
+    gPred -= h * presMul();
     if (gPred <= 0.0f) { gPred = delaiPred(); if (predOk() && !appelOn) declencher(); }
     else if (fam::repos > 16.0f && !vuRepos) { vuRepos = true; if (predOk() && !appelOn && random(100) < (RN.pred == 2 ? 40 : 20)) { if (lancer(P_HIBOU)) gPred = delaiPred(); } }
   }
@@ -410,21 +450,22 @@ static void tick(float h) {
   if (tDeuil > 0.0f) { tDeuil -= h; if (tDeuil <= 0.0f) deuil(); }
   if (tSec > 0.0f) {
     tSec -= h;
-    if (tSec <= 0.0f) { tSec = -1.0f; if (vivAd() < (int)OP.nb) tSec = oeufSecours() ? rnd(80.0f, 120.0f) : rnd(15.0f, 30.0f); }
+    if (tSec <= 0.0f) { tSec = -1.0f; if (vivAd() < effMax()) tSec = oeufSecours() ? rnd(80.0f, 120.0f) : rnd(15.0f, 30.0f); }
   }
   tSauvN += h; sauver(false);
 }
 static void maj(float dt) {
   if (!pretN || !fam::pret) return;
   if (PD.kind) pdMaj(dt);
+  sangMaj(dt);
   tTk += dt; if (tTk < 0.5f) return;
   const float h = tTk; tTk = 0.0f; tick(h);
 }
-static void ferme() { fcF = false; sauver(true); memset(&PD, 0, sizeof(PD)); PD.mob[0] = PD.mob[1] = -1; pretN = false; }
+static void ferme() { memset(SG, 0, sizeof(SG)); fcF = false; sauver(true); memset(&PD, 0, sizeof(PD)); PD.mob[0] = PD.mob[1] = -1; pretN = false; }
 static void texteSante(int k, char* b, int n) {      // pour la fiche d'un corbeau (double toucher)
   if (n < 4) return; b[0] = 0; if (!pretN || k < 0 || k >= NCB) return;
-  const uint8_t sa = SV.sant[k]; const bool ci = SV.cic[k] != 0;
-  if (sa == 2) snprintf(b, n, "Blessé grave : repos"); else if (sa == 1) snprintf(b, n, "Blessé léger : boite"); else if (ci) snprintf(b, n, "Cicatrice à l'aile");
+  const uint8_t sa = SV.sant[k]; const bool ci = (SV.cic[k] & 1) != 0, pa = (SV.cic[k] & 2) != 0;
+  if (sa == 2) snprintf(b, n, pa ? "Patte blessée (grave) : repos" : "Aile blessée (grave) : repos"); else if (sa == 1) snprintf(b, n, pa ? "Patte blessée : boite" : "Aile blessée : vol gêné"); else if (ci) snprintf(b, n, pa ? "Cicatrice à la patte" : "Cicatrice à l'aile");
 }
 
 // ---------- dessin ----------
@@ -485,6 +526,10 @@ static void dessinerPred(M5Canvas& g) {
   if (!PD.kind) return;
   if (PD.kind == P_RAPACE) dessinerRapace(g); else if (PD.kind == P_HIBOU) dessinerHibou(g); else dessinerRenard(g);
 }
+static void dessinerSang(M5Canvas& g) {      // gouttes rouge sombre (couleur du liseré du style), tres petites, qui tombent
+  const uint16_t RC = couleurLiseret();
+  for (int i = 0; i < 6; i++) { const Sg& q = SG[i]; if (!q.on) continue; disque(g, q.x, q.y, 0.9f, RC); ligne(g, q.x, q.y - 2.0f, q.x, q.y, RC); }
+}
 static void dessinerSteles(M5Canvas& g) {      // les steles des disparus : petites pierres au pied de l'arbre (jusqu'a six), discretes
   if (!pretN || SV.nMort == 0 || decLvl() >= 2) return;
   const int n = SV.nMort > 6 ? 6 : (int)SV.nMort;
@@ -499,19 +544,27 @@ static void dessinerSteles(M5Canvas& g) {      // les steles des disparus : peti
 }
 static void sur(M5Canvas& g, int k) {      // un corbeau blesse ou marque : trait rouge sombre fin, seulement de pres (3.1.40)
   if (!pretN || k < 0 || k >= NCB) return;
-  const uint8_t sa = SV.sant[k]; const bool ci = SV.cic[k] != 0; if (!sa && !ci) return;
+  const uint8_t sa = SV.sant[k]; const bool ci = (SV.cic[k] & 1) != 0; if (!sa && !ci) return;
   const Corbeau& c = cr[k]; if (!c.visible) return;
-  const float s = c.s, d = (c.dv >= 0.0f) ? 1.0f : -1.0f, bx = c.x - d * 3.0f * s, by = c.y + c.bob - 3.4f * s;
+  const bool pa = (SV.cic[k] & 2) != 0;      // 3.1.41 : blessure a la patte (sinon a l'aile)
+  const float s = c.s, d = (c.dv >= 0.0f) ? 1.0f : -1.0f, bx = pa ? c.x + d * 1.0f * s : c.x - d * 3.0f * s, by = pa ? c.y + c.bob + 4.6f * s : c.y + c.bob - 3.4f * s;
   // 3.1.40 : plus AUCUN point ni pansement clair sur les corbeaux. La blessure (en cours) et la cicatrice (gardee a vie) = un trait rouge sombre fin (1 px, ton du lisere), dessine seulement de pres (echelle ecran >= 1,3 : gros plan, main, vue arbre ou nid zoomee), jamais a petite echelle, ni en allegement
   if (dgE() || mnE() || (c.s * zs < 1.3f && !(c.perch == 14 && c.etat != E_VOL))) return;
-  const uint16_t RC = (OP.hor == 2) ? C(70, 12, 18) : ((OP.hor == 1) ? C(88, 16, 22) : C(104, 20, 26));
-  ligne(g, bx, by, bx - d * 4.2f * s, by - 2.4f * s, RC);
-  if (sa) ligne(g, bx - d * 1.0f * s, by + 0.8f * s, bx - d * 4.6f * s, by - 0.2f * s, RC);      // blesse en cours : un deuxieme trait fin
+  const uint16_t RC = couleurLiseret();
+  if (pa) { ligne(g, bx, by, bx + d * 0.5f * s, by + 3.2f * s, RC); if (sa) ligne(g, bx + 1.1f * s, by, bx + 1.6f * s, by + 3.0f * s, RC); }
+  else { ligne(g, bx, by, bx - d * 4.2f * s, by - 2.4f * s, RC); if (sa) ligne(g, bx - d * 1.0f * s, by + 0.8f * s, bx - d * 4.6f * s, by - 0.2f * s, RC); }      // blesse en cours : un deuxieme trait fin
+  if (sa && RN.real && tTrace[k] > 0.0f && !qDeg) {      // 3.1.41 : trace sombre sur le plumage, qui s'estompe (tombe dans le noir du plumage en ~26 s)
+    const float a = lim(tTrace[k] / 26.0f, 0.0f, 1.0f); const uint16_t TC = (OP.hor == 2) ? C((uint8_t)(4.0f + 66.0f * a), (uint8_t)(3.0f + 9.0f * a), (uint8_t)(6.0f + 12.0f * a)) : C((uint8_t)(4.0f + 90.0f * a), (uint8_t)(3.0f + 15.0f * a), (uint8_t)(6.0f + 18.0f * a));
+    ell(g, bx, by + (pa ? 1.0f : 1.3f) * s, 2.0f * s, 1.3f * s, TC);
+  }
 }
 
 }  // namespace nat
 
 static uint8_t natSante(int k) { return nat::sante(k); }
+static bool natAile(int k) { return nat::aileB(k); }
+static bool natPatte(int k) { return nat::patteB(k); }
+static int natSurplus() { return nat::surplus(); }
 static bool natMort(int k) { return nat::pretN && nat::estMort(k); }
 static void natNourri(int k) { nat::nourri(k); }
 static void natBagarre(int w, int l, int src) { nat::bagarre(w, l, src); }

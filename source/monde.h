@@ -903,7 +903,7 @@ static void compet(int iO) {      // appelé après qu'un corbeau est parti cher
   int W = o.reserve; if (W < 0 || W >= NAD) return;
   bool gros = (o.type == T_VIANDE || o.type == T_NOIX || o.type == T_PAIN || o.type == T_BRILLANT);
   int nOb = 0; for (int i = 0; i < NOB; i++) if (ob[i].actif) nOb++;
-  if (!gros || nOb > 1 || !pret || nbAilleurs() >= 3 || random(100) < 25) return;      // plusieurs morceaux : chacun le sien, sans dispute
+  if (!gros || nOb > 1 || !pret || nbAilleurs() >= 3 || random(100) < (25 - 8 * natSurplus() > 0 ? 25 - 8 * natSurplus() : 0)) return;      // plusieurs morceaux : chacun le sien, sans dispute
   int best = -1; float bd = 1e9f;
   for (int k = 0; k < NAD; k++) { if (k == W || !libreSoc(k)) continue; float d = fabsf(cr[k].x - o.x) + rnd(0.0f, 40.0f) - 8.0f * (forceK[k] + (NAD - rang[k]) * 0.5f); if (d < bd) { bd = d; best = k; } }
   if (best < 0) return;
@@ -1292,7 +1292,7 @@ static void maj(float dt) {
   majLng(dt); majPoursuites();
   majBetes(dt); chasseBetes(dt); majTresors(dt);
   for (int k = 0; k < NAD; k++) {      // énergie qui baisse, gros après la viande, joie des baies, sieste quand il est rassasié
-    Corbeau& c = cr[k]; en[k] = mxf(0.0f, en[k] - 0.004f * dt); if (tHer[k] > 0.0f) tHer[k] -= dt; if (tJoie[k] > 0.0f) tJoie[k] -= dt;
+    Corbeau& c = cr[k]; en[k] = mxf(0.0f, en[k] - 0.004f * dt * (1.0f + 0.12f * (float)natSurplus())); if (tHer[k] > 0.0f) tHer[k] -= dt; if (tJoie[k] > 0.0f) tJoie[k] -= dt;
     if (!rt[k].away && c.etat != E_DEHORS && c.etat != E_OFF) { float tg = sBase[k] * (1.0f + 0.07f * lim(tHer[k] / 3.0f, 0.0f, 1.0f)) * ((c.perch == 14 && c.but == B_VISITEUR) ? 1.28f : 1.0f); if (fabsf(c.s - tg) > 0.002f) c.s += (tg - c.s) * mnf(1.0f, dt * 2.0f); }      // 3.1.38 : l'oiseau posé dans la paume est plus gros (x1,28 : bien visible, en proportion de la grande main)
     if (c.etat == E_PERCHE && c.perch >= 0 && c.perch < 10 && c.but == B_RIEN) {
       if (tJoie[k] > 0.0f && random(1000) < 6) { sonCri(); c.surs = 0.25f; c.bec = 1.0f; }

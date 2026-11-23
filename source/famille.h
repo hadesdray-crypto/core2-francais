@@ -176,6 +176,7 @@ static bool calme() {
 // ---------- perchoirs attitrés : le plus fort a le meilleur, il déloge un dominé qui s'est mis sur sa place ----------
 static int perchPour(const Corbeau& c) {
   int k = (int)(&c - cr), h = (pret && k >= 0 && k < NM) ? (repos > 0.0f ? foyerNuit(k) : foyer[k]) : -1;
+  const bool bl = (k >= 0 && k < NM && natSante(k) > 0); if (bl && h >= 4) h = -1;      // 3.1.41 : un blesse evite les perchoirs hauts (4, 5)
   if (h >= 0) {
     if (!perchOccupe(h)) return h;
     int j = -1; for (int q = 0; q < NM; q++) if (cr[q].perch == h) j = q;
@@ -183,7 +184,7 @@ static int perchPour(const Corbeau& c) {
   }
   int l[NPE], n = 0;      // sinon : un perchoir libre qui n'est le foyer de personne (de présent), à défaut n'importe lequel
   for (int i = 0; i < NPE; i++) {
-    if (perchOccupe(i)) continue;
+    if (perchOccupe(i) || (bl && i >= 4)) continue;
     bool fo = false; for (int q = 0; q < NM; q++) if (q != k && foyer[q] == i && cr[q].etat != E_OFF) fo = true;
     if (!fo) l[n++] = i;
   }
@@ -924,7 +925,7 @@ static void promouvoir() {      // le petit est adulte : il prend sa place dans 
   mis[k] = mis[PC]; memset(&mis[PC], 0, sizeof(Mis)); tmis[k] = 0.0f; tmis[PC] = 0.0f;
   n.duvet = 0.0f;
   c.etat = E_OFF; c.visible = false; c.perch = -1; c.but = B_RIEN; c.objet = 0; c.item = -1; c.pj = -1; c.duvet = 0.0f;
-  if (kl < 0) { OP.nb = (uint8_t)(k + 1); nAct = OP.nb; prefs.putUChar("cbnb", OP.nb); }
+  if (kl < 0) { OP.nb = (uint8_t)(k + 1); nAct = OP.nb; prefs.putUChar("cbeff", OP.nb); }      // 3.1.41 : le jeu n'ecrit plus jamais cbnb (maximum choisi)
   natPromu(k);      // traits herites, sante, rangs
   appliquer(n, k); PE.res = 1; saleP = true;
   ADU.ver = 1; ADU.k = (uint8_t)k; ageAdu = Y_GRAND; saleAdu = true; sauverAdu(true);

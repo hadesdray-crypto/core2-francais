@@ -45,7 +45,7 @@ static const int NOB = 4;        // objets au sol / qui tombent
 static const int NPE = 6;        // perchoirs
 static const int NPART = 44;    // plumes
 static const int NFX = 6;       // éclats lumineux
-static const int NEXT = 15;                // rectangles en plus pour les groupes d'éléments dispersés (plumes, petits corbeaux de la nuée, éclats) : plusieurs petits rectangles au lieu d'un seul très grand
+static const int NEXT = 16;                // rectangles en plus pour les groupes d'éléments dispersés (plumes, petits corbeaux de la nuée, éclats) : plusieurs petits rectangles au lieu d'un seul très grand
 static const int NENT = NCB + NOB + 14 + NEXT;
 static const int H_SCENE = 206; // la barre de nourriture occupe le bas
 static const float SOL_Y = 201.0f;
@@ -121,6 +121,7 @@ static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 
 // fps : 0 non, 1 images/s en petit coin, 2 mesures détaillées ; cad : cadence maximale 0 = 20, 1 = 25, 2 = 30 images/s (défaut) ; deg : allègement automatique des détails si l'image est trop lente ; ecr : écran rapide (80 MHz) gardé
 struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto, dec, tend, calin; };      // 3.1.39 : tend = tendresse avec l'oiseau dans la paume (clé cbtend), calin = câlins rares / normaux / fréquents (clé cbcalin)      // dec : decor 0 complet (defaut, s'allege seul si l'image ralentit), 1 allege, 2 minimal ;      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
 static Opt OP = {4, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0, 1, 1, 1, 1, 1, 2, 0, 2, 1, 0, 0};      // paume : main ouverte paume vers le haut (1 oui) ; pvis : visites dans la paume (0 jamais, 1 rare, 2 normales, 3 souvent) ; recul : vue reculée (0 normale, 1 reculée, 2 très reculée)
+static uint8_t nbMax = 4;      // 3.1.41 : maximum de corbeaux CHOISI par le joueur (cle cbnb : seul le joueur la change) ; OP.nb = effectif en service (peut depasser le maximum quand un oeuf attrape grandit : cle cbeff)
 static inline float tailleF() { static const float F[3] = {0.744f, 0.818f, 0.930f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux (3.1.26 : tous 15 % plus petits qu'avant pour que l'arbre paraisse plus grand) : petit, normal, grand
 static uint32_t tQ = 0, tBon = 0;
 static bool qDeg = false, qMin = false;      // fluidité : quand l'image prend trop de temps, détails coûteux réduits (qDeg) puis encore plus (qMin), automatiquement ; rétablis quand ça repasse sous le seuil      // nombre de corbeaux (3 à 6), visiteur (0 jamais, 1 rare, 2 souvent), secousse, vibration, ambiance, images/s, activité (1 à 5), gros plan (0 jamais, 1 rare, 2 normale, 3 souvent), œufs (idem), horreur
@@ -159,7 +160,7 @@ static bool cbAbsent = false; static uint32_t cbDepuis = 0;      // absence : pe
 static void appliquerAct() { static const float F[5] = {0.45f, 0.7f, 1.0f, 1.5f, 2.2f}; actFreq = F[(OP.act < 1 ? 1 : (OP.act > 5 ? 5 : OP.act)) - 1] * (cbAbsent ? 0.2f : 1.0f); }      // en absence : cinq fois moins d'événements
 static float multFreq(uint8_t n) { static const float M[4] = {1e6f, 2.4f, 1.0f, 0.45f}; return M[n > 3 ? 2 : n]; }      // jamais, rare, normale, souvent : multiplicateur du délai
 static void chargerOptions() {
-  OP.nb = prefs.getUChar("cbnb", 4); if (OP.nb < 1) OP.nb = 1; if (OP.nb > 8) OP.nb = 8;      // de 1 à 8 corbeaux, 4 par défaut
+  OP.nb = prefs.getUChar("cbnb", 4); if (OP.nb < 1) OP.nb = 1; if (OP.nb > 8) OP.nb = 8; nbMax = OP.nb; { const uint8_t e_ = prefs.getUChar("cbeff", 0); if (e_ > nbMax && e_ <= 8) OP.nb = e_; }      // de 1 à 8 corbeaux, 4 par défaut
   OP.vis = prefs.getUChar("cbvis", 1); if (OP.vis > 2) OP.vis = 1;
   OP.sec = prefs.getUChar("cbsec", 1); if (OP.sec > 2) OP.sec = 1;
   OP.vib = prefs.getUChar("cbvib", 1) ? 1 : 0;
@@ -669,6 +670,7 @@ struct Plume { float x, y, vx, vy, rot, vr, vie, dur; bool actif; };
 struct Eclat { float x, y, t, dur, taille; bool actif; };
 
 static Corbeau cr[NCB];
+static bool natAile(int k); static bool natPatte(int k); static int natSurplus(); static uint8_t natSante(int k);      // nature.h (3.1.41)
 namespace mo { static bool partir(Corbeau& c); }
 struct VisiteGP { uint8_t ph; float t, dur, sx, sy, ex, ey, th, choc, tCl, cl, tCri, ouv, sc, dy, tChoc; int8_t k, n, nf, mir; bool jeune, impact, cri;
   float px, py, ps, dvv, pit, pk, x0, y0, s0, dv0, p0, ix[3], iy[3]; float fx0, fy0, ha0, hb0; int8_t fis; bool perche; uint32_t gr; };      // px..pit : position, taille, orientation actuelles ; x0..p0 : départ de la sortie ; ix, iy : points d'impact (fissures)      // visite d'un corbeau devant l'écran
@@ -969,9 +971,10 @@ static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, 
     if (detG) ligne(g, (x1 + x2) * 0.5f, (y1 + y2) * 0.5f, x3, y3, detC);
   }
 }
+static float aileDef = 0.0f;      // 3.1.41 : 0 aile saine, 0,7 aile blessee, 1 aile gravement blessee (une aile qui pend en vol)
 static void deuxAiles(M5Canvas& g, const Rep& R_, const Aile& pose, float wl, uint16_t col) {      // l'aile proche et l'aile lointaine échangent leurs rôles pendant le demi-tour
   float u01 = 0.5f + 0.5f * R_.d;
-  Aile a2 = pose; a2.ea += 14; a2.eh += 10;
+  Aile a2 = pose; a2.ea += 14.0f - 60.0f * aileDef; a2.eh += 10.0f - 50.0f * aileDef;
   Aile pP = mixA(a2, pose, u01), pQ = mixA(pose, a2, u01);
   float bPu = lerpf(3.2f, 1.6f, u01), bPv = lerpf(-3.8f, -3.2f, u01), bQu = lerpf(1.6f, 3.2f, u01), bQv = lerpf(-3.2f, -3.8f, u01);
   float wP = wl * lerpf(0.92f, 1.0f, u01), wQ = wl * lerpf(1.0f, 0.92f, u01);
@@ -988,6 +991,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   Rep R_; R_.cx = c.x; R_.cy = c.y + c.bob; R_.d = c.dv; R_.s = c.s; R_.ct = cosf(c.pitch); R_.st = sinf(c.pitch); { float sqv = c.sq > 0.2f ? c.sq : 1.0f; R_.sy = sqv; R_.sx = 1.0f / sqrtf(sqv); }
   R_.sn = sqrtf(mxf(0.0f, 1.0f - c.dv * c.dv)); if (c.ro != 0.0f) { R_.ro = c.ro; R_.cro = cosf(c.ro); R_.sro = sinf(c.ro); }
   const float s = c.s, dv = c.dv, sn = R_.sn;
+  const int ci0 = (int)(&c - cr); const bool pD = natPatte(ci0); const float def = natAile(ci0) ? (natSante(ci0) >= 2 ? 1.0f : 0.7f) : 0.0f;      // 3.1.41 : blessure a la patte / a l'aile
   // 3.1.38 : GROS PLAN (corbeau vu de pres : visite a la vitre, zoom, oiseau pose dans la paume) : volume en trois tons, plumes en couches, reflets ; la lumiere vient de la lune (en haut a droite) ; coupe par l'allegement automatique (dgE) et jamais pour un oiseau de taille normale
   const bool gros = !dgE() && c.duvet < 0.02f && (s * zs >= 1.6f || (c.perch == 14 && c.etat != E_VOL));
   const bool rg = (OP.hor != 0);
@@ -1001,6 +1005,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       float sk = k ? 1.0f : -1.0f;
       float hipx = hx + sk * 1.3f * s * dv - sk * 1.8f * s * sn, hipy = hy - 0.4f;
       float fxk = c.fx + sk * 2.0f * s * dv - sk * 2.4f * s * sn, fyk = c.fy + c.fp * (fxk - c.fx);
+      if (pD && k == 0) { const float kx_ = hipx + dv * 1.6f * s, ky_ = hipy + 2.6f * s; ligne(g, hipx, hipy, kx_, ky_, NOIR); ligne(g, kx_, ky_, hipx - dv * 0.4f * s, hipy + 3.8f * s, NOIR); continue; }      // patte blessee : repliee contre le ventre
       if (k == 1 && c.grat > 0.02f) {      // il se gratte : une patte monte vers la tête
         float sx_, sy_; P(7.0f, -0.5f, sx_, sy_); float a = pas(c.grat), wob = sinf(c.tAct * 26.0f) * 0.8f * a;
         fxk = lerpf(fxk, sx_ + wob, a); fyk = lerpf(fyk, sy_ + wob * 0.6f, a);
@@ -1018,9 +1023,9 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       float ux = -c.vx / sp, uy = -c.vy / sp, qx = -uy, qy = ux;
       for (int i = 0; i < 4; i++) { float o = (i - 1.5f) * 6.0f * s, l0 = 14.0f * s + i * 2.5f * s, l1 = l0 + (12.0f + 6.0f * (i % 2) + 0.05f * sp) * s; ligne(g, R_.cx + ux * l0 + qx * o, R_.cy + uy * l0 + qy * o, R_.cx + ux * l1 + qx * o, R_.cy + uy * l1 + qy * o, (i % 2 == 0) ? C(196, 74, 62) : C(130, 40, 40)); }
     }
-    if (OP.q >= 1 && c.wl > 0.5f && c.etat == E_VOL) deuxAiles(g, R_, c.poseP, c.wl, C(60, 9, 14)); }
+    if (OP.q >= 1 && c.wl > 0.5f && c.etat == E_VOL) { aileDef = def; deuxAiles(g, R_, c.poseP, c.wl, C(60, 9, 14)); aileDef = 0.0f; } }
   // ailes ouvertes (vol)
-  if (c.wl > 0.04f) { detG = gros; detC = gH; deuxAiles(g, R_, c.pose, c.wl, NOIR); detG = false; }
+  if (c.wl > 0.04f) { detG = gros; detC = gH; aileDef = def; deuxAiles(g, R_, c.pose, c.wl, NOIR); aileDef = 0.0f; detG = false; }
   // queue : plumes pointues qui pendent (perché) ou se rassemblent vers l'arrière (vol), et une plume dominante relevée ; en éventail latéral dans les virages
   { float wag = (c.ruf <= 0.01f) ? 0.0f : 0.10f * c.ruf * sinf(c.tAct * 38.0f);
     float perch = 1.0f - lim(c.wl / 0.6f, 0.0f, 1.0f), droop = lerpf(0.04f, c.tq, perch), spread = lerpf(0.07f + 0.30f * c.fan, 0.24f + 0.2f * c.fan, perch);
@@ -1078,8 +1083,8 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
       for (int i = 0; i < 5; i++) { R_.q(wp[i * 2], wp[i * 2 + 1], wz, q[i * 2], q[i * 2 + 1]); q[i * 2] += fdx; q[i * 2 + 1] += fdy; }
       poly(g, q, 5, NOIR);
       for (int k = 0; k < (mnE() ? 1 : (dgE() ? 2 : 4)); k++) {
-        float u0 = 2.0f - 3.8f * k, v0 = 3.0f, lg = (9.0f + ((k % 2 == 0) ? 4.0f : 0.0f)) * c.wd, x1, y1, x2, y2, x3, y3;
-        R_.q(u0 + 2.0f, v0 - 1.4f, wz, x1, y1); R_.q(u0 - 2.0f, v0 + 0.8f, wz, x2, y2); R_.q(u0 - lg, v0 + 1.0f + ((k % 2) ? 2.0f : -1.0f), wz, x3, y3); x1 += fdx; y1 += fdy; x2 += fdx; y2 += fdy; x3 += fdx; y3 += fdy;
+        float u0 = 2.0f - 3.8f * k, v0 = 3.0f, lg = (9.0f + ((k % 2 == 0) ? 4.0f : 0.0f)) * c.wd * (1.0f + 0.35f * def), x1, y1, x2, y2, x3, y3;
+        R_.q(u0 + 2.0f, v0 - 1.4f, wz, x1, y1); R_.q(u0 - 2.0f, v0 + 0.8f, wz, x2, y2); R_.q(u0 - lg, v0 + 1.0f + ((k % 2) ? 2.0f : -1.0f) + 3.2f * def, wz, x3, y3); x1 += fdx; y1 += fdy; x2 += fdx; y2 += fdy; x3 += fdx; y3 += fdy;
         tri(g, x1, y1, x2, y2, x3, y3, NOIR);
       }
     }
@@ -1493,6 +1498,7 @@ static void placer(Corbeau& c, int i) {      // posé sur la branche : les patte
 static void decoller(Corbeau& c, float tx, float ty, uint8_t but) {      // pour B_SORTIR tx,ty = point à atteindre ; sinon = appui des pattes visé
   c.etat = E_DECOLLE; c.t = 0; c.tx = tx; c.ty = ty; c.but = but; c.aWp = false; c.sub = 0; c.act = A_REPOS; c.tAct = 0;
   c.d = (tx >= c.x) ? 1 : -1; c.vitesse = rnd(82, 108); c.hz = rnd(2.7f, 3.0f); c.restBat = 4 + random(3); c.planeT = 0; c.phase = 0.9f;
+  if (natAile((int)(&c - cr))) { c.vitesse *= 0.72f; c.hz *= 0.84f; }      // 3.1.41 : aile blessee : plus lent, battements plus lents
 }
 static void entrer(Corbeau& c, float tx, float ty, uint8_t but) {      // arrive par un bord de l'écran
   bool gauche = (tx < 160) ? (rnd01() < 0.7f) : (rnd01() < 0.3f);
@@ -1577,7 +1583,7 @@ static void descendre(Corbeau& c, uint8_t but) {      // il descend au sol pour 
 static void prochainActe(Corbeau& c) {
   uint8_t prec = c.act; c.tAct = 0; bool lib = gCalme <= 0;
   if ((prec == A_LISSE_DOS || prec == A_LISSE_POIT) && random(100) < 45) { c.act = A_SECOUE; c.dAct = 0.9f; return; }
-  bool sol = (c.perch >= 0 && c.perch < 4 && V.ph == V_RIEN && !appelOn && nbDehors() < 2 && c.duvet < 0.5f);
+  bool sol = (c.perch >= 0 && c.perch < 4 && V.ph == V_RIEN && !appelOn && nbDehors() < 2 && c.duvet < 0.5f && !natPatte((int)(&c - cr)));      // patte blessee : ne descend plus chasser au sol
   float w[11];      // poids de chaque activité, selon la personnalité (calme, bavard, joueur, craintif) et l'humeur
   w[0] = 0; w[1] = 18 + 30 * c.pCal; w[2] = 14 + 14 * c.pJou + 10 * c.pCra + 20 * c.hum; w[3] = lib ? 14 + 18 * c.pCal : 0; w[4] = lib ? 8 : 0; w[5] = lib ? 5 : 0;
   w[6] = lib ? 6 + 6 * c.pJou : 0; w[7] = (OP.amb == 2) ? 30 + 30 * c.pCal : 0; w[8] = 4 + 14 * c.pBav + 10 * c.hum; w[9] = sol ? 6 + 14 * c.pJou : 0; w[10] = sol ? 3 + 6 * c.pJou : 0;
@@ -1690,11 +1696,11 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       }
     } break;
     case E_DECOLLE: {
-      float u = c.t / 0.11f; c.poseC = A_HAUT; c.wlC = 1; c.pitchC = 0.55f; c.haC = -0.55f; c.hbC = -0.06f;
+      const bool aB = natAile(idx); float u = c.t / (aB ? 0.26f : 0.11f); c.poseC = A_HAUT; c.wlC = 1; c.pitchC = 0.55f; c.haC = -0.55f; c.hbC = -0.06f;
       c.bob = 2.6f * c.s * pas(u > 1 ? 1 : u);                // il s'accroupit avant de sauter
       if (c.t < 0.02f) son(SN_AILES, 200);
-      if (c.t >= 0.11f) {
-        c.etat = E_VOL; c.t = 0; c.vx = c.d * 46.0f; c.vy = -105.0f; c.bob = 0; c.pied = false;
+      if (c.t >= (aB ? 0.26f : 0.11f)) {      // aile blessee : decolle plus lentement, saut plus faible
+        c.etat = E_VOL; c.t = 0; c.vx = c.d * 46.0f; c.vy = aB ? -62.0f : -105.0f; c.bob = 0; c.pied = false;
         if (c.gerbe) { c.gerbe = false; c.vx = rnd(-120, 120); c.vy = -rnd(110, 170); c.d = (c.vx >= 0) ? 1 : -1; c.dv = (float)c.d; }      // envol en gerbe c.perch = (c.but == B_PERCHOIR || c.but == B_VISITEUR) ? c.perch : -1;
         float dist = hypotf(c.tx - c.x, c.ty - c.y);
         if (c.but == B_SORTIR) { c.wx = c.x + c.d * 70.0f; c.wy = mnf(c.y - 50.0f, 60.0f) - rnd(0, 20); c.aWp = true; }
@@ -1723,6 +1729,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
       if (c.but == B_POURSUITE) sp = 150.0f;
       float k = mnf(1.0f, dt * (c.but == B_ATTRAPE ? 7.0f : (c.but == B_POURSUITE ? 5.0f : 3.0f)));
       c.vx += (dx / dist * sp - c.vx) * k; c.vy += (dy / dist * sp - c.vy) * k;
+      if (natAile(idx) && !orb) c.vy += 16.0f * dt;      // aile blessee : vole bas, perd de la hauteur
       { float tvx = dx / dist * sp, ref = (fabsf(tvx) > 14.0f) ? tvx : c.vx;      // sens voulu : le corps pivote dès que la direction change
         if (proche) { if (fabsf(dx) > 8.0f) c.d = (dx > 0) ? 1 : -1; } else if (fabsf(ref) > 14.0f) c.d = (ref > 0) ? 1 : -1; }
       { float lo = -(14.0f + 300.0f * mxf(0.0f, -c.dv)), hi = 14.0f + 300.0f * mxf(0.0f, c.dv);      // jamais de marche arrière : la vitesse contre le regard attend la fin du demi-tour
@@ -1744,12 +1751,13 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
           c.phase -= 1; c.restBat--;
           if (c.restBat <= 0) { c.restBat = 3 + random(4); if (c.t > 1.2f && c.but != B_SORTIR && rnd01() < 0.55f && dist > 60) c.planeT = rnd(0.5f, 1.3f); }
         }
-        if (p0 > 0.9f && c.phase < 0.1f) son(SN_AILES, 120);
+        if (p0 > 0.9f && c.phase < 0.1f) son(SN_AILES, natAile(idx) ? 55 : 120);      // battement affaibli si l'aile est blessee
         float cp = coup(c.phase), ph2 = c.phase - 0.10f; if (ph2 < 0) ph2 += 1.0f; float cpH = coup(ph2);
         c.poseC = mixA(A_HAUT, A_BAS, cp); c.poseC.eh = lerpf(A_HAUT.eh, A_BAS.eh, cpH); c.poseC.sh = lerpf(A_HAUT.sh, A_BAS.sh, cpH);      // la main (primaires) suit le poignet avec un léger retard
         float rec = (c.phase > 0.45f) ? sinf(3.1416f * lim((c.phase - 0.45f) / 0.5f, 0.0f, 1.0f)) : 0.0f; c.wlC = 1.0f - 0.18f * rec;      // remontée : ailes à demi repliées
         c.bob = -2.4f * c.s * (cp - 0.4f);
       }
+      if (natAile(idx)) { c.poseC.ea *= 0.68f; c.poseC.eh *= 0.68f; c.wlC *= 0.92f; }      // battements amples reduits
       if (c.but == B_SORTIR) { if (c.x < bordG() + 2.0f || c.x > bordD() - 2.0f) { c.etat = E_DEHORS; c.t = 0; c.visible = false; c.tfin = c.fuite ? rnd(2.0f, 4.5f) : (c.rapporte ? rnd(3.5f, 6.0f) : rnd(6, 16)); c.fuite = false; c.wl = c.wlC = 0; } }
       else if (c.but == B_ATTRAPE && c.pj >= 0 && proj[c.pj].actif && hypotf(proj[c.pj].x - c.x, proj[c.pj].y - c.y) < (proj[c.pj].type == T_OEUF ? 14.0f : 11.0f)) attraper(c);
       else if (fin && (dist < 2.5f || (dist < 7.0f && sqrtf(c.vx * c.vx + c.vy * c.vy) < 20.0f))) atterrir(c);
@@ -1779,7 +1787,7 @@ static void majCorbeau(Corbeau& c, int idx, float dt) {
         if (c.sub == 0) {
           float dxm = gx - c.x; c.d = (o->x >= c.x) ? 1 : -1;
           if (fabsf(dxm) < 1.8f) { c.sub = 1; c.peck = 0; }
-          else { c.x += (dxm > 0 ? 1 : -1) * mnf(fabsf(dxm), 34.0f * dt) * mxf(0.0f, c.dv * (dxm > 0 ? 1.0f : -1.0f)); c.hop = -fabsf(sinf(c.t * 11.0f)) * 2.6f * c.s; c.bob = c.hop; c.pitchC = c.pr * 0.6f; c.haC = -0.2f; c.hbC = 0.3f; }
+          else { { const bool pB = natPatte(idx); c.x += (dxm > 0 ? 1 : -1) * mnf(fabsf(dxm), (pB ? 16.0f : 34.0f) * dt) * mxf(0.0f, c.dv * (dxm > 0 ? 1.0f : -1.0f)); c.hop = -fabsf(sinf(c.t * (pB ? 6.0f : 11.0f))) * (pB ? 1.4f : 2.6f) * c.s; } c.bob = c.hop; c.pitchC = c.pr * 0.6f; c.haC = -0.2f; c.hbC = 0.3f; }
         } else if (c.sub == 1) {
           c.peck += dt; float dip = fabsf(sinf(c.peck / 0.42f * 3.1416f));
           c.haC = lerpf(-0.3f, 0.55f, dip); c.hbC = lerpf(0.2f, 0.8f, dip); c.pitchC = c.pr * 0.45f - 0.30f * dip;
@@ -2225,12 +2233,12 @@ static void oeufMaintenant() {      // bouton « œuf » : un œuf apparaît tou
     float x = rnd(96.0f, 216.0f); OE.actif = true; OE.x = x; OE.y = ytop(x) + 0.4f; OE.t = 0; OE.tc = 0; OE.etat = 0;
     son(SN_POP_APP, 170); plumes(x, OE.y - 4, 5); eclat(x, OE.y - 5, 0.25f, 0.8f); vib(60);
   }
-  gOeuf = rnd(60.0f, 120.0f) * multFreq(OP.oe);
+  gOeuf = rnd(60.0f, 120.0f) * multFreq(OP.oe) * (1.0f + 0.35f * (float)natSurplus());
 }
 static void majOeuf(float dt) {
   gOeuf -= dt;
   if (gOeuf <= 0) {      // un œuf toutes les 60 à 120 s (réglage « Œufs pondus ») tant qu'il n'y en a pas déjà un ; si personne ne peut pondre ou s'il y en a un, on réessaie bientôt
-    gOeuf = rnd(60.0f, 120.0f) * multFreq(OP.oe);
+    gOeuf = rnd(60.0f, 120.0f) * multFreq(OP.oe) * (1.0f + 0.35f * (float)natSurplus());
     if (OP.oe > 0) { if (V.ph == V_RIEN && !OE.actif && OE.ponte < 0 && !panneau) { pondre(); if (OE.ponte < 0) gOeuf = rnd(4.0f, 8.0f); } else gOeuf = rnd(6.0f, 10.0f); }
   }
   if (OE.ponte >= 0) {
@@ -2784,7 +2792,8 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   else rejouer(g, cmdD[SL_FX], cmdF[SL_FX]);
   rec(NCB + NOB + 2, [&] { nat::dessinerSteles(g); });      // les steles des disparus (au pied de l'arbre, discretes)
   rec(NCB + NOB + 8, [&] { if (OP.hor == 2 && eclT > 0.0f && !qMin) dessinerEclair(g); });
-  rec(E0 + 14, [&] { nat::dessinerPred(g); });      // le predateur (rapace, hibou, renard) : une silhouette de plus, par-dessus les corbeaux
+  rec(E0 + 14, [&] { nat::dessinerPred(g); });
+  rec(E0 + 15, [&] { nat::dessinerSang(g); });      // 3.1.41 : les gouttes de sang (Realiste), tres petites et breves      // le predateur (rapace, hibou, renard) : une silhouette de plus, par-dessus les corbeaux
   rec(NCB + NOB + 11, [&] { dessinerGP(g); });      // la visite d'un corbeau au gros plan : redessinee par zones, comme le reste
   if (veut(NCB + NOB + 12)) { bbReset(); if (OP.fiche || infoT) dessinerFiche(g); fin(NCB + NOB + 12); }      // la fiche flottante d'un corbeau (double toucher)
   sec = false;
@@ -2855,7 +2864,7 @@ static void dessinerPanneau() {
   g.fillScreen(C(14, 2, 6));
   g.fillRect(0, 0, 320, 26, C(60, 10, 20)); g.drawFastHLine(0, 26, 320, C(214, 60, 52));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_left); g.setTextColor(C(255, 236, 225));
-  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 12 ? "Fiche de la colonie" : panPage == 11 ? "Envoyer un prédateur" : panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, oeuf" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
+  if (millis() < tDiagSon) { g.setTextColor(C(150, 255, 170)); g.setFont(&fonts::lgfxJapanGothic_12); g.drawString(diagSon, 6, 13); g.setFont(&fonts::lgfxJapanGothic_16); g.setTextColor(C(255, 236, 225)); } else g.drawString(panPage == 13 ? "Nature : réalisme et capacité" : panPage == 12 ? "Fiche de la colonie" : panPage == 11 ? "Envoyer un prédateur" : panPage == 10 ? "Nature : prédateurs et vie sauvage" : panPage == 9 ? "Vie, nid et couple" : panPage == 8 ? "Caméra automatique" : panPage == 7 ? "Fluidité : images/s et écran" : panPage == 6 ? "Main et vue : paume, recul" : panPage == 5 ? "Famille : parent attitré et petits" : panPage == 4 ? "Fonctions : barre, fiche, oeuf" : panPage == 3 ? "Monde : décor et échanges" : (panPage == 2 ? "Image : lumière et fluidité" : (panPage ? "Fréquence des événements" : "Réglages des corbeaux")), 8, 13);
   g.fillRoundRect(240, 2, 76, 22, 8, C(110, 24, 30)); g.drawRoundRect(240, 2, 76, 22, 8, C(255, 120, 90)); g.setTextDatum(middle_center); g.drawString("FERMER", 278, 13);
   if (panPage == 0) {
     // volume : - barre + et TEST SON
@@ -2866,7 +2875,7 @@ static void dessinerPanneau() {
     g.fillRoundRect(190, 33, 44, 26, 6, C(90, 18, 26)); g.drawRoundRect(190, 33, 44, 26, 6, C(255, 120, 90)); g.drawString("+", 212, 46);
     g.fillRoundRect(240, 33, 72, 26, 6, C(20, 90, 50)); g.drawRoundRect(240, 33, 72, 26, 6, C(120, 255, 160)); g.drawString("TEST SON", 276, 46);
     const char* SEC[3] = {"Faible", "Normale", "Forte"}; const char* AMB[3] = {"Lune + étoiles", "Brume rouge", "Nuit sombre"};
-    char nb[8]; snprintf(nb, sizeof(nb), "%d", OP.nb);
+    char nb[8]; snprintf(nb, sizeof(nb), "%d", (int)nbMax);
     tuile(g, 4, 65, 153, 32, "Sons", sonsReels ? "Réels" : "Synthétiques"); tuile(g, 163, 65, 153, 32, "Corbeaux", nb);
     tuile(g, 4, 100, 153, 32, "Secousse", SEC[OP.sec]); tuile(g, 163, 100, 153, 32, "Vibration", OP.vib ? "Oui" : "Non");
     tuile(g, 4, 135, 153, 32, "Ambiance", AMB[OP.amb]); tuile(g, 163, 135, 153, 32, "Lumière", OP.hor == 2 ? "Horreur" : (OP.hor == 1 ? "Sombre" : "Clair"));
@@ -2886,7 +2895,7 @@ static void dessinerPanneau() {
     g.drawString("Le bouton Vue ou la page Main et vue changent de vue.", 6, 93); g.drawString("En Suivi, touche un corbeau pour le suivre.", 6, 109);
   } else if (panPage == 12) {      // 3.1.40 : fiche de la colonie (compteurs deja existants, rien de nouveau en memoire)
     int nAd = 0, nBl = 0; for (int k = 0; k < NAD; k++) if (cr[k].etat != E_OFF) nAd++; for (int k = 0; k < NCB; k++) if (nat::sante(k) > 0) nBl++;
-    char v1[24], v2[24], v3[24], v4[24], v5[24], v6[24], v7[24]; snprintf(v1, sizeof(v1), "%d / %d", nAd, (int)OP.nb); snprintf(v2, sizeof(v2), "%u", (unsigned)nbOeufs); snprintf(v3, sizeof(v3), "%u", (unsigned)nat::SV.nMort); snprintf(v4, sizeof(v4), "%d", nBl);
+    char v1[24], v2[24], v3[24], v4[24], v5[24], v6[24], v7[24]; snprintf(v1, sizeof(v1), "%d / %d", nAd, (int)nbMax); snprintf(v2, sizeof(v2), "%u", (unsigned)nbOeufs); snprintf(v3, sizeof(v3), "%u", (unsigned)nat::SV.nMort); snprintf(v4, sizeof(v4), "%d", nBl);
     snprintf(v5, sizeof(v5), "%u", (unsigned)nat::SV.nBless); snprintf(v6, sizeof(v6), "%u tour, %u mare", (unsigned)mo::cTour, (unsigned)mo::cMare); snprintf(v7, sizeof(v7), "%u", (unsigned)nat::SV.nPred);
     tuile(g, 4, 32, 153, 32, "Adultes / maximum", v1); tuile(g, 163, 32, 153, 32, "Petit corbeau", cr[PC].etat != E_OFF ? "Présent" : "Absent");
     tuile(g, 4, 67, 153, 32, "Oeufs éclos", v2); tuile(g, 163, 67, 153, 32, "Stèles", v3);
@@ -2894,6 +2903,14 @@ static void dessinerPanneau() {
     tuile(g, 4, 137, 153, 32, "Trésors cachés", v6); tuile(g, 163, 137, 153, 32, "Attaques de prédateurs", v7);
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
     g.drawString("Faire pondre un oeuf : Réglages, page Fonctions.", 6, 176); g.drawString("Chiffres gardés depuis le début de la colonie.", 6, 190);
+  } else if (panPage == 13) {      // 3.1.41 : realisme de la nature et capacite du territoire (cles cbnrea, cbncap)
+    static const char* const LRE[2] = {"Sobre", "Réaliste"}; static const char* const LCA3[6] = {"3", "4", "5", "6", "7", "8"};
+    char sb[80]; snprintf(sb, sizeof(sb), "Capacité du territoire : %d oiseaux (là : %d)", (int)nat::RN.capa, nat::pretN ? nat::vivTot() : 0);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
+    g.drawString("Réalisme : Sobre = pas de sang, blessures légères", 6, 31); segBarre(g, 4, 45, 312, 24, 2, nat::RN.real, LRE);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString(sb, 6, 73); segBarre(g, 4, 87, 312, 24, 6, (int)nat::RN.capa - 3, LCA3);
+    g.drawString("Au-dessus : plus de prédateurs, plus de bagarres, moins d'oeufs.", 6, 119); g.drawString("En dessous : les prédateurs sont plus rares.", 6, 135);
+    g.drawString("Jamais le dernier corbeau ni le couple d'un nid occupé.", 6, 151); g.drawString("Mode Protecteur (page précédente) : effets atténués.", 6, 167);
   } else if (panPage == 11) {      // 3.1.36 : envoyer un predateur tout de suite (rapace, hibou, renard), pour le voir et le tester
     static const char* const LN[3] = {"Rapace", "Hibou", "Renard"}; static const char* const LS[3] = {"du ciel", "silencieux", "au sol"}; static const char* const LMO[3] = {"Jamais", "Rare", "Réaliste"};
     static const char* const LM[5] = {"", "Un prédateur est déjà là.", "Pas de corbeau visible pour celui-là.", "Impossible maintenant (visite, absence...).", "Allègement automatique : prédateur coupé."};
@@ -2979,7 +2996,7 @@ static void dessinerPanneau() {
   g.fillRoundRect(4, 206, 152, 30, 8, C(70, 16, 28)); g.drawRoundRect(4, 206, 152, 30, 8, C(214, 90, 90));
   g.fillRoundRect(164, 206, 152, 30, 8, C(110, 24, 30)); g.drawRoundRect(164, 206, 152, 30, 8, C(255, 120, 90));
   g.setFont(&fonts::lgfxJapanGothic_16); g.setTextDatum(middle_center); g.setTextColor(C(255, 236, 225));
-  g.drawString(panPage == 12 ? "< Réglages" : panPage == 11 ? "< Réglages" : panPage == 10 ? "Envoyer >" : panPage == 9 ? "Nature >" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
+  g.drawString(panPage == 13 ? "Envoyer >" : panPage == 12 ? "< Réglages" : panPage == 11 ? "< Réglages" : panPage == 10 ? "Suite >" : panPage == 9 ? "Nature >" : panPage == 8 ? "Vie et nid >" : panPage == 7 ? "Caméra >" : panPage == 6 ? "Fluidité >" : panPage == 5 ? "Main et vue >" : panPage == 4 ? "Famille >" : (panPage == 3 ? "Fonctions >" : (panPage == 2 ? "Monde >" : (panPage ? "Image >" : "Fréquence >"))), 80, 221); g.drawString("FERMER", 240, 221); g.setTextDatum(top_left);
   cv.pushSprite(0, 0);
 }
 static void ouvrirPanneau() {
@@ -2995,9 +3012,10 @@ static int natEnvoyer(int kind) {      // 3.1.36 : bouton Envoyer un predateur e
   if (panneau) fermerPanneau();
   return nat::envoyer(kind);
 }
+static uint8_t panSuiv(uint8_t p) { return p == 13 ? 11 : (p == 10 ? 13 : (p >= 12 ? 0 : (uint8_t)((p + 1) % 12))); }      // 3.1.41 : la page 13 (suite de Nature) vient apres la page 10
 static void touchPanneau(int x, int y) {
   if (y < 28 && x >= 236) { fermerPanneau(); return; }
-  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = (panPage >= 12) ? 0 : (uint8_t)((panPage + 1) % 12); panSale = true; } return; }
+  if (y >= 206) { if (x >= 160) fermerPanneau(); else { panPage = panSuiv(panPage); panSale = true; } return; }
   if (panPage == 12) return;      // 3.1.40 : fiche de la colonie : lecture seule
   if (panPage == 11) {      // envoyer un predateur : trois grosses touches (rapace, hibou, renard)
     if (y >= 44 && y < 116) {
@@ -3007,6 +3025,13 @@ static void touchPanneau(int x, int y) {
       if (r) { natMsg = (uint8_t)r; natMsgT = millis() + 4000; panSale = true; }
     }
     return;
+  }
+  if (panPage == 13) {      // 3.1.41 : realisme (cle cbnrea) et capacite du territoire (cle cbncap)
+    if (y >= 42 && y < 72) { nat::RN.real = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbnrea", nat::RN.real); }
+    else if (y >= 84 && y < 114) { nat::RN.capa = (uint8_t)(3 + constrain((x - 4) * 6 / 312, 0, 5)); prefs.putUChar("cbncap", nat::RN.capa); nat::gPred = nat::delaiPred(); }
+    else return;
+    if (OP.vib) vibrer(40);
+    panSale = true; return;
   }
   if (panPage == 10) {      // nature (cles cbnpre, cbnble, cbnmor, cbnmod)
     if (y >= 42 && y < 72) { nat::RN.pred = (uint8_t)constrain((x - 4) * 3 / 312, 0, 2); prefs.putUChar("cbnpre", nat::RN.pred); nat::gPred = nat::delaiPred(); }
@@ -3121,7 +3146,7 @@ static void touchPanneau(int x, int y) {
   int i = r * 2 + c;
   switch (i) {
     case 0: if (deuxJeux()) { sonsReels = !sonsReels; prefs.putUChar("cbsons", sonsReels ? 1 : 0); } sonCri(); break;
-    case 1: OP.nb = (uint8_t)(OP.nb >= 8 ? 1 : OP.nb + 1); prefs.putUChar("cbnb", OP.nb); appliquerNb(); break;
+    case 1: nbMax = (uint8_t)(nbMax >= 8 ? 1 : nbMax + 1); OP.nb = nbMax; prefs.putUChar("cbnb", nbMax); prefs.putUChar("cbeff", nbMax); appliquerNb(); break;
     case 2: OP.sec = (uint8_t)((OP.sec + 1) % 3); prefs.putUChar("cbsec", OP.sec); appliquerSec(); if (OP.vib) vibrer(70); break;
     case 3: OP.vib = OP.vib ? 0 : 1; prefs.putUChar("cbvib", OP.vib); if (OP.vib) vibrer(90); break;
     case 4: OP.amb = (uint8_t)((OP.amb + 1) % 3); prefs.putUChar("cbamb", OP.amb); appliquerAmb(); ambChange = true; break;
