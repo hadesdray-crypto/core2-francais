@@ -1,6 +1,6 @@
 {
     "version": "3.1.42",
-    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=4c5c1f1dc367",
+    "bin": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/corbeau/firmware/core2_francais.bin?v=2c37bd77f373",
     "changes": [
         "3.1.42 : MAIN EN PERSPECTIVE : la main est maintenant au MILIEU de l'écran et le bras sort du bas-milieu : la manche est un trapèze très large en bas (près de toi) qui se rétrécit jusqu'à la manchette, puis l'avant-bras et le poignet ; la paume est un peu plus relevée. Le bras reste fixe, l'oiseau posé dans la paume garde l'échelle de la grosse paume (inchangée).",
         "3.1.42 : NOURRITURE SUR LA MAIN : sors la main (mode Main), puis passe en mode Nourrir : la main reste sortie, paume ouverte. Choisis une nourriture dans la barre puis touche la paume, OU glisse l'icône de la barre jusqu'à la paume : la nourriture se pose sur la main. Un corbeau PEUT venir la chercher selon sa faim, son plat préféré, son caractère et sa confiance, même si les visites dans la paume sont sur Jamais ; jamais obligatoire. Il becquette (bruit de bec), puis mange : c'est une interaction tendre (petit coeur). Personne ne vient : la nourriture disparaît au bout de 25 s. Un blessé affamé peut aussi venir la chercher. Une nourriture posée sur la main compte comme nourriture accessible (mort lente).",
@@ -154,17 +154,17 @@
         "version": "1.1",
         "html": "https://raw.githubusercontent.com/hadesdray-crypto/core2-francais/main/app/index.html"
     },
-    "sha256": "4c5c1f1dc36703a7ef6d123a62de46de378d813b1e1dc3c966499e077c89e815",
-    "size": 5194672,
+    "sha256": "2c37bd77f3732064a2c3654735ef8cc99a2e01ddedd8c042490ff7811361fab6",
+    "size": 5196848,
     "canal": "test",
     "notes": [
-        "3.1.41 : blessures aile/patte, sang, mort lente, realisme, capacite du territoire (regulation)",
+        "3.1.42 : main centree en perspective, nourriture sur la main, bruit de bec",
         "Famille, parent attitré : le petit corbeau qui sort d'un œuf a un parent attitré (celui qui a attrapé l'œuf, l'a pondu ou l'a élevé dans le nid, si...",
         "Monde : la maison est retirée. À sa place, une vieille tour de guet en ruine (lanterne rouge, mur écroulé), un portique de pierre brisé, des stèles..."
     ],
     "build": {
-        "version": "3.1.41",
-        "run": "45255515396",
-        "commit": "05ab84f64ca9"
+        "version": "3.1.42",
+        "run": "45256921304",
+        "commit": "f9bfac3f0d6f"
     }
 }
