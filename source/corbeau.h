@@ -119,7 +119,7 @@ static uint8_t modeCb = 0, choixL = 0, appelSub = 0;      // mode de la barre : 
 // ---------- réglages du mode (nouvelles clés mémoire : cbnb, cbvis, cbsec, cbvib, cbamb, cbfps, cboeufs) ----------
 // nouvelles clés (2.9.0) : cbact (activité 1 à 5), cbgp (visites au gros plan 0 à 3), cboefq (fréquence des œufs 0 à 3), cbhor (ambiance Horreur)
 // fps : 0 non, 1 images/s en petit coin, 2 mesures détaillées ; cad : cadence maximale 0 = 20, 1 = 25, 2 = 30 images/s (défaut) ; deg : allègement automatique des détails si l'image est trop lente ; ecr : écran rapide (80 MHz) gardé
-struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto, dec; };      // dec : decor 0 complet (defaut, s'allege seul si l'image ralentit), 1 allege, 2 minimal ;      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
+struct Opt { uint8_t nb, vis, sec, vib, amb, fps, act, gp, oe, hor, q, barre, fiche, lance, taille, paume, pvis, recul, cad, deg, ecr, cauto, dec, tend, calin; };      // 3.1.39 : tend = tendresse avec l'oiseau dans la paume (clé cbtend), calin = câlins rares / normaux / fréquents (clé cbcalin)      // dec : decor 0 complet (defaut, s'allege seul si l'image ralentit), 1 allege, 2 minimal ;      // barre : barre de métal du gros plan ; fiche : fiche au double toucher ; lance : nourriture posée au toucher / lancée au glisser      // hor : lumière 0 Clair, 1 Sombre (défaut), 2 Horreur ; q : qualité 0 Fluide (défaut), 1 Normal, 2 Riche
 static Opt OP = {4, 1, 1, 1, 0, 0, 3, 2, 2, 1, 0, 1, 1, 1, 1, 1, 2, 0, 2, 1, 0, 0};      // paume : main ouverte paume vers le haut (1 oui) ; pvis : visites dans la paume (0 jamais, 1 rare, 2 normales, 3 souvent) ; recul : vue reculée (0 normale, 1 reculée, 2 très reculée)
 static inline float tailleF() { static const float F[3] = {0.744f, 0.818f, 0.930f}; return F[OP.taille > 2 ? 1 : OP.taille]; }      // taille des corbeaux (3.1.26 : tous 15 % plus petits qu'avant pour que l'arbre paraisse plus grand) : petit, normal, grand
 static uint32_t tQ = 0, tBon = 0;
@@ -177,6 +177,7 @@ static void chargerOptions() {
   OP.q = prefs.getUChar("cbqual", 0); if (OP.q > 2) OP.q = 0;      // qualité : Fluide par défaut (nouvelle clé cbqual)
   OP.barre = prefs.getUChar("cbbarre", 1) ? 1 : 0; OP.fiche = prefs.getUChar("cbfiche", 1) ? 1 : 0; OP.lance = prefs.getUChar("cblance", 1) ? 1 : 0;      // fonctions du bloc W : toutes activées par défaut, réglables
   OP.paume = prefs.getUChar("cbpaume", 1) ? 1 : 0; OP.pvis = prefs.getUChar("cbpvis", 2); if (OP.pvis > 3) OP.pvis = 2; { uint8_t v_ = prefs.getUChar("cbvue2", 255); if (v_ == 255) v_ = prefs.getUChar("cbrecul", 0) ? 4 : 0; OP.recul = (v_ > 5) ? 0 : v_; } OP.cauto = prefs.getUChar("cbcam", 0) ? 1 : 0;      // caméra automatique : Non par défaut (clé cbcam) ;      // vue choisie : 0 normale, 1 reculée, 2 très reculée, 3 arbre et rivière, 4 mare, 5 vieux bâtiments (clé cbvue)      // bloc AA : main paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
+  OP.tend = prefs.getUChar("cbtend", 1) ? 1 : 0; OP.calin = prefs.getUChar("cbcalin", 1); if (OP.calin > 2) OP.calin = 1;
   OP.taille = prefs.getUChar("cbtaille", 1); if (OP.taille > 2) OP.taille = 1;      // taille : normal par défaut
   nbOeufs = prefs.getUInt("cboeufs", 0);
   appliquerAct(); appliquerAmb(); appliquerSec(); debug = false;
@@ -702,6 +703,8 @@ struct Main_ { bool actif, gauche; float x, y, ext, tx, ty, tPose, vit, tRec; fl
   float spv[5], cuv[5]; bool ctrl; float lx, ly; float pal, palV, dip, dipV, halo; };      // pal : la main se tourne paume vers le haut (0 à 1) ; dip : la paume cède quand les pattes se posent ; halo : intensité de l'effet d'offrande      // un ressort par articulation de doigt ; le doigt de l'utilisateur pilote la main      // la main tendue (mode Main)
 struct Trace { float x[48], y[48]; int n; float len; uint32_t t0; };      // tracé du doigt (reconnaissance de formes)
 static Main_ H;
+struct Tendre { float car, serre, cal, yeux, calT, sqT, carHold, tCal, tSon, coeurT, coeurX, coeurY; int8_t k; bool sqFait; };      // 3.1.39 : tendresse avec l'oiseau posé dans la paume : caresse (car), serrer doucement (serre), câlin sur les doigts (cal), yeux fermés (yeux)
+static Tendre TD = {0, 0, 0, 0, 0, 0, 0, 10.0f, 0, 0, 0, 0, -1, false};
 struct Braise { bool on; float x, y, vx, vy, t, dur; }; static Braise BRAIS[6]; static float tBraise = 0.0f;      // braises qui montent de la paume
 static Trace TR; static uint32_t tLigne = 0; static float aLigne = 0;
 struct Proj { bool actif; uint8_t type; float x, y, vx, vy, rot, vr, t, ox; int8_t dern; };      // dern : dernier corbeau heurté (pour ne pas le frapper à chaque image)      // objet lancé (mode Lancer)
@@ -942,6 +945,7 @@ static const float EPAULE = 4.2f;      // 3.1.32 : ecart lateral de l'epaule (ai
 static void dirAile(float e, float sw, float& du, float& dv) {
   float er = e * 0.0174533f; float a = -sw * cosf(er), b = -sinf(er); float l = sqrtf(a * a + b * b); if (l < 0.001f) l = 1; du = a / l; dv = b / l;
 }
+static bool detG = false; static uint16_t detC = 0;      // 3.1.38 : gros plan : l'aile ouverte reçoit un reflet clair le long de chaque grande plume
 static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, float wl, uint16_t col, float wsgn) {
   // panneau de l'avant-bras + 6 grandes plumes qui s'écartent en éventail ; wsgn = +1 aile du côté P, -1 aile du côté Q (le côté s'écarte quand le corps pivote)
   if (wl < 0.04f) return;
@@ -970,6 +974,7 @@ static void aile(M5Canvas& g, const Rep& R_, float su, float sv, const Aile& a, 
     float x1, y1, x2, y2, x3, y3;
     PW(ru - thu * w, rv - thv * w, x1, y1); PW(ru + thu * w, rv + thv * w, x2, y2); PW(ru + du * L, rv + dv * L, x3, y3);
     tri(g, x1, y1, x2, y2, x3, y3, col);
+    if (detG) ligne(g, (x1 + x2) * 0.5f, (y1 + y2) * 0.5f, x3, y3, detC);
   }
 }
 static void deuxAiles(M5Canvas& g, const Rep& R_, const Aile& pose, float wl, uint16_t col) {      // l'aile proche et l'aile lointaine échangent leurs rôles pendant le demi-tour
@@ -991,6 +996,10 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   Rep R_; R_.cx = c.x; R_.cy = c.y + c.bob; R_.d = c.dv; R_.s = c.s; R_.ct = cosf(c.pitch); R_.st = sinf(c.pitch); { float sqv = c.sq > 0.2f ? c.sq : 1.0f; R_.sy = sqv; R_.sx = 1.0f / sqrtf(sqv); }
   R_.sn = sqrtf(mxf(0.0f, 1.0f - c.dv * c.dv)); if (c.ro != 0.0f) { R_.ro = c.ro; R_.cro = cosf(c.ro); R_.sro = sinf(c.ro); }
   const float s = c.s, dv = c.dv, sn = R_.sn;
+  // 3.1.38 : GROS PLAN (corbeau vu de pres : visite a la vitre, zoom, oiseau pose dans la paume) : volume en trois tons, plumes en couches, reflets ; la lumiere vient de la lune (en haut a droite) ; coupe par l'allegement automatique (dgE) et jamais pour un oiseau de taille normale
+  const bool gros = !dgE() && c.duvet < 0.02f && (s * zs >= 1.6f || (c.perch == 14 && c.etat != E_VOL));
+  const bool rg = (OP.hor != 0);
+  const uint16_t gM = rg ? C(26, 8, 12) : C(14, 17, 32), gH = rg ? C(58, 14, 20) : C(34, 44, 76), gH2 = rg ? C(104, 30, 34) : C(70, 90, 140);
   float q[32];
   auto P = [&](float u, float v, float& X, float& Y) { R_.p(u, v, X, Y); };
   // pattes : le pied reste posé sur le support, la hanche suit le corps (les orteils agrippent la branche) ; de face, les deux pattes s'écartent
@@ -1019,7 +1028,7 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     }
     if (OP.q >= 1 && c.wl > 0.5f && c.etat == E_VOL) deuxAiles(g, R_, c.poseP, c.wl, C(60, 9, 14)); }
   // ailes ouvertes (vol)
-  if (c.wl > 0.04f) deuxAiles(g, R_, c.pose, c.wl, NOIR);
+  if (c.wl > 0.04f) { detG = gros; detC = gH; deuxAiles(g, R_, c.pose, c.wl, NOIR); detG = false; }
   // queue : plumes pointues qui pendent (perché) ou se rassemblent vers l'arrière (vol), et une plume dominante relevée ; en éventail latéral dans les virages
   { float wag = (c.ruf <= 0.01f) ? 0.0f : 0.10f * c.ruf * sinf(c.tAct * 38.0f);
     float perch = 1.0f - lim(c.wl / 0.6f, 0.0f, 1.0f), droop = lerpf(0.04f, c.tq, perch), spread = lerpf(0.07f + 0.30f * c.fan, 0.24f + 0.2f * c.fan, perch);
@@ -1102,6 +1111,27 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
     float tw = (sinf(millis() * 0.0081f) > 0.6f) ? 1.0f : 0.0f;
     dessinerObjet(g, c.objet - 1, X + dv * 1.5f, Y + 2.0f, 3.6f * s + 0.8f, dv > 0 ? 0.4f : 2.7f, tw);
   }
+  if (gros) {      // volume en trois tons : ton de base (noir), ton moyen sur le corps, ton clair serre côté lune ; plumes en couches sur le flanc, reflet sur l'aile, la tête et le bec
+    const float lx = 0.55f * s, ly = -0.83f * s; float bq[28], cxm = 0.0f, cym = 0.0f;
+    for (int i = 0; i < NB; i++) { R_.pw(tCs[NB][i] * 11.8f * (1.0f + 0.02f * (br - 1.0f) * 5.0f), tSn[NB][i] * 5.9f * br, wfb, bq[i * 2], bq[i * 2 + 1]); cxm += bq[i * 2]; cym += bq[i * 2 + 1]; }
+    cxm /= (float)NB; cym /= (float)NB;
+    for (int t3 = 0; t3 < 2; t3++) {      // deux couches : large (ton moyen) puis serrée (ton clair)
+      const float kk = t3 ? 0.60f : 0.88f, sh = t3 ? 2.4f : 1.0f; float hq[28];
+      for (int i = 0; i < NB; i++) { hq[i * 2] = cxm + (bq[i * 2] - cxm) * kk + lx * sh; hq[i * 2 + 1] = cym + (bq[i * 2 + 1] - cym) * kk + ly * sh * 0.8f; }
+      poly(g, hq, NB, t3 ? gH : gM);
+    }
+    { float cx2 = 0.0f, cy2 = 0.0f, hc[20]; for (int i = 0; i < NC; i++) { cx2 += ch[i * 2]; cy2 += ch[i * 2 + 1]; } cx2 /= (float)NC; cy2 /= (float)NC;
+      for (int i = 0; i < NC; i++) { hc[i * 2] = cx2 + (ch[i * 2] - cx2) * 0.58f + lx * 1.5f; hc[i * 2 + 1] = cy2 + (ch[i * 2 + 1] - cy2) * 0.58f + ly * 1.2f; }
+      poly(g, hc, NC, gM); }      // poitrine
+    for (int j = 0; j < 3; j++) for (int i = 0; i < 4; i++) {      // plumes en couches : petits chevrons décalés une rangée sur deux
+      const float u0 = -7.0f + 4.4f * i + ((j & 1) ? 2.2f : 0.0f), v0 = -2.6f + 2.4f * j; float a1x, a1y, a2x, a2y, a3x, a3y;
+      P(u0 - 1.6f, v0 - 0.7f, a1x, a1y); P(u0, v0 + 0.9f, a2x, a2y); P(u0 + 1.6f, v0 - 0.7f, a3x, a3y); ligne(g, a1x, a1y, a2x, a2y, gH); ligne(g, a2x, a2y, a3x, a3y, gH);
+    }
+    if (c.wl < 0.6f) { float x1, y1, x2, y2, x3, y3; P(6.0f, -3.4f, x1, y1); P(-1.5f, ayp + 1.3f, x2, y2); P(-14.5f, -2.2f, x3, y3); ligne(g, x1, y1, x2, y2, gH2); ligne(g, x2, y2, x3, y3, gH); }      // reflet sur le bord de l'aile repliée
+    disque(g, hhx + lx * 0.9f, hhy + ly * 0.8f, 3.1f * s, gM); disque(g, hhx + lx * 1.5f, hhy + ly * 1.3f, 1.7f * s, gH);      // tête
+    { float b0x, b0y, b1x, b1y; PH(3.4f, -2.2f, b0x, b0y); PH(12.2f, -2.8f * c.bec, b1x, b1y); ligne(g, b0x, b0y, b1x, b1y, gH2); PH(4.8f, -0.9f, b0x, b0y); disque(g, b0x, b0y, 0.4f * s + 0.2f, C(0, 0, 0)); }      // reflet sur le bec et narine
+    for (int i = 0; i < 3; i++) { float n0x, n0y, n1x, n1y; PH(-2.0f - i * 1.2f, 2.2f + i * 1.4f, n0x, n0y); PH(-5.6f - i * 1.0f, 3.6f + i * 1.8f, n1x, n1y); ligne(g, n0x, n0y, n1x, n1y, gH); }      // plumes du cou
+  }
   // liseré rouge sombre côté lune : du volume ; le ventre s'éclaire quand le corbeau se montre de face
   { const uint16_t RIMC = (OP.hor == 2) ? C(70, 12, 18) : ((OP.hor == 1) ? C(88, 16, 22) : C(104, 20, 26)); float x1, y1, x2, y2;
     const float rB = lerpf(-6.2f, -4.6f + 0.667f * (ayp + 4.6f), apf), rC = lerpf(-5.0f, ayp + 0.577f * (-3.4f - ayp), apf), rBu = lerpf(0.0f, 1.0f, apf), rDu = lerpf(-14.0f, -14.5f, apf), rD = lerpf(-3.0f, -3.4f, apf);      // le liseré suit le bord releve de l'aile repliee
@@ -1121,12 +1151,15 @@ static void dessinerCorbeau(M5Canvas& g, const Corbeau& c) {
   { const float ek = (s > 1.2f) ? powf(1.2f / s, 0.5f) : 1.0f;      // l'œil reste petit quand le corbeau est très grand (gros plan)
     const uint16_t cA = c.rare ? C(150, 100, 10) : oeilAnn, cC = c.rare ? C(255, 215, 70) : oeilCoeur;
     const float pro = (dv >= 0) ? 1.0f : -1.0f;
-    if (c.clin < 0.5f) {
+    const int ci_ = (int)(&c - cr); const float ye = (ci_ >= 0 && ci_ < NCB && ci_ == TD.k) ? TD.yeux : 0.0f;      // 3.1.39 : l'oiseau caressé / serré doucement dans la paume ferme les yeux
+    if (c.clin < 0.5f && ye < 0.7f) {
       for (int e = 0; e < 2; e++) {
         float es = e ? -1.0f : 1.0f, vis = 0.85f * dv * es + 0.5f * sn; if (vis < -0.05f) continue;
-        float kk = lim((vis + 0.05f) / 0.45f, 0.0f, 1.0f), rr = (0.55f + 0.45f * kk) * ek, ex, ey; PHw(1.6f, -1.0f, es * 3.2f, ex, ey);
+        float kk = lim((vis + 0.05f) / 0.45f, 0.0f, 1.0f), rr = (0.55f + 0.45f * kk) * ek * (1.0f - 0.45f * ye), ex, ey; PHw(1.6f, -1.0f, es * 3.2f, ex, ey);
         if (OP.hor && OP.q >= 1) { float lu = lueurOeil * (1.0f + 0.05f * sinf(c.resp * 5.3f)) * ((OP.hor == 2) ? 1.0f : 0.75f); disque(g, ex, ey, (3.9f * s + 1.6f) * rr * lu, C(34, 3, 7)); disque(g, ex, ey, (2.7f * s + 1.0f) * rr * lu, C(78, 6, 11)); }      // horreur : l'œil est presque la seule lumière, il éclaire la tête autour de lui
+        if (gros) disque(g, ex, ey, (2.4f * s + 0.9f) * rr, C(2, 1, 4));      // orbite sombre autour de l'œil
         disque(g, ex, ey, (1.7f * s + 0.6f) * rr, cA); disque(g, ex, ey, (1.1f * s + 0.2f) * rr, cC);
+        if (gros) disque(g, ex - 0.35f * s, ey - 0.45f * s, (0.30f * s + 0.12f) * rr, C(255, 242, 232));      // reflet de lumière dans l'œil
       }
     } else { float ex, ey; PHw(1.6f, -1.0f, pro * 3.2f, ex, ey); ligne(g, ex - 1.5f, ey, ex + 1.5f, ey, C(70, 8, 12)); }
     if (c.flash > 0.01f) { float ex, ey; PHw(1.6f, -1.0f, pro * 3.2f, ex, ey); disque(g, ex, ey, 3.0f + 7.0f * c.flash, CF(255, 60 + 120 * c.flash, 40 + 90 * c.flash)); disque(g, ex, ey, 1.8f, C(255, 240, 225)); } }
@@ -1410,6 +1443,11 @@ static void dessinerGP(M5Canvas& g) {      // dessiné avec les autres élément
   if (GP.ph == 1) { float u = lim(GP.t / GP.dur, 0.0f, 1.0f); shk += 1.2f * u * u * u; } else if (GP.ph <= 4) shk += 0.4f;      // la caméra tremble de plus en plus près
   zs = 1.0f; ztx = shk * sinf(GP.t * 71.0f); zty = shk * 0.7f * cosf(GP.t * 57.0f);
   if (OP.barre) { float sl = (GP.ph == 1) ? pas((GP.t - 0.5f) / 0.7f) : ((GP.ph <= 4) ? 1.0f : 1.0f - pas(GP.t / 0.5f)); barreMetal(g, sl); }
+  if (OP.barre && !qDeg && (GP.ph == 3 || GP.ph == 4)) {      // 3.1.38 : le dessus de la barre accroche la lumière de la lune (côté droit) et le corbeau y porte son ombre (vers la gauche)
+    const float fxs = 160.0f - GP.mir * 16.0f, hs = vcb.s * 0.36f;
+    ligne(g, 118.0f, SILL_B - 3.0f, 202.0f, SILL_B - 3.0f, C(58, 18, 24)); ligne(g, 118.0f, SILL_B - 2.0f, 202.0f, SILL_B - 2.0f, C(36, 11, 17)); ligne(g, 160.0f, SILL_B - 3.0f, 202.0f, SILL_B - 3.0f, C(92, 30, 36));
+    ell(g, fxs - 9.0f * hs, SILL_B - 2.4f, 30.0f * hs, 2.3f, C(1, 0, 2));
+  }
   dessinerCorbeau(g, vcb);
   { float f = (GP.ph == 5) ? 1.0f - pas(GP.t / (GP.dur * 0.5f)) : 1.0f;      // fissures dans la vitre : de plus en plus grandes à chaque coup
     if (f > 0.02f) for (int k = 0; k < GP.fis && k < 3; k++) {
@@ -2090,7 +2128,7 @@ static void tendreMain(float x, float y) {      // la main sort à une place fix
   for (int i = 0; i < 3; i++) H.om[i].actif = false;
   son(SN_GAZ, 140);
 }
-static void retirerMain() { H.actif = false; rendreObjets(); }
+static void retirerMain() { H.actif = false; rendreObjets(); TD = Tendre{0, 0, 0, 0, 0, 0, 0, 10.0f, 0, 0, 0, 0, -1, false}; }
 static void saisir(int k, float x, float y, bool fronde) {      // on attrape un corbeau du bout du doigt
   Corbeau& c = cr[k]; if (c.etat == E_DEHORS || c.etat == E_POOF || c.etat == E_TIR) return;
   c.perch = -1; c.item = -1; c.rapporte = false; c.but = B_RIEN; c.etat = E_TENU; c.pied = false; c.vx = c.vy = 0; c.tx = x; c.ty = y; c.wx = c.x; c.wy = c.y;
@@ -2417,11 +2455,63 @@ static void traceFin() {
   }
   H.pose = (uint8_t)p; H.tPose = 0; H.vit = lim(TR.len / mxf(0.15f, dur) / 250.0f, 0.7f, 1.8f);
 }
+// ---------- tendresse : l'oiseau posé dans la paume (3.1.39) ----------
+// Caresse : un toucher ou un glisser du doigt sur l'oiseau = il se penche, ferme les yeux, les plumes se lissent, petit son doux, coeur discret. Serrer : toucher long sur la main (0,7 s) ou le cercle existant = les doigts se ferment légèrement (jamais écrasé, il reste visible), yeux mi-clos. Câlins : de temps en temps il frotte la tête sur les doigts, yeux fermés. Coût : quelques ressorts, au plus 3 traits et un coeur de 3 formes, seulement quand un oiseau est dans la paume ; coupé en décor minimal.
+static int oiseauPaume() { for (int k = 0; k < NCB; k++) if (cr[k].perch == 14 && cr[k].etat == E_PERCHE && cr[k].visible) return k; return -1; }
+static void serrerDoux() { TD.sqT = 3.2f; son(SN_GAZ, 55); }
+static void majTendresse(float dt) {
+  const int k = (OP.tend && H.actif && H.pal > 0.6f) ? oiseauPaume() : -1;
+  TD.k = (int8_t)k;
+  if (k >= 0) {      // cercle ou toucher long sur la main : serrer doucement (au lieu du geste qui fait partir l'oiseau)
+    if (H.tHold > 0.0f) { serrerDoux(); H.tHold = 0.0f; H.circ = 0.0f; }
+    if (H.ctrl && D.bas && D.type == 6 && TR.len <= 16.0f && millis() - TR.t0 > 700u && TD.sqT <= 0.0f && !TD.sqFait) { serrerDoux(); TD.sqFait = true; }
+  } else { TD.sqT = 0.0f; TD.calT = 0.0f; TD.carHold = 0.0f; }
+  if (!D.bas) TD.sqFait = false;
+  if (TD.carHold > 0.0f) TD.carHold -= dt;
+  if (TD.sqT > 0.0f) TD.sqT -= dt;
+  if (TD.calT > 0.0f) TD.calT -= dt;
+  const float carT = (k >= 0 && ((D.bas && D.type == 8) || TD.carHold > 0.0f)) ? 1.0f : 0.0f;
+  TD.car += (carT - TD.car) * mnf(1.0f, dt * 7.0f);
+  TD.serre += (((TD.sqT > 0.0f && k >= 0) ? 1.0f : 0.0f) - TD.serre) * mnf(1.0f, dt * 3.5f);
+  TD.cal += (((TD.calT > 0.0f && k >= 0) ? 1.0f : 0.0f) - TD.cal) * mnf(1.0f, dt * 5.0f);
+  const float yt = (TD.car > 0.35f || TD.cal > 0.4f) ? 1.0f : ((TD.serre > 0.3f) ? 0.5f : 0.0f);
+  TD.yeux += (yt - TD.yeux) * mnf(1.0f, dt * 6.0f);
+  if (TD.coeurT > 0.0f) TD.coeurT -= dt;
+  if (k < 0) return;
+  Corbeau& c = cr[k];
+  const bool actif = TD.car > 0.3f || TD.serre > 0.3f || TD.cal > 0.3f;
+  if (actif && c.tfin - c.t < 3.0f) c.tfin = c.t + 3.0f;      // il reste tant qu'on s'occupe de lui
+  if (TD.car > 0.3f) { c.look = 0.72f; c.tLook = 0.3f; }      // il se penche vers le doigt
+  else if (TD.cal > 0.3f) { c.look = 0.50f + 0.28f * sinf(tAnim * 6.5f); c.tLook = 0.3f; }      // il frotte la tête sur les doigts
+  else if (TD.serre > 0.3f) { c.look = 0.40f; c.tLook = 0.3f; }
+  TD.tSon -= dt;
+  if (actif && TD.tSon <= 0.0f) {
+    TD.tSon = (TD.car > 0.3f) ? rnd(1.5f, 2.3f) : rnd(2.4f, 3.4f); son(SN_GAZ, 55);
+    if ((TD.car > 0.3f || TD.cal > 0.3f) && !qMin) { TD.coeurT = 1.5f; TD.coeurX = c.x + (float)c.d * 5.0f * c.s; TD.coeurY = c.y - 15.0f * c.s; }
+  }
+  if (!actif && !D.bas) {      // câlins de temps en temps (réglage Câlins : rares / normaux / fréquents)
+    TD.tCal -= dt;
+    if (TD.tCal <= 0.0f) { TD.tCal = (OP.calin == 0) ? rnd(34.0f, 55.0f) : ((OP.calin == 2) ? rnd(6.0f, 12.0f) : rnd(14.0f, 26.0f)); if (c.t > 2.0f && H.pal > 0.85f) { TD.calT = 2.6f; TD.tSon = 0.0f; } }
+  }
+}
+static void tendreSur(M5Canvas& g, int k) {      // par-dessus l'oiseau : plumes qui se lissent sous le doigt, petit coeur discret
+  if (k != TD.k || TD.k < 0) return;
+  const Corbeau& c = cr[k];
+  if (TD.car > 0.3f && !dgE()) for (int i = 0; i < 3; i++) {
+    const float u = fmodf(tAnim * 2.2f + i * 0.34f, 1.0f), px = c.x + (u - 0.5f) * 15.0f * c.s, py = c.y + c.bob - (3.6f + 0.9f * sinf(u * 3.1416f)) * c.s;
+    ligne(g, px, py, px - (float)c.d * 4.0f * c.s, py + 1.2f * c.s, (OP.hor != 0) ? C(120, 40, 44) : C(76, 92, 140));
+  }
+  if (TD.coeurT > 0.0f && !qMin) {
+    const float u = 1.0f - TD.coeurT / 1.5f, r = 0.4f + 1.9f * sinf(u * 3.1416f), hx = TD.coeurX + 2.0f * sinf(u * 5.0f), hy = TD.coeurY - 13.0f * u; const uint16_t cc = C(236, 80, 110);
+    disque(g, hx - r * 0.55f, hy, r * 0.62f, cc); disque(g, hx + r * 0.55f, hy, r * 0.62f, cc); tri(g, hx - r * 1.12f, hy + r * 0.2f, hx + r * 1.12f, hy + r * 0.2f, hx, hy + r * 1.75f, cc);
+  }
+}
 static void majMainPose(float dt) {
   if (!H.actif && H.ext <= 0.0f) return;
   H.x = H.tx = (H.gauche ? 125.0f : 205.0f); H.y = H.ty = 128.0f; H.vx = H.vy = 0.0f;      // le bras reste immobile
   H.resp = sinf(tAnim * 1.9f);
   H.circ *= expf(-dt * 0.7f); if (H.tHold > 0) H.tHold -= dt;
+  majTendresse(dt);
   { const bool c_ = H.ctrl; const float sv = lim(hypotf(D.vx, D.vy) / 500.0f, 0.0f, 1.0f), w = (c_ ? 9.0f + 8.0f * sv : 5.0f);      // un trait rapide = mouvement vif ; au relâché, retour doux
     float gx = c_ ? lim((D.x - D.x0) / 55.0f, -1.0f, 1.0f) : 0.0f, gy = c_ ? lim((D.y - D.y0) / 55.0f, -1.0f, 1.0f) : 0.0f;
     ressort(H.tilt, H.tiltV, 0.5f * gx, w * 0.8f, dt);      // trait horizontal : le poignet pivote (vers la droite = les doigts s'abaissent)
@@ -2458,6 +2548,7 @@ static void majMainPose(float dt) {
       ts += (MP[PS_ENVELOPPE][i][0] - ts) * H.clos; tc += (MP[PS_ENVELOPPE][i][1] - tc) * H.clos;
     }
     if (H.pal > 0.001f) { const float pp = pas(H.pal); ts += (MPAUME[i][0] - ts) * pp; tc += (MPAUME[i][1] - tc) * pp; }      // paume vers le haut : doigts relevés en coupe, pouce dressé
+    if (TD.serre > 0.01f || TD.cal > 0.01f) { const float sq_ = TD.serre * 0.85f; ts += (MP[PS_ENVELOPPE][i][0] - ts) * sq_; tc += (MP[PS_ENVELOPPE][i][1] * 0.80f - tc) * sq_; tc += TD.cal * 0.06f * sinf(tAnim * 9.0f + i * 0.7f); }      // 3.1.39 : les doigts se referment légèrement (jamais le poing), ou frottent doucement
     tc += 0.035f * sinf(tAnim * 1.7f + i * 0.6f) * (H.ctrl ? 0.4f : 1.0f);      // respiration au repos
     tc += lim(-H.tiltV * 0.25f, -0.3f, 0.3f) * (0.6f + 0.12f * i);              // les doigts traînent derrière le poignet quand il pivote
     float w = (17.0f - 1.6f * i) * mnf(1.4f, H.vit), z = 0.62f;                   // un ressort par doigt, un peu sous-amorti : l'inertie se voit
@@ -2671,7 +2762,7 @@ static void dessinerEntites(M5Canvas& g, bool sech) {
   rec(NCB + NOB + 7, [&] { if (OE.actif) dessinerOeuf(g); });      // le visiteur, avant les corbeaux : ils se posent devant lui
   rec(NCB + NOB + 13, [&] { mo::dessinBetes(g); });      // les petites betes, au sol, derriere les corbeaux
   rec(NCB + NOB + 9, [&] { fam::nid(g); });      // le nid, derriere les corbeaux
-  { const uint32_t u_ = micros(); for (int k = 0; k < NCB; k++) rec(k, [&] { if (cr[k].visible && !horsChamp(cr[k])) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); nat::sur(g, k); } }); uCorb += micros() - u_; }
+  { const uint32_t u_ = micros(); for (int k = 0; k < NCB; k++) rec(k, [&] { if (cr[k].visible && !horsChamp(cr[k])) { dessinerCorbeau(g, cr[k]); fam::sur(g, k); nat::sur(g, k); tendreSur(g, k); } }); uCorb += micros() - u_; }
   rec(NCB + NOB + 10, [&] { fam::devant(g); });      // les brindilles du bord, devant le parent assis
   // petits corbeaux de la nuee : un rectangle par groupe proche (au plus quatre)
   if (sech) {
@@ -2836,10 +2927,12 @@ static void dessinerPanneau() {
   } else if (panPage == 6) {      // main et vue : main ouverte paume vers le haut, visites dans la paume, recul de la vue (clés cbpaume, cbpvis, cbrecul)
     static const char* const LO[2] = {"Non", "Oui"}; static const char* const LPV[4] = {"Jamais", "Rare", "Normal", "Souvent"}; static const char* const LRC[3] = {"Normal", "Arbre", "Mare"}; static const char* const LLI[3] = {"Bâtiments", "Large", "Nid"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
-    g.drawString("Main ouverte, paume vers le haut (mode Main)", 6, 31); segBarre(g, 4, 45, 312, 24, 2, OP.paume, LO);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Visites d'un corbeau dans la paume", 6, 73); segBarre(g, 4, 87, 312, 24, 4, OP.pvis, LPV);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vue (elle reste fixe) : normale / arbre et rivière / mare", 6, 115); segBarre(g, 4, 129, 312, 24, 3, OP.recul <= 2 ? OP.recul : -1, LRC);
-    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vue : vieux bâtiments / large / nid et branches de nuit", 6, 157); segBarre(g, 4, 171, 312, 24, 3, OP.recul >= 3 ? OP.recul - 3 : -1, LLI);
+    static const char* const LCA[3] = {"Rares", "Normaux", "Fréquents"}; static const char* const LV6[6] = {"Normal", "Arbre", "Mare", "Bâtim.", "Large", "Nid"};
+    (void)LRC; (void)LLI;
+    g.drawString("Main ouverte, paume vers le haut (mode Main)", 6, 29); segBarre(g, 4, 42, 312, 22, 2, OP.paume, LO);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Visites d'un corbeau dans la paume", 6, 66); segBarre(g, 4, 79, 312, 22, 4, OP.pvis, LPV);
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Tendresse (caresser, serrer)", 6, 103); g.drawString("Câlins sur les doigts", 112, 103); segBarre(g, 4, 116, 100, 22, 2, OP.tend, LO); segBarre(g, 108, 116, 208, 22, 3, OP.calin, LCA);      // 3.1.39
+    g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.drawString("Vue (elle reste fixe) : normale, arbre, mare, bâtiments, large, nid", 6, 141); segBarre(g, 4, 154, 312, 22, 6, (OP.recul <= 5) ? OP.recul : -1, LV6);
   } else if (panPage == 5) {      // famille : parent attitré, entraide, protection, croissance du petit (clés cbfam, cbfaid, cbfpro, cbfvit)
     static const char* const LF[2] = {"Désactivée", "Activée"}; static const char* const LA[3] = {"Non", "Selon caractère", "Tous aident"}; static const char* const LP[3] = {"Douce", "Normale", "Forte"}; static const char* const LV[3] = {"Lente", "Normale", "Rapide"};
     g.setFont(&fonts::lgfxJapanGothic_12); g.setTextColor(C(205, 145, 145)); g.setTextDatum(top_left);
@@ -2950,10 +3043,10 @@ static void touchPanneau(int x, int y) {
     panSale = true; return;
   }
   if (panPage == 6) {      // main et vue (clés cbpaume, cbpvis, cbrecul)
-    if (y >= 42 && y < 72) { OP.paume = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbpaume", OP.paume); }
-    else if (y >= 84 && y < 114) { OP.pvis = (uint8_t)constrain((x - 4) * 4 / 312, 0, 3); prefs.putUChar("cbpvis", OP.pvis); }
-    else if (y >= 126 && y < 156) { mo::reglerRecul((uint8_t)constrain((x - 4) * 3 / 312, 0, 2)); }
-    else if (y >= 168 && y < 198) { mo::reglerRecul((uint8_t)(3 + constrain((x - 4) * 3 / 312, 0, 2))); }
+    if (y >= 39 && y < 67) { OP.paume = (((x - 4) * 2 / 312) >= 1) ? 1 : 0; prefs.putUChar("cbpaume", OP.paume); }
+    else if (y >= 76 && y < 104) { OP.pvis = (uint8_t)constrain((x - 4) * 4 / 312, 0, 3); prefs.putUChar("cbpvis", OP.pvis); }
+    else if (y >= 113 && y < 141) { if (x < 106) { OP.tend = (((x - 4) * 2 / 100) >= 1) ? 1 : 0; prefs.putUChar("cbtend", OP.tend); } else { OP.calin = (uint8_t)constrain((x - 108) * 3 / 208, 0, 2); prefs.putUChar("cbcalin", OP.calin); } }
+    else if (y >= 151 && y < 179) { mo::reglerRecul((uint8_t)constrain((x - 4) * 6 / 312, 0, 5)); }
     else return;
     if (OP.vib) vibrer(40);
     panSale = true; return;
@@ -3559,6 +3652,7 @@ static void appui(int x, int y) {
     } break;
     case 1: D.type = 1; D.cible = (int8_t)trouverCorbeau((float)x, (float)y, 1.5f / zs);
       if (!H.actif && D.cible < 0) tendreMain((float)x, (float)y);      // un appui sur le mode Main : la main sort tout de suite, à sa place fixe
+      if (H.actif && OP.tend && TD.k >= 0 && D.cible == TD.k) { D.type = 8; D.grab = false; TD.carHold = 0.0f; break; }      // 3.1.39 : un toucher ou un glisser du doigt sur l'oiseau posé dans la paume = une caresse (pas un tracé de geste)
       if (H.actif) {      // un trait tracé n'importe où sur l'écran pilote le poignet et les doigts ; le bras ne bouge pas
         D.cible = -1; D.type = 6; TR.n = 0; TR.len = 0; TR.t0 = m; traceAjoute((float)x, (float)y);
         H.ctrl = true; H.circ = 0; H.lok = false; H.lx = (float)x; H.ly = (float)y;
@@ -3624,6 +3718,7 @@ static void relache() {
       lancer(D.x, D.y, vx, vy);
     } break;
     case 6: H.ctrl = false; traceFin(); break;
+    case 8: TD.carHold = 1.0f; break;      // la caresse se prolonge un instant après que le doigt se lève
     case 3: appelFin(); break;
     case 4: if (D.cible >= 0) tirer(D.cible); FR.on = false; break;
     default: break;
